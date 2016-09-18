@@ -1,0 +1,86 @@
+---
+title: "Rwanda Baseline Demographic and Soil Summary"
+author: "Matt Lowes"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**Objective**: Summary of the demographics and soil characteristics of the Rwanda long term soil health study.
+
+```{r data}
+library(knitr)
+library(ggplot2)
+library(stringr)
+suppressMessages(library(dplyr))
+library(sp)
+suppressMessages(library(dismo))
+suppressMessages(library(stargazer))
+library(leaflet)
+
+
+wd <- "/Users/mlowes/drive/soil health study/data/rw baseline"
+dd <- paste(wd, "data", sep = "/")
+od <- paste(wd, "output", sep = "/")
+
+load(paste(dd, "shs rw baseline.Rdata", sep = "/"))
+```
+
+We currently have `r dim(d)[1]` observations. All I'd like to do currently is summarize the current soil characteristics and plot the origin of the data points **Data have not been fully cleaned** 
+
+```{r, include=F}
+# udpate variable names
+names(d)[99:118] <- c("pH", "EC", "P.ppm", "Ca.ppm", "Mg.ppm", "S.ppm",
+                      "Fe.ppm", "CEC.cmol", "TN", "C.N", "ExAcid", "Acid.Saturation",
+                      "Exch.Al", "OC", "B.ppm", "Cu.ppm", "K.ppm", "Mn.ppm", 
+                      "X.ppm", "Zn.ppm")
+```
+
+### Summary soil results
+```{r}
+sapply(d[, 99:118], function(x){
+ return(c(min = min(x, na.rm=T), mean=mean(x, na.rm=T),
+          median = median(x, na.rm=T), sd= sd(x, na.rm=T),
+          max = max(x, na.rm=T))) 
+})
+```
+
+The pH value went from being too high to improbably low. An average of `r round(mean(d$pH, na.rm=T),2)` and a max of `r round(max(d$pH, na.rm=T),2)` are terrible.
+
+### Summary results by district
+```{r kable1, results='asis'}
+tab <- t(aggregate(d[, 99:118], by=list(d$district), function(x){
+  round(mean(x, na.rm=T),2)
+}))
+kable(tab)
+```
+
+
+```{r get_map, include=F}
+if (!(exists("rwanda"))){
+  # Only need to geocode once per session library(dismo)
+  rwanda <- try(geocode("Rwanda"))
+  # If the internet fails, use a local value 
+  if (class(rwanda) == "try-error") {
+    rwanda <- ""
+    # arusha$longitude <- 36.68299
+    # arusha$latitude <- -3.386925
+  } 
+}
+```
+
+```{r leaflet, fig.width=9, fig.height=7}
+e <- d[!is.na(d$lon),]
+ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e)
+map <- leaflet() %>% addTiles() %>%
+  setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=9) %>%
+  addCircleMarkers(lng=ss$lon, lat=ss$lat, clusterOptions = markerClusterOptions())
+
+map
+```
+
+
+
