@@ -11,6 +11,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 **Objective**: Summary of the demographics and soil characteristics of the Rwanda long term soil health study.
 
+The cleaning and initial analysis were done in R scripts 1 and 2.
+
 ```{r data}
 library(knitr)
 library(ggplot2)
@@ -81,6 +83,5 @@ map <- leaflet() %>% addTiles() %>%
 
 map
 ```
-
 
 
