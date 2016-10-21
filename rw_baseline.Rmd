@@ -11,7 +11,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 **Objective**: Summary of the demographics and soil characteristics of the Rwanda long term soil health study.
 
-The cleaning and initial analysis were done in R scripts 1 and 2.
+### Table of Contents:
+
+* Cleaning and merging soil and demographic data
+* New variable creation
+* Execution of summary plan
+
+
 
 ```{r data}
 library(knitr)
@@ -22,14 +28,150 @@ library(sp)
 suppressMessages(library(dismo))
 suppressMessages(library(stargazer))
 library(leaflet)
+library(XML)
+```
 
-
+```{r directory}
 wd <- "/Users/mlowes/drive/soil health study/data/rw baseline"
 dd <- paste(wd, "data", sep = "/")
-od <- paste(wd, "output", sep = "/")
+od <- paste(wd, "output", sep="/")
+drive <- "~/drive/r_help/4_output/statistical_test_outputs"
 
-load(paste(dd, "shs rw baseline.Rdata", sep = "/"))
+#load data:
+# This data is being drawn from the Soil lab repository. It has the baseline data with it
+d <- read.csv(paste(dd, "Rwanda_shs_commcare_soil data_final.csv", sep="/"),  stringsAsFactors=FALSE)
 ```
+
+### Note:
+I'm using the merged data from Emmanuel for now but I will need to go back and download the demographic data fresh from Commcare and replicate the merge process using "Identifiers with SSN_final" provided by Emmanuel.
+
+
+Now let's start cleaning the demographic variables
+```{r name.cleaning}
+# take out weird CommCare stuff
+d[d=="---"] <- NA
+
+# take out demographic and text_final_question from variable names
+#to.change <- c("text_final_questions.", "intro_champ_echantillon.",
+#	"demographic_info.", "other_inputs_", "crop1_15b_inputs.", "crop2_15b_inputs.",
+#	"^15b.", "historical_intro.")
+
+#names(d) <- tapply(to.change, function(x) { gsub(x, "", names(d))})
+
+names(d) <- gsub("text_fil_questions", "", names(d))
+names(d) <- gsub("intro_champ_echantillon", "", names(d))
+names(d) <- gsub("demographic_info", "", names(d))
+names(d) <- gsub("other_inputs_", "", names(d))
+names(d) <- gsub("crop1_15b_inputs", "", names(d))
+names(d) <- gsub("crop2_15b_inputs", "", names(d))
+names(d) <- gsub("^15b", "", names(d))
+names(d) <- gsub("historical_intro", "", names(d))
+
+names(d)[names(d)=="field_dim"] <- "field_dim1"
+names(d)[names(d)=="v51"] <- "field_dim2"
+```
+
+Take care of demographic data formatting issues
+```{r formatting}
+# deal with names and drop unnecessary variables
+d <- d %>% 
+	dplyr::select(-c(rownumber, infoformid, introductiond_accept, photo,
+		infocompleted_time, 
+		enumerator_me, contains("phone"), farmer_me, farmersurme, farmerme,
+		d_respondent, additiolsamplepackedandsenttol, additiolsamplerequestedfromlab,
+		datedryingcompleteifnecessary, driedindistrictifnecessary, senttohqyo,
+		collectedindistrictyo, excessstoredathq_, receivedathq_,dateofinitialdryingifnecessary,
+		samplecollectedinfieldyo, field_des, samplewetordry)) %>%
+	rename(
+	female = sex,
+	age = age_cultivateur,
+	own = d_own,
+	client = d_client) %>%
+	mutate(
+	female= ifelse(female=="gore", 1,0),
+	field.size = field_dim1*field_dim2
+	)
+
+d$total.seasons <- apply(d[, grep("d_season_list", names(d))], 1, function(x) {
+	sum(x, na.rm=T)})
+```
+
+Fix some more variable names:
+```{r}
+names(d)[names(d)=="field_kg_fert1_1"] <- "field_kg_fert1_15b"
+names(d)[names(d)=="field_kg_fert2_1"] <- "field_kg_fert2_15b"
+names(d)[names(d)=="field_kg_compost"] <- "field_kg_compost_15b"
+```
+
+Recode variables to numeric:
+```{r}
+# recode to numeric
+varlist <- c("client", "own", "crop1_15b_seedkg", "crop1_15b_yield", "crop1_15b_yield_",
+	"crop2_15b_seedkg", "crop2_15b_yield", "crop2_15b_yield_", "field_kg_fert1_15b",
+	"field_kg_fert2_15b", "field_kg_compost_15b", "d_lime_15b", "kg_lime_15b")
+
+# check that there aren't values hidden in the character variables
+#apply(d[,varlist], 2, function(x){table(x, useNA='ifany')})
+
+# recode characters to numerics
+d[, varlist] <- sapply(d[,varlist], as.numeric)
+
+# divide out GPS coordinates
+# http://rfunction.com/archives/1499
+
+# replace the blank gps_pic_guide with info
+d <- cbind(d, str_split_fixed(d$gps_pic_guid, " ", n=4))
+names(d)[106:109] <- c("lat", "lon", "alt", "precision")
+d[,c("lat", "lon", "alt", "precision")] <- sapply(d[,c("lat", "lon", "alt", "precision")],
+                                                  function(x){as.numeric(as.character(x))})
+
+```
+
+Check out missing data in the district variable:
+```{r}
+table(d$district, useNA = 'ifany')
+d[d$district=="",]
+# these are the sample for which we have soil data but not survey data drop these for now
+d <- d[-which(d$district==""),]
+```
+
+Cleaning of soil data: Come back, check and clean the soil data before outputting to clean data set.
+
+
+
+Save clean demographic data to external file
+```{r}
+write.csv(d, file=paste(paste(wd, "data", sep = "/"), "shs rw baseline.Rdata", sep = "/"))
+save(d, file=paste(paste(wd, "data", sep = "/"), "shs rw baseline.Rdata", sep = "/"))
+```
+
+Produce a simple map of where our observations are
+
+```{r get_map, include=F}
+if (!(exists("rwanda"))){
+  # Only need to geocode once per session library(dismo)
+  rwanda <- try(geocode("Rwanda"))
+  # If the internet fails, use a local value 
+  if (class(rwanda) == "try-error") {
+    rwanda <- ""
+    # arusha$longitude <- 36.68299
+    # arusha$latitude <- -3.386925
+  } 
+}
+```
+
+```{r leaflet, fig.width=9, fig.height=7}
+e <- d[!is.na(d$lon),]
+ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e)
+map <- leaflet() %>% addTiles() %>%
+  setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=8) %>%
+  addCircleMarkers(lng=ss$lon, lat=ss$lat, clusterOptions = markerClusterOptions())
+
+map
+```
+
+
+
 
 We currently have `r dim(d)[1]` observations. All I'd like to do currently is summarize the current soil characteristics and plot the origin of the data points **Data have not been fully cleaned** 
 
@@ -61,27 +203,6 @@ kable(tab)
 ```
 
 
-```{r get_map, include=F}
-if (!(exists("rwanda"))){
-  # Only need to geocode once per session library(dismo)
-  rwanda <- try(geocode("Rwanda"))
-  # If the internet fails, use a local value 
-  if (class(rwanda) == "try-error") {
-    rwanda <- ""
-    # arusha$longitude <- 36.68299
-    # arusha$latitude <- -3.386925
-  } 
-}
-```
 
-```{r leaflet, fig.width=9, fig.height=7}
-e <- d[!is.na(d$lon),]
-ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e)
-map <- leaflet() %>% addTiles() %>%
-  setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=9) %>%
-  addCircleMarkers(lng=ss$lon, lat=ss$lat, clusterOptions = markerClusterOptions())
-
-map
-```
 
 
