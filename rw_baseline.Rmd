@@ -17,8 +17,6 @@ knitr::opts_chunk$set(echo = TRUE)
 * New variable creation
 * Execution of summary plan
 
-
-
 ```{r data}
 library(knitr)
 library(ggplot2)
@@ -42,9 +40,11 @@ drive <- "~/drive/r_help/4_output/statistical_test_outputs"
 d <- read.csv(paste(dd, "Rwanda_shs_commcare_soil data_final.csv", sep="/"),  stringsAsFactors=FALSE)
 ```
 
-### Note:
 I'm using the merged data from Emmanuel for now but I will need to go back and download the demographic data fresh from Commcare and replicate the merge process using "Identifiers with SSN_final" provided by Emmanuel.
 
+Included code to pair demographic and soil data?: **Not yet**
+
+### Cleaning baseline variables
 
 Now let's start cleaning the demographic variables
 ```{r name.cleaning}
@@ -135,6 +135,7 @@ d[d$district=="",]
 d <- d[-which(d$district==""),]
 ```
 
+### Cleaning soil data
 Cleaning of soil data: Come back, check and clean the soil data before outputting to clean data set.
 
 
@@ -145,6 +146,8 @@ write.csv(d, file=paste(paste(wd, "data", sep = "/"), "shs rw baseline.Rdata", s
 save(d, file=paste(paste(wd, "data", sep = "/"), "shs rw baseline.Rdata", sep = "/"))
 ```
 
+
+### Map of baseline observations
 Produce a simple map of where our observations are
 
 ```{r get_map, include=F}
@@ -169,6 +172,81 @@ map <- leaflet() %>% addTiles() %>%
 
 map
 ```
+
+
+## Summary statistics
+### Baseline balance
+
+Let's see how balanced our farmers are in terms of demographic variables. Tubura farmers were selected based on (list criteria) and control farmers in the same area tha fit the same criteria were also selected. No matching process has been performed to identify the control farmers that most closely resemble the Tubura farmers in the sample.
+
+```{r}
+out.list <- c("female", "age", "hhsize", "own", "field.size",
+              "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow",
+              "n_seasons_leg_1", "n_seasons_leg_2")
+
+output <- do.call(rbind, lapply(out.list, function(x) {
+  
+  out <- t.test(d[,x] ~ d[,"client"], data=d)
+  tab <- data.frame(out[[5]][[1]], out[[5]][[2]], out[3])
+  tab[,1:2] <- round(tab[,1:2],3)
+  names(tab) <- c(names(out[[5]]), "pvalue")
+  return(tab)
+}))
+
+# use p.adjust with bonferroni correction
+output$pvalue <- p.adjust(output$pvalue, method="fdr")
+output$pvalue <- ifelse(output[, 3] < 0.001, "< 0.001", round(output[, 3], 3)) 
+
+rownames(output) <- out.list
+colnames(output) <- c("Non-Tubura", "Tubura Client", "p-value")	
+print(kable(output))
+```
+
+```{r}
+#write table
+write.csv(output, file=paste(od, "baseline balance.csv", sep="/"), row.names=T)
+```
+
+### Overall sample balance interpretation
+**Demographic variables** We are not well balanced along the main demographic variables we collected, sex, age and HH size. For the purposes of inference we can test some matching algorithms to improve the match between Tubura and control farmers. 
+**Agricultural practice variables** We are decently balanced along agricultural practice variables. Our course of action here is similiar to our options with the demographic variables. 
+
+### Baseline balance by district
+```{r}
+dist.output <- do.call(rbind, lapply(split(d, d$district), function(x) {
+  
+  tab <- do.call(rbind, lapply(out.list, function(y) {
+    
+    out <- t.test(x[,y] ~ x[,"client"], data=x)
+    tab <- data.frame(out[[5]][[1]], out[[5]][[2]], out[3])
+    tab[,1:2] <- round(tab[,1:2],3)
+    names(tab) <- c(names(out[[5]]), "pvalue")
+    #tab[,3] <- p.adjust(tab[,3], method="holm")
+    #tab[,3] <- ifelse(tab[,3] < 0.001, "< 0.001", round(tab[,3],3))
+    #print(tab)
+    return(tab)
+  }))
+  
+  return(data.frame(district = unique(x$district), tab))
+}))
+
+rownames(dist.output) <- NULL
+dist.output$variable <- rep(out.list,13)	
+
+# order variables 
+dist.output <- dist.output[, c(1, 5, 2:4)]
+dist.output$pvalue <- p.adjust(dist.output$pvalue, method="fdr")
+dist.output$pvalue <- ifelse(dist.output$pvalue < 0.001, "< 0.001", round(dist.output$pvalue,3))
+dist.output <- dist.output[order(dist.output$pvalue),]
+colnames(dist.output) <- c("District", "Varible", "Non-Tubura", "Tubura Client", "p-value")	
+
+print(kable(dist.output))
+```
+
+```{r}
+write.csv(dist.output, file=paste(od, "district balance.csv", sep="/"), row.names=T)
+```
+
 
 
 
