@@ -11,11 +11,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 **Objective**: Summary of the demographics and soil characteristics of the Rwanda long term soil health study.
 
-### Table of Contents:
-
-* Cleaning and merging soil and demographic data
-* New variable creation
-* Execution of summary plan
+### Study methodology
+Add in details on study methodology here.
 
 ```{r data}
 library(knitr)
@@ -231,10 +228,11 @@ output <- do.call(rbind, lapply(out.list, function(x) {
 
 # use p.adjust with bonferroni correction
 output$pvalue <- p.adjust(output$pvalue, method="fdr")
+rownames(output) <- out.list
 output <- output[order(output$pvalue),]
 output$pvalue <- ifelse(output[, 3] < 0.001, "< 0.001", round(output[, 3], 3)) 
 
-rownames(output) <- out.list
+
 colnames(output) <- c("Non-Tubura", "Tubura Client", "p-value")	
 ```
 
@@ -247,7 +245,7 @@ print(kable(output))
 write.csv(output, file=paste(od, "baseline balance.csv", sep="/"), row.names=T)
 ```
 
-### Overall sample balance interpretation
+### Overall balance interpretation
 **Demographic variables** We are not well balanced along the main demographic variables we collected, sex, age and HH size. For the purposes of inference we can test some matching algorithms to improve the match between Tubura and control farmers. 
 
 
@@ -291,7 +289,7 @@ colnames(dist.output) <- c("District", "Varible", "Non-Tubura", "Tubura Client",
 print(kable(dist.output))
 ```
 
-### Sample balance interpretation by district
+### District balance interpretation
 **Demographic variables** interpretation here.
 
 
@@ -305,10 +303,78 @@ print(kable(dist.output))
 write.csv(dist.output, file=paste(od, "district balance.csv", sep="/"), row.names=T)
 ```
 
+### Baseline balance by Tubura tenure
+Look at farmers by duration of tenure farming with Tubura. We want to understand, at least with an initial naive baseline sense, what is the cumulative effect of Tubura practices on soil health outcomes?
+
+We will look only at current Tubura farmers and compare first year farmers to farmers with more experience with Tubura.
+
+```{r}
+oafOnly <- d[which(d$client==0 & d$total.seasons>=1),]
+for(i in 1:length(soilVars)){
+print(
+  ggplot(oafOnly, aes(x=as.factor(total.seasons), y=oafOnly[,soilVars[i]])) + 
+    geom_boxplot() + 
+    labs(x="Tubura Tenure", y=soilVars[i], title = paste("RW baseline soil by tenure - ", soilVars[i], sep = ""))
+  )  
+}
+```
+
+### Tenure summaries
+```{r}
+tenureSum <- aggregate(oafOnly[,out.list], by=list(oafOnly$total.seasons), function(x){
+  round(mean(x, na.rm=T),2)
+})
+tenureSum <- as.data.frame(t(tenureSum))
+colnames(tenureSum) <- c(paste(seq(1,11,1), " seas.", sep = ""), "13 seas.")
+```
+
+```{r, results='asis'}
+print(kable(tenureSum))
+```
+
+
+```{r}
+oafOnly$tenured <- ifelse(oafOnly$total.seasons==1,0,1)
+
+tenure <- do.call(rbind, lapply(out.list, function(x) {
+  
+  out <- t.test(oafOnly[,x] ~ oafOnly[,"tenured"], data=oafOnly)
+  tab <- data.frame(out[[5]][[1]], out[[5]][[2]], out[3])
+  tab[,1:2] <- round(tab[,1:2],3)
+  names(tab) <- c(names(out[[5]]), "pvalue")
+  return(tab)
+}))
+
+# use p.adjust with bonferroni correction
+tenure$pvalue <- p.adjust(tenure$pvalue, method="fdr")
+rownames(tenure) <- out.list
+tenure <- tenure[order(tenure$pvalue),]
+tenure$pvalue <- ifelse(tenure[, 3] < 0.001, "< 0.001", round(tenure[, 3], 3)) 
+
+
+colnames(tenure) <- c("Non-Tubura", "Tubura Client", "p-value")	
+```
+
+```{r, results='asis'}
+print(kable(tenure))
+```
+
+### Tenured v. new balance interpretation
+Tubura tenure is being defined here as having more than 1 year experience farming with Tubura.
+
+**Demographic variables** We are well balanced along demographic variables.
+
+**Agricultural practice variables** Not surprisingly, Tubura farmers have more cumulative years of fertilizer use than current non-Tubura farmers. While that difference is signficant, it is realistically only a single season of fertilizer use different.
+
+Interestingly, non-Tubura farmers reported using more lime than current Tubura farmers. This 
+
+**Soil Variables** Soil pH, calcium and magnesium levels are lower for tenured Tubura farmers. This is consistent with the hypothesis that increaesd fertilizer use leads to an increaese in soil acidity.
+
 ### Analysis of agronomic practices contributing to soil health outcomes
 
 Here's where we'll look at fertilizer, lime and cultivation practices on soil health outcomes. This analysis will be come richer as we gain longitudinal measures.
 
+This will be for 10/25
 
 
 
