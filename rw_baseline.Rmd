@@ -305,7 +305,9 @@ print(kable(dist.output))
 write.csv(dist.output, file=paste(od, "district balance.csv", sep="/"), row.names=T)
 ```
 
-### 
+### Analysis of agronomic practices contributing to soil health outcomes
+
+Here's where we'll look at fertilizer, lime and cultivation practices on soil health outcomes. This analysis will be come richer as we gain longitudinal measures.
 
 
 
