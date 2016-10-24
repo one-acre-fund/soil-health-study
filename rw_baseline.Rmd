@@ -130,17 +130,38 @@ d[,c("lat", "lon", "alt", "precision")] <- sapply(d[,c("lat", "lon", "alt", "pre
 Check out missing data in the district variable:
 ```{r}
 table(d$district, useNA = 'ifany')
-d[d$district=="",]
+length(d[d$district=="",])
 # these are the sample for which we have soil data but not survey data drop these for now
 d <- d[-which(d$district==""),]
 ```
 
 ### Cleaning soil data
-Cleaning of soil data: Come back, check and clean the soil data before outputting to clean data set.
+Cleaning of soil data: Come back, check and clean the soil data before outputting to clean data set. Plot each of the soil variables to look for unrealistic values.
+```{r}
+dim(d[is.na(d$m3.Ca),])
+d <- d[-which(is.na(d$m3.Ca)),]
+       
+summary(d[,c("m3.Ca", "m3.Mg", "pH", "Total.N", "Total.C")])
+```
+
+Let's check out the rows for which we don't have soil data and drop them as they won't contribute to the full picture.
+
+### Graphs of RW baseline soil variables
+```{r}
+soilVars <- c("m3.Ca", "m3.Mg", "pH", "Total.N", "Total.C")
+for(i in 1:length(soilVars)){
+print(
+  ggplot(data=d, aes(x=as.factor(client), y=d[,soilVars[i]])) + 
+    geom_boxplot() +
+    labs(x="Tubura Farmer", y=soilVars[i], title = paste("RW baseline soil - ", soilVars[i], sep = ""))
+  )  
+}
 
 
+```
 
-Save clean demographic data to external file
+
+Save clean demographic and soil data to external file
 ```{r}
 write.csv(d, file=paste(paste(wd, "data", sep = "/"), "shs rw baseline.Rdata", sep = "/"))
 save(d, file=paste(paste(wd, "data", sep = "/"), "shs rw baseline.Rdata", sep = "/"))
@@ -175,14 +196,29 @@ map
 
 
 ## Summary statistics
-### Baseline balance
+
+### Table of final baseline breakdown
+```{r}
+count <- d %>% group_by(district) %>% 
+  dplyr::summarize(
+    t.count = sum(ifelse(client==1,1,0)),
+    c.count = sum(ifelse(client==0,1,0)),
+    total = n()
+  ) %>% ungroup()
+
+count <- as.data.frame(count)
+write.csv(count, file=paste(od, "final rw sample breakdown.csv", sep="/"), row.names=F)
+as.data.frame(count)
+```
+
+## Baseline balance
 
 Let's see how balanced our farmers are in terms of demographic variables. Tubura farmers were selected based on (list criteria) and control farmers in the same area tha fit the same criteria were also selected. No matching process has been performed to identify the control farmers that most closely resemble the Tubura farmers in the sample.
 
 ```{r}
 out.list <- c("female", "age", "hhsize", "own", "field.size",
-              "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow",
-              "n_seasons_leg_1", "n_seasons_leg_2")
+              "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow", "n_seasons_leg_1", "n_seasons_leg_2", "m3.Ca", "m3.Mg",
+              "pH", "Total.C", "Total.N")
 
 output <- do.call(rbind, lapply(out.list, function(x) {
   
@@ -195,10 +231,14 @@ output <- do.call(rbind, lapply(out.list, function(x) {
 
 # use p.adjust with bonferroni correction
 output$pvalue <- p.adjust(output$pvalue, method="fdr")
+output <- output[order(output$pvalue),]
 output$pvalue <- ifelse(output[, 3] < 0.001, "< 0.001", round(output[, 3], 3)) 
 
 rownames(output) <- out.list
 colnames(output) <- c("Non-Tubura", "Tubura Client", "p-value")	
+```
+
+```{r, results='asis'}
 print(kable(output))
 ```
 
@@ -209,7 +249,12 @@ write.csv(output, file=paste(od, "baseline balance.csv", sep="/"), row.names=T)
 
 ### Overall sample balance interpretation
 **Demographic variables** We are not well balanced along the main demographic variables we collected, sex, age and HH size. For the purposes of inference we can test some matching algorithms to improve the match between Tubura and control farmers. 
+
+
 **Agricultural practice variables** We are decently balanced along agricultural practice variables. Our course of action here is similiar to our options with the demographic variables. 
+
+
+**Soil Variables** We are balanced on the primary soil variables of interest betwen our Tubura farmers and the comparison farmers.
 
 ### Baseline balance by district
 ```{r}
@@ -236,51 +281,33 @@ dist.output$variable <- rep(out.list,13)
 # order variables 
 dist.output <- dist.output[, c(1, 5, 2:4)]
 dist.output$pvalue <- p.adjust(dist.output$pvalue, method="fdr")
-dist.output$pvalue <- ifelse(dist.output$pvalue < 0.001, "< 0.001", round(dist.output$pvalue,3))
 dist.output <- dist.output[order(dist.output$pvalue),]
-colnames(dist.output) <- c("District", "Varible", "Non-Tubura", "Tubura Client", "p-value")	
 
+dist.output$pvalue <- ifelse(dist.output$pvalue < 0.001, "< 0.001", round(dist.output$pvalue,3))
+colnames(dist.output) <- c("District", "Varible", "Non-Tubura", "Tubura Client", "p-value")	
+```
+
+```{r, results='asis'}
 print(kable(dist.output))
 ```
+
+### Sample balance interpretation by district
+**Demographic variables** interpretation here.
+
+
+**Agricultural practice variables** interpretation here
+
+
+**Soil Variables** interpretation here
+
 
 ```{r}
 write.csv(dist.output, file=paste(od, "district balance.csv", sep="/"), row.names=T)
 ```
 
+### 
 
 
 
 
-We currently have `r dim(d)[1]` observations. All I'd like to do currently is summarize the current soil characteristics and plot the origin of the data points **Data have not been fully cleaned** 
-
-```{r, include=F}
-# udpate variable names
-names(d)[99:118] <- c("pH", "EC", "P.ppm", "Ca.ppm", "Mg.ppm", "S.ppm",
-                      "Fe.ppm", "CEC.cmol", "TN", "C.N", "ExAcid", "Acid.Saturation",
-                      "Exch.Al", "OC", "B.ppm", "Cu.ppm", "K.ppm", "Mn.ppm", 
-                      "X.ppm", "Zn.ppm")
-```
-
-### Summary soil results
-```{r}
-sapply(d[, 99:118], function(x){
- return(c(min = min(x, na.rm=T), mean=mean(x, na.rm=T),
-          median = median(x, na.rm=T), sd= sd(x, na.rm=T),
-          max = max(x, na.rm=T))) 
-})
-```
-
-The pH value went from being too high to improbably low. An average of `r round(mean(d$pH, na.rm=T),2)` and a max of `r round(max(d$pH, na.rm=T),2)` are terrible.
-
-### Summary results by district
-```{r kable1, results='asis'}
-tab <- t(aggregate(d[, 99:118], by=list(d$district), function(x){
-  round(mean(x, na.rm=T),2)
-}))
-kable(tab)
-```
-
-
-
-
-
+--end
