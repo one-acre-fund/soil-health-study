@@ -395,6 +395,13 @@ Interestingly, non-Tubura farmers reported using more lime than current Tubura f
 
 Here's where we'll look at the contribution of fertilizer, lime and cultivation practices on soil health outcomes. This analysis will be come richer as we gain longitudinal measures. I caution that we cannot treat these relationships as causal. The direction of causality is not clearly delineated in the data or the study design. However, we can identify meaningful connections between practices and outcomes through this analysis to generate new hypotheses for field testing.
 
+* Agronomic Behaviors
+* Tenure with 1AF
+* Chemical Soil Health Parameters
+* Measured Yields (or stated in some cases)
+* Geographic Descriptors
+
+
 ## Visualizations
 
 ### Soil health maps for soil health study areas
@@ -405,50 +412,43 @@ crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
 e <- d[!is.na(d$lon),]
 ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e, proj4string = crdref)
 
-rw <- getData("GADM", country='RW', level=2, path = "/Users/mlowes/drive/soil health study/data") # level 2 has more detail than 1. how 
+rw <- getData("GADM", country='RW', level=3, path = "/Users/mlowes/drive/soil health study/data") # the higher the number, the higher the resolution
 
 #ext.rw.ss matches points with spatial polygons in rw
-ext.rw.ss <- extract(rw[, "NAME_2"], ss)
-ss$spatialname <- ext.rw.ss$NAME_2
+ext.rw.ss <- extract(rw[, "NAME_3"], ss)
+ss$spatialname <- ext.rw.ss$NAME_3
 
-rwc <- intersect(ss, rw) # add polygons to the points
-
-frw <- fortify(rw, region="NAME_2")
-ss.soil <- aggregate(ss@data[,99:103], by=list(ss@data$spatialname), function(x){
+frw <- fortify(rw, region="NAME_3")
+ss.soil <- aggregate(ss@data[,soilVars], by=list(ss@data$spatialname), function(x){
   mean(x, na.rm=T)
 })
 
 plotReady <- dplyr::left_join(frw, ss.soil, by=c("id"="Group.1"))
 ```
 
-Plot simplified soil map
+### Plot simple summary of soil characteristics
+
+Consider revising these maps to a smaller greographic unit. Add the name of the location for uninitiated users.
 ```{r}
 library(RColorBrewer)
+mapList <- list()
 for(i in 1:length(soilVars)){
-print(
-  ggplot(plotReady, aes(x=long, y=lat, group=group)) + geom_path() + 
+mapRes <-  ggplot(plotReady, aes(x=long, y=lat, group=group)) + geom_path() + 
   geom_polygon(aes(fill=plotReady[,soilVars[i]])) + 
   scale_fill_gradientn(colours = rev(brewer.pal(9,"Reds")), # define colors
                        name = soilVars[i],
                        guide = guide_colorbar(legend.direction = "vertical")) + 
   theme_bw() + 
   labs(title=paste("Rwanda long term soil health baseline - 2016", soilVars[i], sep= " "), x = "Longitude", y="Latitude")
-  )
+mapList[[i]] <- mapRes
+print(mapRes)
 }  
 ```
 
 ```{r, message=FALSE}
 pdf(file=paste(md, "rw_shs_baseline_soil_maps.pdf", sep = "/"), width=11, height=8.5)
-for(i in 1:length(soilVars)){
-print(
-  ggplot(plotReady, aes(x=long, y=lat, group=group)) + geom_path() + 
-  geom_polygon(aes(fill=plotReady[,soilVars[i]])) + 
-  scale_fill_gradientn(colours = rev(brewer.pal(9,"Reds")), # define colors
-                       name = soilVars[i],
-                       guide = guide_colorbar(legend.direction = "vertical")) + 
-  theme_bw() + 
-  labs(title=paste("Rwanda long term soil health baseline - 2016", soilVars[i], sep= " "), x = "Longitude", y="Latitude")
-  )
+for(i in 1:length(mapList)){
+print(mapList[[i]])
 }  
 dev.off()
 ```
