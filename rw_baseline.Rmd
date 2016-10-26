@@ -1,5 +1,5 @@
 ---
-title: "Rwanda Baseline Demographic and Soil Summary"
+title: "Rwanda Baseline Demographic and Soil Summary and Analysis"
 author: "Matt Lowes"
 date: '`r format(Sys.Date(), "%B %d, %Y")`'
 output: html_document
@@ -126,7 +126,7 @@ d[,c("lat", "lon", "alt", "precision")] <- sapply(d[,c("lat", "lon", "alt", "pre
 
 Check out missing data in the district variable:
 ```{r}
-table(d$district, useNA = 'ifany')
+#table(d$district, useNA = 'ifany')
 length(d[d$district=="",])
 # these are the sample for which we have soil data but not survey data drop these for now
 d <- d[-which(d$district==""),]
@@ -157,6 +157,25 @@ print(
 
 ```
 
+
+### Check out soil relationships
+There are biologically predictable relationships between soil chemical characteristics. For instance, we expect Ca and Mg to move in the same direction and be positively correlated with pH. If we had Aluminum as an outcome, we'd expect pH to be negatively correlated with soluable aluminum. Let's look quickly to confirm if those relationships are present:
+
+```{r}
+ggplot(d, aes(x=m3.Ca, y=m3.Mg)) + geom_point() +
+    labs(x = "Calcium", y= "Magnesium", title="Calcium/Magnesium relationship")
+
+ggplot(d, aes(x=pH, y=m3.Ca)) + geom_point() +
+  labs(x = "pH", y="Calcium", title = "pH and Calcium relationship")
+
+ggplot(d, aes(x=pH, y=m3.Mg)) + geom_point() +
+  labs(x = "pH", y="Calcium", title = "pH and Magnesium relationship")
+
+ggplot(d, aes(x=Total.C, y=Total.N)) + geom_point() + 
+  labs(x = "Total Carbon", y="Total Nitrogen", title = "Carbon and Nitrogen relationship")
+```
+
+The soil characteristics are moving in the manner that is consistent with our understanding of soil chemical processes.
 
 Save clean demographic and soil data to external file
 ```{r}
@@ -372,7 +391,7 @@ Interestingly, non-Tubura farmers reported using more lime than current Tubura f
 
 ### Analysis of agronomic practices contributing to soil health outcomes
 
-Here's where we'll look at fertilizer, lime and cultivation practices on soil health outcomes. This analysis will be come richer as we gain longitudinal measures.
+Here's where we'll look at the contribution of fertilizer, lime and cultivation practices on soil health outcomes. This analysis will be come richer as we gain longitudinal measures. I caution that we cannot treat these relationships as causal. The direction of causality is not clearly delineated in the data or the study design. However, we can identify meaningful connections between practices and outcomes through this analysis to generate new hypotheses for field testing.
 
 This will be for 10/25
 
