@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 **Objective**: Summary of the demographics and soil characteristics of the Rwanda long term soil health study.
 
 ### Study methodology
-Add in details on study methodology here.
+Add in details and links on study methodology here.
 
 ```{r data}
 library(knitr)
@@ -24,12 +24,14 @@ suppressMessages(library(dismo))
 suppressMessages(library(stargazer))
 library(leaflet)
 library(XML)
+suppressMessages(library(maptools))
 ```
 
 ```{r directory}
 wd <- "/Users/mlowes/drive/soil health study/data/rw baseline"
 dd <- paste(wd, "data", sep = "/")
 od <- paste(wd, "output", sep="/")
+md <- paste(wd, "maps", sep="/")
 drive <- "~/drive/r_help/4_output/statistical_test_outputs"
 
 #load data:
@@ -389,11 +391,74 @@ Interestingly, non-Tubura farmers reported using more lime than current Tubura f
 
 **Soil Variables** Soil pH, calcium and magnesium levels are lower for tenured Tubura farmers. This is consistent with the hypothesis that increaesd fertilizer use leads to an increaese in soil acidity.
 
-### Analysis of agronomic practices contributing to soil health outcomes
+## Analysis of agronomic practices contributing to soil health outcomes
 
 Here's where we'll look at the contribution of fertilizer, lime and cultivation practices on soil health outcomes. This analysis will be come richer as we gain longitudinal measures. I caution that we cannot treat these relationships as causal. The direction of causality is not clearly delineated in the data or the study design. However, we can identify meaningful connections between practices and outcomes through this analysis to generate new hypotheses for field testing.
 
-This will be for 10/25
+## Visualizations
+
+### Soil health maps for soil health study areas
+
+```{r}
+#crdref <- CRS('+proj=longlat +datum=WGS84')
+crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
+e <- d[!is.na(d$lon),]
+ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e, proj4string = crdref)
+
+rw <- getData("GADM", country='RW', level=2, path = "/Users/mlowes/drive/soil health study/data") # level 2 has more detail than 1. how 
+
+#ext.rw.ss matches points with spatial polygons in rw
+ext.rw.ss <- extract(rw[, "NAME_2"], ss)
+ss$spatialname <- ext.rw.ss$NAME_2
+
+rwc <- intersect(ss, rw) # add polygons to the points
+
+frw <- fortify(rw, region="NAME_2")
+ss.soil <- aggregate(ss@data[,99:103], by=list(ss@data$spatialname), function(x){
+  mean(x, na.rm=T)
+})
+
+plotReady <- dplyr::left_join(frw, ss.soil, by=c("id"="Group.1"))
+```
+
+Plot simplified soil map
+```{r}
+library(RColorBrewer)
+for(i in 1:length(soilVars)){
+print(
+  ggplot(plotReady, aes(x=long, y=lat, group=group)) + geom_path() + 
+  geom_polygon(aes(fill=plotReady[,soilVars[i]])) + 
+  scale_fill_gradientn(colours = rev(brewer.pal(9,"Reds")), # define colors
+                       name = soilVars[i],
+                       guide = guide_colorbar(legend.direction = "vertical")) + 
+  theme_bw() + 
+  labs(title=paste("Rwanda long term soil health baseline - 2016", soilVars[i], sep= " "), x = "Longitude", y="Latitude")
+  )
+}  
+```
+
+```{r, message=FALSE}
+pdf(file=paste(md, "rw_shs_baseline_soil_maps.pdf", sep = "/"), width=11, height=8.5)
+for(i in 1:length(soilVars)){
+print(
+  ggplot(plotReady, aes(x=long, y=lat, group=group)) + geom_path() + 
+  geom_polygon(aes(fill=plotReady[,soilVars[i]])) + 
+  scale_fill_gradientn(colours = rev(brewer.pal(9,"Reds")), # define colors
+                       name = soilVars[i],
+                       guide = guide_colorbar(legend.direction = "vertical")) + 
+  theme_bw() + 
+  labs(title=paste("Rwanda long term soil health baseline - 2016", soilVars[i], sep= " "), x = "Longitude", y="Latitude")
+  )
+}  
+dev.off()
+```
+
+### Distributions of soil health levels for different sub-groups
+
+### Relationships between soil health levels and yield
+*we can look at this when we have paired yield and soil data*
+
+### Relationship between 1AF tenure and soil health levels
 
 
 
