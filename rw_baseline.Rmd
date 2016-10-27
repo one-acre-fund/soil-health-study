@@ -445,13 +445,43 @@ print(mapRes)
 }  
 ```
 
-```{r, message=FALSE}
+```{r message=FALSE}
 pdf(file=paste(md, "rw_shs_baseline_soil_maps.pdf", sep = "/"), width=11, height=8.5)
 for(i in 1:length(mapList)){
 print(mapList[[i]])
 }  
 dev.off()
 ```
+
+### Interpolations of soil health values
+Interpolate soil health values for full operating area using soil health study values. We want to eventually add all Rwandan soil values into a single dataset to update and hone these values.
+
+```{r message=FALSE}
+suppressMessages(library(fields))
+library(gstat)
+r <- raster(res=1/12)
+r <- crop(r, floor(extent(rw)))
+
+
+soilInterpolation <- lapply(soilVars, function(x) {
+  m <- Tps(coordinates(ss), ss@data[,x])
+  # make raster layer with model, raster is rwanda empty raster, model is m
+  tps <- interpolate(r, m)
+  tps <- crop(tps, rw)
+  tps <- mask(tps, rw) # cuts the tps raster down to the rw boundaries
+  x <- gsub("m3.", "", x)
+  
+  outPlot <- plot(tps, main= paste("Soil TPS Interpolation ", x, sep="- "))
+  outPlot <- plot(rw, add=T)
+  ?return(outPlot)
+})
+
+pdf(file=paste(md, "rw_shs_bl_interpolation_soil_vars.pdf", sep = '/'), width=11, height=8.5)
+for(i in )
+})  
+dev.off()
+```
+
 
 ### Distributions of soil health levels for different sub-groups
 
