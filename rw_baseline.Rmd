@@ -471,14 +471,19 @@ soilInterpolation <- lapply(soilVars, function(x) {
   tps <- mask(tps, rw) # cuts the tps raster down to the rw boundaries
   x <- gsub("m3.", "", x)
   
-  outPlot <- plot(tps, main= paste("Soil TPS Interpolation ", x, sep="- "))
-  outPlot <- plot(rw, add=T)
-  ?return(outPlot)
+  
+  outPlot <- print(
+  plot(tps, main= paste("Soil TPS Interpolation ", x, sep="- ")),
+  plot(rw, add=T, na.print=NULL)
+  )
+  
+  return(outPlot)
 })
 
 pdf(file=paste(md, "rw_shs_bl_interpolation_soil_vars.pdf", sep = '/'), width=11, height=8.5)
-for(i in )
-})  
+for(i in 1:length(soilInterpolation)){
+  print(soilInterpolation[[i]])
+}  
 dev.off()
 ```
 
