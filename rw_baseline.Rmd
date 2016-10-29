@@ -465,10 +465,11 @@ Interpolate soil health values for full operating area using soil health study v
 ```{r message=FALSE}
 suppressMessages(library(fields))
 library(gstat)
+library(htmltools)
 r <- raster(res=1/12)
 r <- crop(r, floor(extent(rw)))
 
-lapply(soilVars, function(x) {
+maps <- lapply(soilVars, function(x){
   m <- Tps(coordinates(ss), ss@data[,x])
   # make raster layer with model, raster is rwanda empty raster, model is m
   tps <- interpolate(r, m)
@@ -485,6 +486,8 @@ lapply(soilVars, function(x) {
   addLegend(pal = pal, values = values(tps), title = paste("Soil Value ", x, sep=""))
   )
 })
+
+tagList(maps)
 ```
 
 Print out the interpolated values for inclusion in the report. 
@@ -499,12 +502,13 @@ lapply(soilVars, function(x) {
   tps <- mask(tps, rw) # cuts the tps raster down to the rw boundaries
   x <- gsub("m3.", "", x)
   
-outPlot <- invisible(print(
+suppressMessages(
+  outPlot <- invisible(print(
   plot(tps, main= paste("Soil TPS Interpolation ", x, sep="- ")),
   plot(rw, add=T, na.print=NULL)
   ))
+)
 })
-
 dev.off()
 ```
 
