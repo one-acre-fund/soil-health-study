@@ -25,6 +25,7 @@ suppressMessages(library(stargazer))
 library(leaflet)
 library(XML)
 suppressMessages(library(maptools))
+library(automap)
 ```
 
 ```{r directory}
@@ -461,6 +462,69 @@ Interpolate soil health values for full operating area using soil health study v
 * Layer on the Tubura sites to the interpolated map. 
 * Use leaflet so you can zoom in and out more easily. 
 * Make it a raster layer that you can click on understand the values at different locations and the name of the location. I'll need to make this a [shiny app](http://stackoverflow.com/questions/28938642/marker-mouse-click-event-in-r-leaflet-for-shiny) to have that functionality
+
+The code below will run 5 K-fold cross validation to compare interpolation models. The output will be fed into the interpolate leaflet code below.
+
+```{r}
+# root mean sq error for evaluating models
+RMSE <- function(observed, predicted) {
+  sqrt(mean((predicted - observed)^2, na.rm=TRUE))
+}
+
+null <- RMSE(mean(s$pH_BART,na.rm=T), s$pH_BART)
+null
+
+# set k folds to 5
+set.seed(20161030)
+nfolds <- 5
+k <- kfold(s, nfolds) # from dismo
+
+# cross validation of models
+ensrmse <- tpsrmse <- idwrmse <- rep(NA, 5) # assing multiple objects at once
+
+cv <- function(x) {
+  
+  for(i in 1:nfolds) {
+    train <- s[k!=i,]
+    test <- s[k==i,]
+
+  train <- train[!is.na(train@data[,x]),]
+    
+  m <- gstat(formula=as.formula(paste(x, '~ 1')), locations=train)
+  p1 <- predict(m, newdata=test, debug.level=0)$var1.pred
+  idwrmse[i] <-  RMSE(test@data[,x], p1) #idw rsme
+  
+  # m <- gstat(formula=pH_BART~1, locations=train, model=fve) #kriging result
+  # p2 <- predict(m, newdata=test, debug.level=0)$var1.pred
+  # krigrmse[i] <-  RMSE(test$OZDLYAV, p2)
+  
+  m <- Tps(coordinates(train), train@data[,x]) # thin plate spline approach
+  p3 <- predict(m, coordinates(test))
+  tpsrmse[i] <-  RMSE(test@data[,x], p3)
+  
+  w <- c(idwrmse[i], tpsrmse[i]) # combine the rmse
+  weights <- w / sum(w) # weight them
+  ensemble <- p1 * weights[1] + p3 * weights[2] 
+  # multiply predictions by weights
+  ensrmse[i] <-  RMSE(test@data[,x], ensemble) # truly an ensemble result?
+  }
+  
+  output <- rbind(idwrmse, tpsrmse, ensrmse)
+  return(output)
+  
+}
+```
+
+Now loop over the variables of interest where x is the soilVar variable. Check this later.
+```{r}
+output <- lapply(soilVars, function(x){
+  ini <- data.frame(cv(x))
+  ini$ave <- apply(ini[,1:5], 1, function(y){mean(y, na.rm=T)})
+  res <- paste("Best model is ", row.names(ini[which.min(ini$ave),]),  sep = "")
+  return(list(ini, res))
+})
+```
+
 
 ```{r message=FALSE}
 suppressMessages(library(fields))
