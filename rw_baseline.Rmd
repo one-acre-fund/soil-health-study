@@ -454,7 +454,13 @@ dev.off()
 ```
 
 ### Interpolations of soil health values
-Interpolate soil health values for full operating area using soil health study values. We want to eventually add all Rwandan soil values into a single dataset to update and hone these values.
+Interpolate soil health values for full operating area using soil health study values. We want to eventually add all Rwandan soil values into a single dataset to update and hone these values. See [here](https://rstudio.github.io/leaflet/raster.html) for more guidanace
+
+**note**: 
+
+* Layer on the Tubura sites to the interpolated map. 
+* Use leaflet so you can zoom in and out more easily. 
+* Make it a raster layer that you can click on understand the values at different locations and the name of the location. I'll need to make this a [shiny app](http://stackoverflow.com/questions/28938642/marker-mouse-click-event-in-r-leaflet-for-shiny) to have that functionality
 
 ```{r message=FALSE}
 suppressMessages(library(fields))
@@ -462,6 +468,28 @@ library(gstat)
 r <- raster(res=1/12)
 r <- crop(r, floor(extent(rw)))
 
+lapply(soilVars, function(x) {
+  m <- Tps(coordinates(ss), ss@data[,x])
+  # make raster layer with model, raster is rwanda empty raster, model is m
+  tps <- interpolate(r, m)
+  tps <- crop(tps, rw)
+  tps <- mask(tps, rw) # cuts the tps raster down to the rw boundaries
+  x <- gsub("m3.", "", x)
+  
+  pal <- colorNumeric(palette = "Reds", values(tps), na.color = "transparent")
+  
+  suppressWarnings(
+  leaflet() %>% addTiles() %>%
+  addRasterImage(tps, colors=pal, opacity = 0.8) %>%
+  setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=8) %>%
+  addLegend(pal = pal, values = values(tps), title = paste("Soil Value ", x, sep=""))
+  )
+})
+```
+
+Print out the interpolated values for inclusion in the report. 
+
+```{r echo=FALSE}
 pdf(file=paste(md, "rw_shs_bl_interpolation_soil_vars.pdf", sep = '/'), width=11, height=8.5)
 lapply(soilVars, function(x) {
   m <- Tps(coordinates(ss), ss@data[,x])
@@ -471,14 +499,12 @@ lapply(soilVars, function(x) {
   tps <- mask(tps, rw) # cuts the tps raster down to the rw boundaries
   x <- gsub("m3.", "", x)
   
-  
-  outPlot <- invisible(print(
+outPlot <- invisible(print(
   plot(tps, main= paste("Soil TPS Interpolation ", x, sep="- ")),
   plot(rw, add=T, na.print=NULL)
   ))
-  
-  #return(outPlot)
 })
+
 dev.off()
 ```
 
