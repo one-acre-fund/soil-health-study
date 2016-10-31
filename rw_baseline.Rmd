@@ -419,6 +419,7 @@ stargazer(list1, type="html",
           omit=c("district"), out=paste(od, "rw_baseline_agprac.htm", sep="/"))
 ```
 
+
 **Interpretation** The naive model suggests that when we include site level fixed effects, duration of agronomic practices don't have a big effect on soil health outcomes. However, some of the practice intensity variables are not well distributed. Let's take a look at a log transformation. I'm adding one to the variables as to not end up with lots of Inf values.
 
 
@@ -468,6 +469,7 @@ stargazer(list2, type="html",
           omit=c("district"), out=paste(od, "rw_baseline_agprac_log.htm", sep="/"))
 ```
 
+
 **Interpretation**: When we transform the variables to log, the data starts to tell a more coherent story.
 
 * Duration of fertilizer use negatively effects all soil health parameters
@@ -479,7 +481,7 @@ stargazer(list2, type="html",
 Let's look first at a naive model of One Acre Fund tenure on soil health. **Remember**: these data are not longitudinal! These data are not longitudinal and reflect farmer selection into One Acre Fund. While these models will try to be both robust and parsimonious, we will inevitabily suffer omitted variable bias due to a lack of an instrument.
 
 
-```{r}
+```{r results='asis'}
 
 list3 <- lapply(soilVars, function(x){
   mod <- lm(as.formula(paste("d[,x] ~",  "total.seasons", sep="")), data=d)
@@ -496,9 +498,10 @@ stargazer(list3, type="html",
           omit=c("district"), out=paste(od, "rw_baseline_tenure.htm", sep="/"))
 ```
 
+
 **Interpretation**: The naive One Acre Fund tenure model suggest that across the board that additional years of 1AF practices have a negative effect on soil health parameters. Let's combine 1AF tenure with the agronomic practices model above to build a more robust model:
 
-```{r}
+```{r results='asis'}
 list4 <- lapply(soilVars, function(x){
   mod <- lm(as.formula(paste("d[,x] ~",  logVars, "+ total.seasons", sep="")), data=d)
   return(mod)
@@ -517,9 +520,49 @@ stargazer(list4, type="html",
 
 **Interpretation**: Including agronomic practices and 1AF tenure in the same model dampens the magnitude, but not the significance, of 1AF tenure on soil health outcomes. 
 
+### Agronomic practices - 15B cultivation practices
+Thus far we have looked at aggregated historical plot level practices and their effect on soil health. We also asked farmers about their cultivation practices on their plot in the previous season, 15B. We have more precise information for fertilizer, compost and liming practices for the 15B season.
+
+```{r}
+# this should be kg of fertilizer used in this field. Compost is off the charts. Convert this to compost per sq meter
+d$fert_15b_log <- ifelse(d$field_kg_fert1_15b<=20, 
+                         log(d$field_kg_fert1_15b+1), NA)
+
+d$field_dim <- d$field_dim1*d$field_dim2
+
+d$compost_15b_sqm <- d$field_kg_compost_15b/d$field_dim
+d$compost_15b_sqm_log <- log(d$compost_15b_sqm+1)
+
+
+# more than 20 kg per are seems like too much.
+suppressMessages(qplot(d$fert_15b_log, binwidth=1))
+suppressMessages(qplot(d$compost_15b_sqm_log, binwidth=1))
+
+previousSeason <- paste("fert_15b_log", "compost_15b_sqm_log", sep=" + ")
+
+list5 <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~", previousSeason, sep="")), data=d)
+  return(mod)
+})
+```
+
+```{r results='asis'}
+stargazer(list5, type="html", 
+          title = "2016A Rwanda Soil Health Baseline - 15B practices",
+          covariate.labels = c("Fertilizer Rate (log)", "Compost Rate kg/m^2 (log)"),
+          dep.var.caption = "",
+          dep.var.labels = "",
+          column.labels = c(gsub("m3.","", soilVars)),
+          #column.separate = c(1,2),
+          omit=c("district"), out=paste(od, "rw_baseline_15b_ag.htm", sep="/"))
+```
+
+
+### Measured Yields
+We don't have yield data for the Rwanda baseline so nothing to see here.
 
 ### Geographic Descriptors
-
+This section will look at improving understanding of local context to inform local adaptation. It will also construct soil profiles to simplify the scaling of promising products and practices to targeted locations.
 
 ## Visualizations
 
@@ -548,7 +591,7 @@ plotReady <- dplyr::left_join(frw, ss.soil, by=c("id"="Group.1"))
 ### Plot simple summary of soil characteristics
 
 Consider revising these maps to a smaller greographic unit. Add the name of the location for uninitiated users.
-```{r}
+```{r, eval=FALSE}
 library(RColorBrewer)
 mapList <- list()
 for(i in 1:length(soilVars)){
@@ -564,7 +607,7 @@ print(mapRes)
 }  
 ```
 
-```{r message=FALSE}
+```{r message=FALSE, eval=FALSE}
 pdf(file=paste(md, "rw_shs_baseline_soil_maps.pdf", sep = "/"), width=11, height=8.5)
 for(i in 1:length(mapList)){
 print(mapList[[i]])
