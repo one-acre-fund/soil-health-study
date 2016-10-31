@@ -396,18 +396,136 @@ Interestingly, non-Tubura farmers reported using more lime than current Tubura f
 
 Here's where we'll look at the contribution of fertilizer, lime and cultivation practices on soil health outcomes. This analysis will be come richer as we gain longitudinal measures. I caution that we cannot treat these relationships as causal. The direction of causality is not clearly delineated in the data or the study design. However, we can identify meaningful connections between practices and outcomes through this analysis to generate new hypotheses for field testing.
 
-* Agronomic Behaviors
-* Tenure with 1AF
-* Chemical Soil Health Parameters
-* Measured Yields (or stated in some cases)
-* Geographic Descriptors
+I'm going to start with behaviors by sections and then move to a more comprehensive model including multiple practices. All models will include controls for site to account for local variation and field officer behavior.
+
+### Agronomic Behaviors
+
+```{r, results='asis', fig.align='center'}
+suppressMessages(library(stargazer))
+
+list1 <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~",  "n_season_fert + n_season_compost + n_season_lime + n_season_fallow + as.factor(district)", sep="")), data=d)
+  return(mod)
+})
+
+stargazer(list1, type="html", 
+          title = "2016A Rwanda Soil Health Baseline - Naive Agronomic Practice Models",
+          covariate.labels = c("Seasons of Fertilizer", "Seasons of Compost", 
+                               "Seasons of Lime", "Seasons of Fallow"),
+          dep.var.caption = "",
+          dep.var.labels = "",
+          column.labels = c(gsub("m3.","", soilVars)),
+          #column.separate = c(1,2),
+          omit=c("district"), out=paste(od, "rw_baseline_agprac.htm", sep="/"))
+```
+
+**Interpretation** The naive model suggests that when we include site level fixed effects, duration of agronomic practices don't have a big effect on soil health outcomes. However, some of the practice intensity variables are not well distributed. Let's take a look at a log transformation. I'm adding one to the variables as to not end up with lots of Inf values.
+
+
+```{r}
+agPrac <- c(names(d[grep('n_season_', names(d))]))
+
+for(i in 1:length(agPrac)){
+  print(
+    ggplot(d, aes(x=d[,agPrac[i]])) + geom_histogram(binwidth = 1) +
+      labs(x = agPrac[i])
+        )
+}
+
+# since these are all skewed, consider a log transform 
+for(i in 1:length(agPrac)){
+  print(
+    ggplot(d, aes(x=log(d[,agPrac[i]]+1))) + geom_histogram(binwidth = 1) +
+      labs(x = agPrac[i])
+        )
+}
+
+d$logFert <- log(d$n_season_fert+1)
+d$logCompost <- log(d$n_season_compost+1)
+d$logLime <- log(d$n_season_lime+1)
+d$logFallow <- log(d$n_season_fallow+1)
+
+```
+
+Let's look at the log results:
+
+```{r results='asis', fig.align='center'}
+
+logVars <- paste(names(d[grep("log", names(d))]), collapse=" + ")
+
+list2 <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~",  logVars, sep="")), data=d)
+  return(mod)
+})
+
+stargazer(list2, type="html", 
+          title = "2016A Rwanda Soil Health Baseline - Naive Agronomic Practice Models",
+          covariate.labels = c("Seasons of Fertilizer (log)", "Seasons of Compost (log)", "Seasons of Lime (log)", "Seasons of Fallow (log)"),
+          dep.var.caption = "",
+          dep.var.labels = "",
+          column.labels = c(gsub("m3.","", soilVars)),
+          #column.separate = c(1,2),
+          omit=c("district"), out=paste(od, "rw_baseline_agprac_log.htm", sep="/"))
+```
+
+**Interpretation**: When we transform the variables to log, the data starts to tell a more coherent story.
+
+* Duration of fertilizer use negatively effects all soil health parameters
+* Curiously, duration of compost use does as well. However, this may be indicative of the plot being farmed repeatedly. **We should look into this further**
+* Duration of lime use improves soil health metrics across the board
+* The relationships of extended fallows to soil health parameters are also surprising. We see additional years of fallow harming Ca, Mg, and pH but having a positive effect on total carbon. Our data is not specific enough to say whether these fallows were improved fallows or bare fallows, a distinction which may explain the relationships we're seeing.
+
+### Tenure with One Acre Fund
+Let's look first at a naive model of One Acre Fund tenure on soil health. **Remember**: these data are not longitudinal! These data are not longitudinal and reflect farmer selection into One Acre Fund. While these models will try to be both robust and parsimonious, we will inevitabily suffer omitted variable bias due to a lack of an instrument.
+
+
+```{r}
+
+list3 <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~",  "total.seasons", sep="")), data=d)
+  return(mod)
+})
+
+stargazer(list3, type="html", 
+          title = "2016A Rwanda Soil Health Baseline - Naive Tenure Models",
+          covariate.labels = c("OAF Tenure"),
+          dep.var.caption = "",
+          dep.var.labels = "",
+          column.labels = c(gsub("m3.","", soilVars)),
+          #column.separate = c(1,2),
+          omit=c("district"), out=paste(od, "rw_baseline_tenure.htm", sep="/"))
+```
+
+**Interpretation**: The naive One Acre Fund tenure model suggest that across the board that additional years of 1AF practices have a negative effect on soil health parameters. Let's combine 1AF tenure with the agronomic practices model above to build a more robust model:
+
+```{r}
+list4 <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~",  logVars, "+ total.seasons", sep="")), data=d)
+  return(mod)
+})
+
+stargazer(list4, type="html", 
+          title = "2016A Rwanda Soil Health Baseline - Ag Practice and Tenure",
+          covariate.labels = c("Seasons of Fertilizer (log)", "Seasons of Compost (log)", "Seasons of Lime (log)", "Seasons of Fallow (log)", "OAF Tenure"),
+          dep.var.caption = "",
+          dep.var.labels = "",
+          column.labels = c(gsub("m3.","", soilVars)),
+          #column.separate = c(1,2),
+          omit=c("district"), out=paste(od, "rw_baseline_ag_tenure.htm", sep="/"))
+
+```
+
+**Interpretation**: Including agronomic practices and 1AF tenure in the same model dampens the magnitude, but not the significance, of 1AF tenure on soil health outcomes. 
+
+
+### Geographic Descriptors
 
 
 ## Visualizations
 
 ### Soil health maps for soil health study areas
 
-```{r}
+```{r eval=FALSE}
 #crdref <- CRS('+proj=longlat +datum=WGS84')
 crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
 e <- d[!is.na(d$lon),]
@@ -465,7 +583,7 @@ Interpolate soil health values for full operating area using soil health study v
 
 The code below will run 5 K-fold cross validation to compare interpolation models. The output will be fed into the interpolate leaflet code below.
 
-```{r}
+```{r eval=FALSE}
 # root mean sq error for evaluating models
 RMSE <- function(observed, predicted) {
   sqrt(mean((predicted - observed)^2, na.rm=TRUE))
@@ -516,7 +634,7 @@ cv <- function(x) {
 ```
 
 Now loop over the variables of interest where x is the soilVar variable. Check this later.
-```{r}
+```{r eval=FALSE}
 output <- lapply(soilVars, function(x){
   ini <- data.frame(cv(x))
   ini$ave <- apply(ini[,1:5], 1, function(y){mean(y, na.rm=T)})
@@ -526,7 +644,7 @@ output <- lapply(soilVars, function(x){
 ```
 
 
-```{r message=FALSE}
+```{r message=FALSE, eval = FALSE}
 suppressMessages(library(fields))
 library(gstat)
 library(htmltools)
@@ -556,7 +674,7 @@ tagList(maps)
 
 Print out the interpolated values for inclusion in the report. 
 
-```{r echo=FALSE}
+```{r echo=FALSE, eval=FALSE}
 pdf(file=paste(md, "rw_shs_bl_interpolation_soil_vars.pdf", sep = '/'), width=11, height=8.5)
 lapply(soilVars, function(x) {
   m <- Tps(coordinates(ss), ss@data[,x])
