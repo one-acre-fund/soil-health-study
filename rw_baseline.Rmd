@@ -415,7 +415,7 @@ stargazer(list1, type="html",
           dep.var.caption = "",
           dep.var.labels = "",
           column.labels = c(gsub("m3.","", soilVars)),
-          #column.separate = c(1,2),
+          notes = "Includes FE for district",
           omit=c("district"), out=paste(od, "rw_baseline_agprac.htm", sep="/"))
 ```
 
@@ -455,7 +455,7 @@ Let's look at the log results:
 logVars <- paste(names(d[grep("log", names(d))]), collapse=" + ")
 
 list2 <- lapply(soilVars, function(x){
-  mod <- lm(as.formula(paste("d[,x] ~",  logVars, sep="")), data=d)
+  mod <- lm(as.formula(paste("d[,x] ~",  logVars, "+ as.factor(district)", sep="")), data=d)
   return(mod)
 })
 
@@ -465,7 +465,7 @@ stargazer(list2, type="html",
           dep.var.caption = "",
           dep.var.labels = "",
           column.labels = c(gsub("m3.","", soilVars)),
-          #column.separate = c(1,2),
+          notes = "Includes FE for district",
           omit=c("district"), out=paste(od, "rw_baseline_agprac_log.htm", sep="/"))
 ```
 
@@ -484,7 +484,7 @@ Let's look first at a naive model of One Acre Fund tenure on soil health. **Reme
 ```{r results='asis'}
 
 list3 <- lapply(soilVars, function(x){
-  mod <- lm(as.formula(paste("d[,x] ~",  "total.seasons", sep="")), data=d)
+  mod <- lm(as.formula(paste("d[,x] ~",  "total.seasons + as.factor(district)", sep="")), data=d)
   return(mod)
 })
 
@@ -494,7 +494,7 @@ stargazer(list3, type="html",
           dep.var.caption = "",
           dep.var.labels = "",
           column.labels = c(gsub("m3.","", soilVars)),
-          #column.separate = c(1,2),
+          notes = "Includes FE for district",
           omit=c("district"), out=paste(od, "rw_baseline_tenure.htm", sep="/"))
 ```
 
@@ -503,7 +503,7 @@ stargazer(list3, type="html",
 
 ```{r results='asis'}
 list4 <- lapply(soilVars, function(x){
-  mod <- lm(as.formula(paste("d[,x] ~",  logVars, "+ total.seasons", sep="")), data=d)
+  mod <- lm(as.formula(paste("d[,x] ~",  logVars, "+ total.seasons + as.factor(district)", sep="")), data=d)
   return(mod)
 })
 
@@ -513,7 +513,7 @@ stargazer(list4, type="html",
           dep.var.caption = "",
           dep.var.labels = "",
           column.labels = c(gsub("m3.","", soilVars)),
-          #column.separate = c(1,2),
+          notes = "Includes FE for district",
           omit=c("district"), out=paste(od, "rw_baseline_ag_tenure.htm", sep="/"))
 
 ```
@@ -538,7 +538,7 @@ d$compost_15b_sqm_log <- log(d$compost_15b_sqm+1)
 suppressMessages(qplot(d$fert_15b_log, binwidth=1))
 suppressMessages(qplot(d$compost_15b_sqm_log, binwidth=1))
 
-previousSeason <- paste("fert_15b_log", "compost_15b_sqm_log", sep=" + ")
+previousSeason <- paste("fert_15b_log", "compost_15b_sqm_log", "as.factor(district)", sep=" + ")
 
 list5 <- lapply(soilVars, function(x){
   mod <- lm(as.formula(paste("d[,x] ~", previousSeason, sep="")), data=d)
@@ -553,22 +553,48 @@ stargazer(list5, type="html",
           dep.var.caption = "",
           dep.var.labels = "",
           column.labels = c(gsub("m3.","", soilVars)),
-          #column.separate = c(1,2),
+          notes = "Includes FE for district",
           omit=c("district"), out=paste(od, "rw_baseline_15b_ag.htm", sep="/"))
 ```
 
+Let's look at farmer perceived fertility as a predictor of soil health. We'll set 'same fertility' as the reference category.
+
+```{r results='asis'}
+d$fertility_qual <- as.factor(d$general_field_infocompare_fertil)
+d <- within(d, fertility_qual <- relevel(fertility_qual, ref="same"))
+
+list6 <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~", "+ fertility_qual + as.factor(district)", sep="")), data=d)
+  return(mod)
+})
+
+
+stargazer(list6, type="html", 
+          title = "2016A Rwanda Soil Health Baseline - 15B practices",
+          covariate.labels = c("Farmer Opinion - Less Fertile",
+                               "Farmer Opinion - More Fertile"),
+          dep.var.caption = "",
+          dep.var.labels = "",
+          column.labels = c(gsub("m3.","", soilVars)),
+          notes = "Reference category is same fertility as other fields. Includes FE for district",
+          notes.align = "l",
+          omit=c("district"), out=paste(od, "rw_baseline_fertility_qual.htm", sep="/"))
+
+```
+
+
+**Interpretation**: Farmers understand their fields well. Their categorization of which field are more and less fertile corresponds to our quantified measures of soil health. The only features farmers don't seem to get correct are nitrogen and carbon. The nitrogen and carbon levels are actually higher in the fields farmers called 'low fertility' relative to the fields deemed to be the 'same fertility.' **Reminder**: We need to remember that farmers are only evaluting one of their fields thus we are not able to account for the quality of the farmer in assessing his/her fields.
 
 ### Measured Yields
-We don't have yield data for the Rwanda baseline so nothing to see here.
+We don't have measured yield data for the Rwanda baseline. Skip this for now.
 
-### Geographic Descriptors
-This section will look at improving understanding of local context to inform local adaptation. It will also construct soil profiles to simplify the scaling of promising products and practices to targeted locations.
+### Distributions of soil health levels for different sub-groups
 
 ## Visualizations
 
 ### Soil health maps for soil health study areas
 
-```{r eval=FALSE}
+```{r eval=TRUE}
 #crdref <- CRS('+proj=longlat +datum=WGS84')
 crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
 e <- d[!is.na(d$lon),]
@@ -591,7 +617,7 @@ plotReady <- dplyr::left_join(frw, ss.soil, by=c("id"="Group.1"))
 ### Plot simple summary of soil characteristics
 
 Consider revising these maps to a smaller greographic unit. Add the name of the location for uninitiated users.
-```{r, eval=FALSE}
+```{r, eval=TRUE}
 library(RColorBrewer)
 mapList <- list()
 for(i in 1:length(soilVars)){
@@ -607,7 +633,7 @@ print(mapRes)
 }  
 ```
 
-```{r message=FALSE, eval=FALSE}
+```{r message=FALSE, eval=TRUE}
 pdf(file=paste(md, "rw_shs_baseline_soil_maps.pdf", sep = "/"), width=11, height=8.5)
 for(i in 1:length(mapList)){
 print(mapList[[i]])
@@ -626,19 +652,28 @@ Interpolate soil health values for full operating area using soil health study v
 
 The code below will run 5 K-fold cross validation to compare interpolation models. The output will be fed into the interpolate leaflet code below.
 
-```{r eval=FALSE}
+
+**Check that I'm handling the projection correctly with Robert**
+
+```{r eval= FALSE}
+#proj4string(ss) <- CRS("+init=epsg:4326")
+ss <- spTransform(ss, CRS=("+proj=utm +zone=36N +datum=WGS84"))
+```
+
+```{r eval=TRUE}
+suppressMessages(library(fields))
+library(gstat)
+library(htmltools)
+
 # root mean sq error for evaluating models
 RMSE <- function(observed, predicted) {
   sqrt(mean((predicted - observed)^2, na.rm=TRUE))
 }
 
-null <- RMSE(mean(s$pH_BART,na.rm=T), s$pH_BART)
-null
-
 # set k folds to 5
 set.seed(20161030)
 nfolds <- 5
-k <- kfold(s, nfolds) # from dismo
+k <- kfold(ss, nfolds) # from dismo
 
 # cross validation of models
 ensrmse <- tpsrmse <- idwrmse <- rep(NA, 5) # assing multiple objects at once
@@ -646,20 +681,23 @@ ensrmse <- tpsrmse <- idwrmse <- rep(NA, 5) # assing multiple objects at once
 cv <- function(x) {
   
   for(i in 1:nfolds) {
-    train <- s[k!=i,]
-    test <- s[k==i,]
+    train <- ss[k!=i,]
+    test <- ss[k==i,]
 
   train <- train[!is.na(train@data[,x]),]
-    
+  
+  # inverse distance weights
   m <- gstat(formula=as.formula(paste(x, '~ 1')), locations=train)
   p1 <- predict(m, newdata=test, debug.level=0)$var1.pred
   idwrmse[i] <-  RMSE(test@data[,x], p1) #idw rsme
   
-  # m <- gstat(formula=pH_BART~1, locations=train, model=fve) #kriging result
+  # krieging
+  # m <- autoKrige(formula=as.formula(paste(x, "~ 1")), input_data = train)
   # p2 <- predict(m, newdata=test, debug.level=0)$var1.pred
   # krigrmse[i] <-  RMSE(test$OZDLYAV, p2)
   
-  m <- Tps(coordinates(train), train@data[,x]) # thin plate spline approach
+  # thin plate spline
+  m <- Tps(coordinates(train), train@data[,x]) 
   p3 <- predict(m, coordinates(test))
   tpsrmse[i] <-  RMSE(test@data[,x], p3)
   
@@ -676,7 +714,10 @@ cv <- function(x) {
 }
 ```
 
-Now loop over the variables of interest where x is the soilVar variable. Check this later.
+
+Now loop over the variables of interest where x is the soilVar variable. 
+
+
 ```{r eval=FALSE}
 output <- lapply(soilVars, function(x){
   ini <- data.frame(cv(x))
@@ -686,11 +727,9 @@ output <- lapply(soilVars, function(x){
 })
 ```
 
+### Interpolated soil maps
 
-```{r message=FALSE, eval = FALSE}
-suppressMessages(library(fields))
-library(gstat)
-library(htmltools)
+```{r message=FALSE, eval = TRUE}
 r <- raster(res=1/12)
 r <- crop(r, floor(extent(rw)))
 
@@ -717,7 +756,7 @@ tagList(maps)
 
 Print out the interpolated values for inclusion in the report. 
 
-```{r echo=FALSE, eval=FALSE}
+```{r echo=FALSE, eval=TRUE}
 pdf(file=paste(md, "rw_shs_bl_interpolation_soil_vars.pdf", sep = '/'), width=11, height=8.5)
 lapply(soilVars, function(x) {
   m <- Tps(coordinates(ss), ss@data[,x])
@@ -737,13 +776,11 @@ suppressMessages(
 dev.off()
 ```
 
+## Geographic Descriptors
+This section will look at improving understanding of local context to inform local adaptation. It will also construct soil profiles to simplify the scaling of promising products and practices to targeted locations.
 
-### Distributions of soil health levels for different sub-groups
 
-### Relationships between soil health levels and yield
-*we can look at this when we have paired yield and soil data*
 
-### Relationship between 1AF tenure and soil health levels
 
 
 
