@@ -136,6 +136,10 @@ d[d$client==1 & d$client.check==0 & !is.na(d$d_gps), c("sample_id", "tuburacontr
 # they should be a control
 d[d$client==1 & d$client.check==0 & !is.na(d$d_gps), "client"] <- 0
 table(d$client, d$client.check, useNA = 'ifany')
+
+# remove farmers for which we have soil data but no survey data (using)
+d <- d[-which(grepl("using", d$X_merge)),]
+
 # update client to equal client check
 d$client <- d$client.check
 ```
@@ -642,7 +646,7 @@ We don't have measured yield data for the Rwanda baseline. Skip this for now.
 
 ### Soil health maps for soil health study areas
 
-```{r eval=TRUE}
+```{r eval=FALSE}
 #crdref <- CRS('+proj=longlat +datum=WGS84')
 crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
 e <- d[!is.na(d$lon),]
@@ -665,7 +669,7 @@ plotReady <- dplyr::left_join(frw, ss.soil, by=c("id"="Group.1"))
 ### Plot simple summary of soil characteristics
 
 Consider revising these maps to a smaller greographic unit. Add the name of the location for uninitiated users.
-```{r, eval=TRUE}
+```{r, eval=FALSE}
 library(RColorBrewer)
 mapList <- list()
 for(i in 1:length(soilVars)){
@@ -681,7 +685,7 @@ print(mapRes)
 }  
 ```
 
-```{r message=FALSE, eval=TRUE}
+```{r message=FALSE, eval=FALSE}
 pdf(file=paste(md, "rw_shs_baseline_soil_maps.pdf", sep = "/"), width=11, height=8.5)
 for(i in 1:length(mapList)){
 print(mapList[[i]])
@@ -708,7 +712,7 @@ The code below will run 5 K-fold cross validation to compare interpolation model
 ss <- spTransform(ss, CRS=("+proj=utm +zone=36N +datum=WGS84"))
 ```
 
-```{r eval=TRUE}
+```{r eval=FALSE}
 suppressMessages(library(fields))
 library(gstat)
 library(htmltools)
@@ -766,7 +770,7 @@ cv <- function(x) {
 Now loop over the variables of interest where x is the soilVar variable. 
 
 
-```{r eval=TRUE}
+```{r eval=FALSE}
 output <- lapply(soilVars, function(x){
   ini <- data.frame(cv(x))
   ini$ave <- apply(ini[,1:5], 1, function(y){mean(y, na.rm=T)})
@@ -777,7 +781,7 @@ output <- lapply(soilVars, function(x){
 
 ### Interpolated soil maps
 
-```{r message=FALSE, eval=TRUE}
+```{r message=FALSE, eval=FALSE}
 r <- raster(res=1/12)
 r <- crop(r, floor(extent(rw)))
 
@@ -804,7 +808,7 @@ tagList(maps)
 
 Print out the interpolated values for inclusion in the report. 
 
-```{r echo=FALSE, eval=TRUE}
+```{r echo=FALSE, eval=FALSE}
 pdf(file=paste(md, "rw_shs_bl_interpolation_soil_vars.pdf", sep = '/'), width=11, height=8.5)
 lapply(soilVars, function(x) {
   m <- Tps(coordinates(ss), ss@data[,x])
