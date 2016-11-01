@@ -406,8 +406,11 @@ I'm going to start with behaviors by sections and then move to a more comprehens
 ```{r, results='asis', fig.align='center'}
 suppressMessages(library(stargazer))
 
+# rename selected_cell to just cell
+names(d)[names(d)=="selected_cell"] <- "cell"
+
 list1 <- lapply(soilVars, function(x){
-  mod <- lm(as.formula(paste("d[,x] ~",  "n_season_fert + n_season_compost + n_season_lime + n_season_fallow + as.factor(district)", sep="")), data=d)
+  mod <- lm(as.formula(paste("d[,x] ~",  "n_season_fert + n_season_compost + n_season_lime + n_season_fallow + as.factor(cell)", sep="")), data=d)
   return(mod)
 })
 
@@ -418,8 +421,8 @@ stargazer(list1, type="html",
           dep.var.caption = "",
           dep.var.labels = "",
           column.labels = c(gsub("m3.","", soilVars)),
-          notes = "Includes FE for district",
-          omit=c("district"), out=paste(od, "rw_baseline_agprac.htm", sep="/"))
+          notes = "Includes FE for cell",
+          omit=c("cell"), out=paste(od, "rw_baseline_agprac.htm", sep="/"))
 ```
 
 
@@ -458,27 +461,34 @@ Let's look at the log results:
 logVars <- paste(names(d[grep("log", names(d))]), collapse=" + ")
 
 list2 <- lapply(soilVars, function(x){
-  mod <- lm(as.formula(paste("d[,x] ~",  logVars, "+ as.factor(district)", sep="")), data=d)
+  mod <- lm(as.formula(paste("d[,x] ~",  logVars, "+ as.factor(cell)", sep="")), data=d)
   return(mod)
 })
 
-stargazer(list2, type="html", 
-          title = "2016A Rwanda Soil Health Baseline - Naive Agronomic Practice Models",
+list2b <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~",  logVars, sep="")), data=d)
+  return(mod)
+})
+
+suppressWarnings(
+  stargazer(list2, list2b, type="html", 
+          title = "2016A Rwanda Soil Health Baseline - Log Agronomic Practice Models",
           covariate.labels = c("Seasons of Fertilizer (log)", "Seasons of Compost (log)", "Seasons of Lime (log)", "Seasons of Fallow (log)"),
+          column.labels = c(rep(gsub("m3.","", soilVars),2)),
           dep.var.caption = "",
-          dep.var.labels = "",
-          column.labels = c(gsub("m3.","", soilVars)),
-          notes = "Includes FE for district",
-          omit=c("district"), out=paste(od, "rw_baseline_agprac_log.htm", sep="/"))
+          dep.var.labels = c("",""),
+          add.lines = list(c("Cell FE?", rep("Yes", 5), rep("No", 5))),
+          notes = "Includes FE for cell",
+          omit=c("cell"), out=paste(od, "rw_baseline_agprac_log.htm", sep="/"))
+)
 ```
 
 
-**Interpretation**: When we transform the variables to log, the data starts to tell a more coherent story.
+**Interpretation**: When we transform the variables to log, the data starts to tell a more coherent story, at least directionally. If we remove the district FE, the coefficients gain significance.
 
-* Duration of fertilizer use negatively effects all soil health parameters
-* Curiously, duration of compost use does as well. However, this may be indicative of the plot being farmed repeatedly. **We should look into this further**
-* Duration of lime use improves soil health metrics across the board
-* The relationships of extended fallows to soil health parameters are also surprising. We see additional years of fallow harming Ca, Mg, and pH but having a positive effect on total carbon. Our data is not specific enough to say whether these fallows were improved fallows or bare fallows, a distinction which may explain the relationships we're seeing.
+* Additional seasons of fertilizer use relates to a decrease in soil N and C. 
+* Seasons of compost and lime have the opposite, positive effect on soil N. 
+* Unsurprisingly, soil 
 
 ### Tenure with One Acre Fund
 Let's look first at a naive model of One Acre Fund tenure on soil health. **Remember**: these data are not longitudinal! These data are not longitudinal and reflect farmer selection into One Acre Fund. While these models will try to be both robust and parsimonious, we will inevitabily suffer omitted variable bias due to a lack of an instrument.
@@ -487,7 +497,7 @@ Let's look first at a naive model of One Acre Fund tenure on soil health. **Reme
 ```{r results='asis'}
 
 list3 <- lapply(soilVars, function(x){
-  mod <- lm(as.formula(paste("d[,x] ~",  "total.seasons + as.factor(district)", sep="")), data=d)
+  mod <- lm(as.formula(paste("d[,x] ~",  "total.seasons + as.factor(cell)", sep="")), data=d)
   return(mod)
 })
 
@@ -497,8 +507,8 @@ stargazer(list3, type="html",
           dep.var.caption = "",
           dep.var.labels = "",
           column.labels = c(gsub("m3.","", soilVars)),
-          notes = "Includes FE for district",
-          omit=c("district"), out=paste(od, "rw_baseline_tenure.htm", sep="/"))
+          notes = "Includes FE for cell",
+          omit=c("cell"), out=paste(od, "rw_baseline_tenure.htm", sep="/"))
 ```
 
 
@@ -506,7 +516,7 @@ stargazer(list3, type="html",
 
 ```{r results='asis'}
 list4 <- lapply(soilVars, function(x){
-  mod <- lm(as.formula(paste("d[,x] ~",  logVars, "+ total.seasons + as.factor(district)", sep="")), data=d)
+  mod <- lm(as.formula(paste("d[,x] ~",  logVars, "+ total.seasons + as.factor(cell)", sep="")), data=d)
   return(mod)
 })
 
@@ -516,8 +526,8 @@ stargazer(list4, type="html",
           dep.var.caption = "",
           dep.var.labels = "",
           column.labels = c(gsub("m3.","", soilVars)),
-          notes = "Includes FE for district",
-          omit=c("district"), out=paste(od, "rw_baseline_ag_tenure.htm", sep="/"))
+          notes = "Includes FE for cell",
+          omit=c("cell"), out=paste(od, "rw_baseline_ag_tenure.htm", sep="/"))
 
 ```
 
@@ -541,7 +551,7 @@ d$compost_15b_sqm_log <- log(d$compost_15b_sqm+1)
 suppressMessages(qplot(d$fert_15b_log, binwidth=1))
 suppressMessages(qplot(d$compost_15b_sqm_log, binwidth=1))
 
-previousSeason <- paste("fert_15b_log", "compost_15b_sqm_log", "as.factor(district)", sep=" + ")
+previousSeason <- paste("fert_15b_log", "compost_15b_sqm_log", "as.factor(cell)", sep=" + ")
 
 list5 <- lapply(soilVars, function(x){
   mod <- lm(as.formula(paste("d[,x] ~", previousSeason, sep="")), data=d)
@@ -556,8 +566,8 @@ stargazer(list5, type="html",
           dep.var.caption = "",
           dep.var.labels = "",
           column.labels = c(gsub("m3.","", soilVars)),
-          notes = "Includes FE for district",
-          omit=c("district"), out=paste(od, "rw_baseline_15b_ag.htm", sep="/"))
+          notes = "Includes FE for cell",
+          omit=c("cell"), out=paste(od, "rw_baseline_15b_ag.htm", sep="/"))
 ```
 
 Let's look at farmer perceived fertility as a predictor of soil health. We'll set 'same fertility' as the reference category.
@@ -597,7 +607,7 @@ We don't have measured yield data for the Rwanda baseline. Skip this for now.
 
 ### Soil health maps for soil health study areas
 
-```{r eval=TRUE}
+```{r eval=FALSE}
 #crdref <- CRS('+proj=longlat +datum=WGS84')
 crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
 e <- d[!is.na(d$lon),]
@@ -620,7 +630,7 @@ plotReady <- dplyr::left_join(frw, ss.soil, by=c("id"="Group.1"))
 ### Plot simple summary of soil characteristics
 
 Consider revising these maps to a smaller greographic unit. Add the name of the location for uninitiated users.
-```{r, eval=TRUE}
+```{r, eval=FALSE}
 library(RColorBrewer)
 mapList <- list()
 for(i in 1:length(soilVars)){
@@ -636,7 +646,7 @@ print(mapRes)
 }  
 ```
 
-```{r message=FALSE, eval=TRUE}
+```{r message=FALSE, eval=FALSE}
 pdf(file=paste(md, "rw_shs_baseline_soil_maps.pdf", sep = "/"), width=11, height=8.5)
 for(i in 1:length(mapList)){
 print(mapList[[i]])
@@ -663,7 +673,7 @@ The code below will run 5 K-fold cross validation to compare interpolation model
 ss <- spTransform(ss, CRS=("+proj=utm +zone=36N +datum=WGS84"))
 ```
 
-```{r eval=TRUE}
+```{r eval=FALSE}
 suppressMessages(library(fields))
 library(gstat)
 library(htmltools)
@@ -759,7 +769,7 @@ tagList(maps)
 
 Print out the interpolated values for inclusion in the report. 
 
-```{r echo=FALSE, eval=TRUE}
+```{r echo=FALSE, eval=FALSE}
 pdf(file=paste(md, "rw_shs_bl_interpolation_soil_vars.pdf", sep = '/'), width=11, height=8.5)
 lapply(soilVars, function(x) {
   m <- Tps(coordinates(ss), ss@data[,x])
