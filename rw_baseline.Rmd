@@ -45,10 +45,13 @@ drive <- "~/drive/r_help/4_output/statistical_test_outputs"
 ```
 
 ### Combine survey and soil data
-Replicate Alex's and Emmanuel's merge process using "Identifiers with SSN_final" provided by Emmanuel.
+Replicate Alex's and Emmanuel's merge process using "Identifiers with SSN_final" provided by Emmanuel. I use the RStata package found [here](https://github.com/lbraglia/RStata)
 ```{r}
 # I'm replicating Alex's do file here.
 stata("merge_shs.do")
+```
+
+```{r}
 # import the result of Alex's do file
 d <- read.csv(paste(dd, "rwanda_shs_baseline_data.csv", sep = "/"), stringsAsFactors = F)
 Identifiers <- read.csv(paste(dd, "Identifiers with SSN_final.csv", sep = "/"), stringsAsFactors = F)
@@ -77,7 +80,7 @@ d[d=="---"] <- NA
 
 #names(d) <- tapply(to.change, function(x) { gsub(x, "", names(d))})
 
-names(d) <- gsub("text_fil_questions", "", names(d))
+names(d) <- gsub("text_final_questions", "", names(d))
 names(d) <- gsub("intro_champ_echantillon", "", names(d))
 names(d) <- gsub("demographic_info", "", names(d))
 names(d) <- gsub("other_inputs_", "", names(d))
@@ -96,8 +99,8 @@ Take care of demographic data formatting issues
 d <- d %>% 
 	dplyr::select(-c(rownumber, infoformid, introductiond_accept, photo,
 		infocompleted_time, 
-		enumerator_me, contains("phone"), farmer_me, farmersurme, farmerme,
-		d_respondent, additiolsamplepackedandsenttol, additiolsamplerequestedfromlab,
+		enumerator_name, contains("phone"), farmer_name, farmersurname, farmername,
+		d_respondent, additionalsamplepackedandsenttol, additionalsamplerequestedfromlab,
 		datedryingcompleteifnecessary, driedindistrictifnecessary, senttohqyo,
 		collectedindistrictyo, excessstoredathq_, receivedathq_,dateofinitialdryingifnecessary,
 		samplecollectedinfieldyo, field_des, samplewetordry)) %>%
@@ -113,6 +116,28 @@ d <- d %>%
 
 d$total.seasons <- apply(d[, grep("d_season_list", names(d))], 1, function(x) {
 	sum(x, na.rm=T)})
+```
+
+### Check out client variable - why are there missing values?
+
+```{r}
+table(d$client, useNA = 'ifany')
+d[is.na(d$client), c("sample_id")]
+
+# replace client based on whether there is a C in the client variable.
+d$client.check <- ifelse(grepl("C", d$sample_id)==T, 0, 1)
+table(d$client, d$client.check)
+```
+
+It looks like most farmers were recorded correctly except for one farmer who was coded as Tubura farmer but their sample_id indicate their a control. Let's take a look:
+
+```{r}
+d[d$client==1 & d$client.check==0 & !is.na(d$d_gps), c("sample_id", "tuburacontroltc")]
+# they should be a control
+d[d$client==1 & d$client.check==0 & !is.na(d$d_gps), "client"] <- 0
+table(d$client, d$client.check, useNA = 'ifany')
+# update client to equal client check
+d$client <- d$client.check
 ```
 
 Fix some more variable names:
@@ -140,18 +165,10 @@ d[, varlist] <- sapply(d[,varlist], as.numeric)
 
 # replace the blank gps_pic_guide with info
 d <- cbind(d, str_split_fixed(d$gps_pic_guid, " ", n=4))
-names(d)[106:109] <- c("lat", "lon", "alt", "precision")
+names(d)[107:110] <- c("lat", "lon", "alt", "precision")
 d[,c("lat", "lon", "alt", "precision")] <- sapply(d[,c("lat", "lon", "alt", "precision")],
                                                   function(x){as.numeric(as.character(x))})
 
-```
-
-Check out missing data in the district variable:
-```{r}
-#table(d$district, useNA = 'ifany')
-length(d[d$district=="",])
-# these are the sample for which we have soil data but not survey data drop these for now
-d <- d[-which(d$district==""),]
 ```
 
 ### Cleaning soil data
