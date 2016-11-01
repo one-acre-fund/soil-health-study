@@ -26,6 +26,10 @@ library(leaflet)
 library(XML)
 suppressMessages(library(maptools))
 library(automap)
+suppressMessages(library(RStata))
+options("RStata.StataVersion" = 12)
+options("RStata.StataPath" = "/Applications/Stata/StataSE.app/Contents/MacOS/stata-se")
+#chooseStataBin("/Applications/Stata/StataSE.app/Contents/MacOS/stata-se")
 ```
 
 ```{r directory}
@@ -37,12 +41,27 @@ drive <- "~/drive/r_help/4_output/statistical_test_outputs"
 
 #load data:
 # This data is being drawn from the Soil lab repository. It has the baseline data with it
-d <- read.csv(paste(dd, "Rwanda_shs_commcare_soil data_final.csv", sep="/"),  stringsAsFactors=FALSE)
+# d <- read.csv(paste(dd, "Rwanda_shs_commcare_soil_data_final.csv", sep="/"),  stringsAsFactors=FALSE)
 ```
 
-I'm using the merged data from Emmanuel for now but I will need to go back and download the demographic data fresh from Commcare and replicate the merge process using "Identifiers with SSN_final" provided by Emmanuel.
+### Combine survey and soil data
+Replicate Alex's and Emmanuel's merge process using "Identifiers with SSN_final" provided by Emmanuel.
+```{r}
+# I'm replicating Alex's do file here.
+stata("merge_shs.do")
+# import the result of Alex's do file
+d <- read.csv(paste(dd, "rwanda_shs_baseline_data.csv", sep = "/"), stringsAsFactors = F)
+Identifiers <- read.csv(paste(dd, "Identifiers with SSN_final.csv", sep = "/"), stringsAsFactors = F)
 
-Included code to pair demographic and soil data?: **Not yet**
+d <- left_join(d, Identifiers, by="sample_id")
+
+# now import the soil results and merge with survey data
+soilRF <- read.csv(paste(dd, "rwshs_rfresults.csv", sep = "/"), stringsAsFactors = F)
+names(soilRF)[names(soilRF)=="X"] <- "SSN"
+
+d <- left_join(d, soilRF, by="SSN")
+```
+
 
 ### Cleaning baseline variables
 
@@ -573,11 +592,10 @@ stargazer(list5, type="html",
 Let's look at farmer perceived fertility as a predictor of soil health. We'll set 'same fertility' as the reference category.
 
 ```{r results='asis'}
-d$fertility_qual <- as.factor(d$general_field_infocompare_fertil)
-d <- within(d, fertility_qual <- relevel(fertility_qual, ref="same"))
+d$fertility_qual <- relevel(as.factor(d$general_field_infocompare_fertil), ref="same")
 
 list6 <- lapply(soilVars, function(x){
-  mod <- lm(as.formula(paste("d[,x] ~", "+ fertility_qual + as.factor(district)", sep="")), data=d)
+  mod <- lm(as.formula(paste("d[,x] ~", "+ fertility_qual + as.factor(cell)", sep="")), data=d)
   return(mod)
 })
 
@@ -589,14 +607,14 @@ stargazer(list6, type="html",
           dep.var.caption = "",
           dep.var.labels = "",
           column.labels = c(gsub("m3.","", soilVars)),
-          notes = "Reference category is same fertility as other fields. Includes FE for district",
+          notes = "Reference category is same fertility as other fields. Includes FE for cell",
           notes.align = "l",
-          omit=c("district"), out=paste(od, "rw_baseline_fertility_qual.htm", sep="/"))
+          omit=c("cell"), out=paste(od, "rw_baseline_fertility_qual.htm", sep="/"))
 
 ```
 
 
-**Interpretation**: Farmers understand their fields well. Their categorization of which field are more and less fertile corresponds to our quantified measures of soil health. The only features farmers don't seem to get correct are nitrogen and carbon. The nitrogen and carbon levels are actually higher in the fields farmers called 'low fertility' relative to the fields deemed to be the 'same fertility.' **Reminder**: We need to remember that farmers are only evaluting one of their fields thus we are not able to account for the quality of the farmer in assessing his/her fields.
+**Interpretation**: Farmers understand their fields well. Their categorization of which field are more and less fertile corresponds to our quantified measures of soil health. The only features farmers don't seem to get correct are nitrogen and carbon. The nitrogen and carbon levels are indistinguishable in 'low fertility' fields relative to the fields deemed to be the 'same fertility.' **Reminder**: We need to remember that farmers are only evaluting one of their fields thus we are not able to account for the quality of the farmer in assessing his/her fields.
 
 ### Measured Yields
 We don't have measured yield data for the Rwanda baseline. Skip this for now.
@@ -607,7 +625,7 @@ We don't have measured yield data for the Rwanda baseline. Skip this for now.
 
 ### Soil health maps for soil health study areas
 
-```{r eval=FALSE}
+```{r eval=TRUE}
 #crdref <- CRS('+proj=longlat +datum=WGS84')
 crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
 e <- d[!is.na(d$lon),]
@@ -630,7 +648,7 @@ plotReady <- dplyr::left_join(frw, ss.soil, by=c("id"="Group.1"))
 ### Plot simple summary of soil characteristics
 
 Consider revising these maps to a smaller greographic unit. Add the name of the location for uninitiated users.
-```{r, eval=FALSE}
+```{r, eval=TRUE}
 library(RColorBrewer)
 mapList <- list()
 for(i in 1:length(soilVars)){
@@ -646,7 +664,7 @@ print(mapRes)
 }  
 ```
 
-```{r message=FALSE, eval=FALSE}
+```{r message=FALSE, eval=TRUE}
 pdf(file=paste(md, "rw_shs_baseline_soil_maps.pdf", sep = "/"), width=11, height=8.5)
 for(i in 1:length(mapList)){
 print(mapList[[i]])
@@ -673,7 +691,7 @@ The code below will run 5 K-fold cross validation to compare interpolation model
 ss <- spTransform(ss, CRS=("+proj=utm +zone=36N +datum=WGS84"))
 ```
 
-```{r eval=FALSE}
+```{r eval=TRUE}
 suppressMessages(library(fields))
 library(gstat)
 library(htmltools)
@@ -731,7 +749,7 @@ cv <- function(x) {
 Now loop over the variables of interest where x is the soilVar variable. 
 
 
-```{r eval=FALSE}
+```{r eval=TRUE}
 output <- lapply(soilVars, function(x){
   ini <- data.frame(cv(x))
   ini$ave <- apply(ini[,1:5], 1, function(y){mean(y, na.rm=T)})
@@ -742,7 +760,7 @@ output <- lapply(soilVars, function(x){
 
 ### Interpolated soil maps
 
-```{r message=FALSE, eval = TRUE}
+```{r message=FALSE, eval=TRUE}
 r <- raster(res=1/12)
 r <- crop(r, floor(extent(rw)))
 
@@ -769,7 +787,7 @@ tagList(maps)
 
 Print out the interpolated values for inclusion in the report. 
 
-```{r echo=FALSE, eval=FALSE}
+```{r echo=FALSE, eval=TRUE}
 pdf(file=paste(md, "rw_shs_bl_interpolation_soil_vars.pdf", sep = '/'), width=11, height=8.5)
 lapply(soilVars, function(x) {
   m <- Tps(coordinates(ss), ss@data[,x])
