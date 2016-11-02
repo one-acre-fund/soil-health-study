@@ -249,13 +249,19 @@ if (!(exists("rwanda"))){
 
 See [here](http://rstudio-pubs-static.s3.amazonaws.com/208998_3592d3c6ac9a47ccbf3a3997ec2b68ec.html) for more on using markerClusterOptions in leaflet.
 
+In the map below, the larger green circles are Tubura farmers and the smaller blue circles are control farmers.
+
 ```{r leaflet, fig.width=9, fig.height=7}
 e <- d[!is.na(d$lon),]
 ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e)
+
+pal <- colorNumeric(c("navy", "green"), domain=unique(ss$client))
 map <- leaflet() %>% addTiles() %>%
   setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=8) %>%
-  addCircleMarkers(lng=ss$lon, lat=ss$lat, clusterOptions = markerClusterOptions(
-    disableClusteringAtZoom=13, spiderfyOnMaxZoom=FALSE))
+  addCircleMarkers(lng=ss$lon, lat=ss$lat, 
+                   radius= ifelse(ss$client==1, 10,6),
+                   color = pal(ss$client),
+clusterOptions = markerClusterOptions(disableClusteringAtZoom=13, spiderfyOnMaxZoom=FALSE))
 
 map
 ```
