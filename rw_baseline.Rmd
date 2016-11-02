@@ -31,6 +31,7 @@ suppressMessages(library(RStata))
 suppressMessages(library(fields))
 library(gstat)
 library(htmltools)
+suppressMessages(library(Matching))
 options("RStata.StataVersion" = 12)
 options("RStata.StataPath" = "/Applications/Stata/StataSE.app/Contents/MacOS/stata-se")
 #chooseStataBin("/Applications/Stata/StataSE.app/Contents/MacOS/stata-se")
@@ -55,8 +56,9 @@ Replicate Alex's and Emmanuel's merge process using "Identifiers with SSN_final"
 stata("merge_shs.do")
 ```
 
+Import the results of Alex's do file.
+
 ```{r}
-# import the result of Alex's do file
 d <- read.csv(paste(dd, "rwanda_shs_baseline_data.csv", sep = "/"), stringsAsFactors = F)
 Identifiers <- read.csv(paste(dd, "Identifiers with SSN_final.csv", sep = "/"), stringsAsFactors = F)
 
@@ -695,7 +697,7 @@ print(mapRes)
 } 
 ```
 
-```{r}
+```{r eval=FALSE}
 # This is a small experiment to combine raster (spdf) and leaflet and be able to access the data in the raster interactively.
 mapLayer <- sp::merge(rw, ss.soil, by.x="NAME_3", by.y="Group.1")
 
@@ -864,12 +866,16 @@ summary(reg)
 pr <- data.frame(pr_score = predict(reg, type='response'), treat = d$client)
 
 # graph
-pdf(file=paste(od, "rw_baseline_psm_overlap.pdf", sep="/"), height=8.5, width=11)
-ggplot() + geom_histogram(data=subset(pr, pr$treat==1), aes(x = pr_score, y=..count.., fill=as.factor(treat)), bins=80, position = "identity") +
+psmGraph <- ggplot() + geom_histogram(data=subset(pr, pr$treat==1), aes(x = pr_score, y=..count.., fill=as.factor(treat)), bins=80, position = "identity") +
     geom_histogram(data=subset(pr, pr$treat==0), aes(x=pr_score, y=-..count.., fill=as.factor(treat)), bins=80, position = "identity") +
     scale_y_continuous(limits=c(-150,150)) + 
   labs(title ="PSM score overlap", x = "PSM score", y="Farmer count",
        fill="Tubura/Control")
+
+print(psmGraph)
+
+pdf(file=paste(od, "rw_baseline_psm_overlap.pdf", sep="/"), height=8.5, width=11)
+print(psmGraph)
 dev.off()
 ```
 
@@ -884,16 +890,24 @@ We have to indicate a variable for matching. I'm choosing pH as we know it to be
 ```{r}
 # PSM prep
 tr <- cbind(d$client)
-y <- cbind(d$pH)
 x <- d[, unlist(strsplit(psmVars, " + ", fixed=T))]
+y <- c("m3.Ca", "m3.Mg", "pH", "Total.N", "Total.C")
+#y <- cbind(d$pH)
 
 # PSM
-m <- Match(Y = y, Tr = tr, X = reg$fitted, ties=FALSE, replace=FALSE,
+set.seed(20161102)
+m <- lapply(y, function(response){
+return(
+  suppressWarnings(
+  Match(Y = d[,response], Tr = tr, X = reg$fitted, ties=FALSE, replace=FALSE,
            caliper=0.25, estimand = "ATE")	
-summary(m)
+  )
+)
+})
+lapply(m, summary)
 ```
 
-**Interpretation**: From an admittedly quick PSM exercise, we can find matches for a subset of the Tubura farmers and we see that we see no difference between the matched Tubura and control farmers on the pH outcome.
+**Interpretation**: From an admittedly quick PSM exercise, we can find matches for a subset of the Tubura farmers and we see that we see no difference between the matched Tubura and control farmers on the pH outcome. We want to create matched groups and then assess the impact of Tubura duration and other covariates on soil health outcomes.
 
 
 --end
