@@ -687,13 +687,15 @@ mapRes <-  ggplot(plotReady, aes(x=long, y=lat, group=group)) + geom_path() +
 mapList[[i]] <- mapRes
 print(mapRes)
 } 
+```
 
-# leaflet(rw) %>% addPolygons(stroke = FALSE, fillOpacity = 0.5, smoothFactor = 0.5)
-# 
-# leaflet(rw) %>% addTiles() %>%
-#   setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=8) %>%
-#   addPolygons(stroke = FALSE, fillOpacity = 0.5, smoothFactor = 0.5,
-#               color=~colorQuantile())
+```{r}
+# This is a small experiment to combine raster (spdf) and leaflet and be able to access the data in the raster interactively.
+mapLayer <- sp::merge(rw, ss.soil, by.x="NAME_3", by.y="Group.1")
+
+leaflet(mapLayer) %>% addTiles() %>%
+  setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=8) %>%
+  addPolygons(stroke = TRUE, opacity=0.2, smoothFactor = 0.5, fillColor=mapLayer$pH, fillOpacity = 0.5)
 
 ```
 
@@ -874,21 +876,12 @@ We have to indicate a variable for matching. I'm choosing pH as we know it to be
 * I chose a caliper of 0.25. I should review this process with Maya to make certain I'm following best practice. I sort of just pulled that sd figure out of the sky.
 
 ```{r}
+# PSM prep
 tr <- cbind(d$client)
 y <- cbind(d$pH)
 x <- d[, unlist(strsplit(psmVars, " + ", fixed=T))]
 
-# match T and C farmers looking for only 1 match per treatment farmer
-# set ties to FALSE because there are control observations in the dataset that tie in 
-# terms of how well they match a treatment farmer. The resulting matched database is
-# therefore much larger than the treatment data.
-# I include match.out because I don't want the match to change each time I run the code
-# IF I CHANGE THE MODEL HOWEVER, I NEED TO TAKE THAT OUT.
-# I removed match.out=NULL 1/15
-
-# the Match function uses the predicted likelihood of being in the treatment group from 
-# reg to find nearest neighbor matches between the treatment and control groups. 
-
+# PSM
 m <- Match(Y = y, Tr = tr, X = reg$fitted, ties=FALSE, replace=FALSE,
            caliper=0.25, estimand = "ATE")	
 summary(m)
