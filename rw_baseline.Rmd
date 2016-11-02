@@ -20,6 +20,7 @@ library(ggplot2)
 library(stringr)
 suppressMessages(library(dplyr))
 library(sp)
+suppressMessages(library(rgdal))
 suppressMessages(library(dismo))
 suppressMessages(library(stargazer))
 library(leaflet)
@@ -27,6 +28,9 @@ library(XML)
 suppressMessages(library(maptools))
 library(automap)
 suppressMessages(library(RStata))
+suppressMessages(library(fields))
+library(gstat)
+library(htmltools)
 options("RStata.StataVersion" = 12)
 options("RStata.StataPath" = "/Applications/Stata/StataSE.app/Contents/MacOS/stata-se")
 #chooseStataBin("/Applications/Stata/StataSE.app/Contents/MacOS/stata-se")
@@ -251,7 +255,7 @@ ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e)
 map <- leaflet() %>% addTiles() %>%
   setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=8) %>%
   addCircleMarkers(lng=ss$lon, lat=ss$lat, clusterOptions = markerClusterOptions(
-    disableClusteringAtZoom=15, spiderfyOnMaxZoom=FALSE))
+    disableClusteringAtZoom=13, spiderfyOnMaxZoom=FALSE))
 
 map
 ```
@@ -682,7 +686,15 @@ mapRes <-  ggplot(plotReady, aes(x=long, y=lat, group=group)) + geom_path() +
   labs(title=paste("Rwanda long term soil health baseline - 2016", soilVars[i], sep= " "), x = "Longitude", y="Latitude")
 mapList[[i]] <- mapRes
 print(mapRes)
-}  
+} 
+
+# leaflet(rw) %>% addPolygons(stroke = FALSE, fillOpacity = 0.5, smoothFactor = 0.5)
+# 
+# leaflet(rw) %>% addTiles() %>%
+#   setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=8) %>%
+#   addPolygons(stroke = FALSE, fillOpacity = 0.5, smoothFactor = 0.5,
+#               color=~colorQuantile())
+
 ```
 
 ```{r message=FALSE, eval=FALSE}
@@ -713,9 +725,6 @@ ss <- spTransform(ss, CRS=("+proj=utm +zone=36N +datum=WGS84"))
 ```
 
 ```{r eval=FALSE}
-suppressMessages(library(fields))
-library(gstat)
-library(htmltools)
 
 # root mean sq error for evaluating models
 RMSE <- function(observed, predicted) {
@@ -803,6 +812,8 @@ maps <- lapply(soilVars, function(x){
   )
 })
 
+save(maps,ss, file=paste(dd, "rw_baseline_interpolation_maps.Rdata", sep = "/"))
+
 tagList(maps)
 ```
 
@@ -831,9 +842,59 @@ dev.off()
 ## Geographic Descriptors
 This section will look at improving understanding of local context to inform local adaptation. It will also construct soil profiles to simplify the scaling of promising products and practices to targeted locations.
 
+## Propensity Score Matching
+We need to do a more rigorous job of accounting for differences between Tubura farmers and identified control farmers. Execute propensity score matching (PSM) to identify control farmers that overlap with Tubura farmers with regard to their likelihood of being a Tubura farmer.
 
+```{r}
+psmVars <- paste(c("female", "age", "hhsize", "total.seasons", "own", "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow"),
+                   collapse=" + ")
 
+reg <- glm(as.formula(paste("client ~", psmVars, sep="")),  data=d)
+summary(reg)	
 
+# summarize predicted probabilities
+pr <- data.frame(pr_score = predict(reg, type='response'), treat = d$client)
+
+# graph
+pdf(file=paste(od, "rw_baseline_psm_overlap.pdf", sep="/"), height=8.5, width=11)
+ggplot() + geom_histogram(data=subset(pr, pr$treat==1), aes(x = pr_score, y=..count.., fill=as.factor(treat)), bins=80, position = "identity") +
+    geom_histogram(data=subset(pr, pr$treat==0), aes(x=pr_score, y=-..count.., fill=as.factor(treat)), bins=80, position = "identity") +
+    scale_y_continuous(limits=c(-150,150)) + 
+  labs(title ="PSM score overlap", x = "PSM score", y="Farmer count",
+       fill="Tubura/Control")
+dev.off()
+```
+
+**Interpretation** We have some overlap but it's clear that Tubura farmers occupy a different range than the identified control farmers. Let's continue with the PSM matching process but restrict ourselves to Tubura and control farmers that meet a certain PSM matching radius.
+
+### Notes on PSM process:
+We have to indicate a variable for matching. I'm choosing pH as we know it to be an issue in most of our operating areas and addressing soil acidity has numerous residual benefits to soil health. I'll want to do this for all soil outcomes, however.
+
+* As a next step, I'd like to identify the matched subset and then regress Tubura tenure on soil outcomes. Does that make sense?
+* I chose a caliper of 0.25. I should review this process with Maya to make certain I'm following best practice. I sort of just pulled that sd figure out of the sky.
+
+```{r}
+tr <- cbind(d$client)
+y <- cbind(d$pH)
+x <- d[, unlist(strsplit(psmVars, " + ", fixed=T))]
+
+# match T and C farmers looking for only 1 match per treatment farmer
+# set ties to FALSE because there are control observations in the dataset that tie in 
+# terms of how well they match a treatment farmer. The resulting matched database is
+# therefore much larger than the treatment data.
+# I include match.out because I don't want the match to change each time I run the code
+# IF I CHANGE THE MODEL HOWEVER, I NEED TO TAKE THAT OUT.
+# I removed match.out=NULL 1/15
+
+# the Match function uses the predicted likelihood of being in the treatment group from 
+# reg to find nearest neighbor matches between the treatment and control groups. 
+
+m <- Match(Y = y, Tr = tr, X = reg$fitted, ties=FALSE, replace=FALSE,
+           caliper=0.25, estimand = "ATE")	
+summary(m)
+```
+
+**Interpretation**: From an admittedly quick PSM exercise, we can find matches for a subset of the Tubura farmers and we see that we see no difference between the matched Tubura and control farmers on the pH outcome.
 
 
 --end
