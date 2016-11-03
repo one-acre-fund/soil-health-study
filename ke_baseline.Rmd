@@ -10,9 +10,23 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
+library(knitr)
 library(ggplot2)
-library(reshape2)
 library(stringr)
+suppressMessages(library(dplyr))
+library(sp)
+suppressMessages(library(rgdal))
+suppressMessages(library(dismo))
+suppressMessages(library(stargazer))
+library(leaflet)
+library(XML)
+suppressMessages(library(maptools))
+library(automap)
+suppressMessages(library(RStata))
+suppressMessages(library(fields))
+library(gstat)
+library(htmltools)
+suppressMessages(library(Matching))
 ```
 
 Quickly summarize lime adoption so far in Nambale only
@@ -34,6 +48,9 @@ Identifiers$oaf.ID <- tolower(Identifiers$oaf.ID)
 Identifiers$DISTRICT[Identifiers$DISTRICT=="Kakamega North"] <- "Kakamega B (North)"
 Identifiers$DISTRICT[Identifiers$DISTRICT=="Kakamega South"] <- "Kakamega (South)"
 
+
+d$id.DistrictName[d$id.DistrictName=="GemLundha"] <- "Gem"
+d$id.DistrictName[d$id.DistrictName=="Lug Ari"] <- "Lugari"
 
 d$id.Soil_Sample_Id <- tolower(d$id.Soil_Sample_Id)
 
@@ -166,23 +183,40 @@ print(
 }
 
 
+pdf(paste(od, "ke_baseline_soil.pdf", sep = "/"), width=11, height=8.5)
+print(
+  ggplot(data=d, aes(x=as.factor(oaf), y=d[,soilVars[i]])) + 
+    geom_boxplot() +
+    labs(x="Tubura Farmer", y=soilVars[i], title = paste("Kenya baseline soil - ", soilVars[i], sep = ""))
+  )  
+dev.off()
+
 ```
 
 ### Soil chemical relationships
 There are biologically predictable relationships between soil chemical characteristics. For instance, we expect Ca and Mg to move in the same direction and be positively correlated with pH. If we had Aluminum as an outcome, we'd expect pH to be negatively correlated with soluable aluminum. Let's look quickly to confirm if those relationships are present:
 
 ```{r}
-ggplot(d, aes(x=Ca, y=Mg)) + geom_point() +
+rel1 <- ggplot(d, aes(x=Ca, y=Mg)) + geom_point() +
     stat_smooth(method = "loess") + 
     labs(x = "Calcium", y= "Magnesium", title="Calcium/Magnesium relationship")
+print(rel1)
 
-ggplot(d, aes(x=pH, y=Ca)) + geom_point() +
+rel2 <- ggplot(d, aes(x=pH, y=Ca)) + geom_point() +
   stat_smooth(method = "loess") +
   labs(x = "pH", y="Calcium", title = "pH and Calcium relationship")
+print(rel2)
 
-ggplot(d, aes(x=pH, y=Exch.Al)) + geom_point() +
+rel3 <- ggplot(d, aes(x=pH, y=Exch.Al)) + geom_point() +
   stat_smooth(method = "loess") +
   labs(x = "pH", y="Exchangable Aluminum", title = "pH and Exch.Al relationship")
+print(rel3)
+
+pdf(paste(od, "ke_baseline_soil_relationships.pdf", sep = "/"), width=11, height=8.5)
+print(rel1) 
+print(rel2)
+print(rel3)
+dev.off()
 
 ```
 
@@ -191,7 +225,154 @@ ggplot(d, aes(x=pH, y=Exch.Al)) + geom_point() +
 Save clean demographic and soil data to external file
 ```{r}
 write.csv(d, file=paste(dd, "shs ke baseline.csv", sep = "/"))
-save(d, file=paste(dd, "shs ke baseline.Rdata", sep = "/")))
+save(d, file=paste(dd, "shs ke baseline.Rdata", sep = "/"))
+```
+
+### Map of baseline observations
+Produce a simple map of where our observations are
+
+```{r get_map, include=F}
+if (!(exists("kenya"))){
+  # Only need to geocode once per session library(dismo)
+  kenya <- try(geocode("Kenya"))
+  # If the internet fails, use a local value 
+  if (class(kenya) == "try-error") {
+    kenya <- ""
+  } 
+}
+```
+
+See [here](http://rstudio-pubs-static.s3.amazonaws.com/208998_3592d3c6ac9a47ccbf3a3997ec2b68ec.html) for more on using markerClusterOptions in leaflet.
+
+In the map below, the larger green circles are One Acre Fund farmers and the smaller blue circles are control farmers.
+
+```{r leaflet, fig.width=9, fig.height=7}
+e <- d[!is.na(d$lon),]
+ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e)
+
+pal <- colorNumeric(c("navy", "green"), domain=unique(ss$oaf))
+map <- leaflet() %>% addTiles() %>%
+  setView(lng=kenya$longitude, lat=kenya$latitude, zoom=6) %>%
+  addCircleMarkers(lng=ss$lon, lat=ss$lat, 
+                   radius= ifelse(ss$oaf==1, 10,6),
+                   color = pal(ss$oaf),
+clusterOptions = markerClusterOptions(disableClusteringAtZoom=12, spiderfyOnMaxZoom=FALSE))
+
+map
+```
+
+**Notes**: We have a lot of GPS points piled on the Bungoma office. We need to address the GPS collection practices that lead to incorrectly logged GPS.
+
+
+## Summary statistics
+
+### Table of final baseline breakdown
+```{r}
+count <- d %>% group_by(DistrictName) %>% 
+  dplyr::summarize(
+    t.count = sum(ifelse(oaf==1,1,0)),
+    c.count = sum(ifelse(oaf==0,1,0)),
+    total = n()
+  ) %>% ungroup()
+
+count <- as.data.frame(count)
+write.csv(count, file=paste(od, "final ke sample breakdown.csv", sep="/"), row.names=F)
+as.data.frame(count)
+```
+
+## Baseline balance
+
+Let's see how balanced our farmers are in terms of demographic variables. One Acre Fund farmers were selected based on *(list criteria)* and control farmers in the same area tha fit the same criteria were also selected. No matching process has been performed to identify the control farmers that most closely resemble the One Acre Fund farmers in the sample.
+
+```{r}
+names(d)[names(d)=="gender"] <- "female"
+
+out.list <- c("female", "age", "seasons_oaf", "cows", "goats", "chickens",
+              "pigs", "sheep", "field_size", "yield", "inputs.dap_kg", 
+              "inputs.can_kg", "inputs.npk_kg", "inputs.urea_kg", "inputs.dap_kg_intercrop", "inputs.can_kg_intercrop", "inputs.npk_kg_intercrop", "inputs.urea_kg_intercrop", soilVars)
+
+d$seasons_oaf <- ifelse(d$seasons_oaf>8, NA, d$seasons_oaf)
+
+              
+output <- do.call(rbind, lapply(out.list, function(x) {
+  
+  out <- t.test(d[,x] ~ d[,"oaf"], data=d)
+  tab <- data.frame(out[[5]][[1]], out[[5]][[2]], out[3])
+  tab[,1:2] <- round(tab[,1:2],3)
+  names(tab) <- c(names(out[[5]]), "pvalue")
+  return(tab)
+}))
+
+# use p.adjust with bonferroni correction
+output$pvalue <- p.adjust(output$pvalue, method="fdr")
+rownames(output) <- out.list
+output <- output[order(output$pvalue),]
+output$pvalue <- ifelse(output[, 3] < 0.001, "< 0.001", round(output[, 3], 3)) 
+
+
+colnames(output) <- c("Control", "OAF Client", "p-value")	
+```
+
+```{r, results='asis'}
+print(kable(output))
+```
+
+```{r}
+#write table
+write.csv(output, file=paste(od, "ke baseline balance.csv", sep="/"), row.names=T)
+```
+
+
+### Baseline balance by district
+```{r}
+dist.output <- do.call(rbind, lapply(split(d, d$DistrictName), function(x) {
+  
+  tab <- do.call(rbind, lapply(out.list, function(y) {
+    
+    out <- t.test(x[,y] ~ x[,"oaf"], data=x)
+    tab <- data.frame(out[[5]][[1]], out[[5]][[2]], out[3])
+    tab[,1:2] <- round(tab[,1:2],3)
+    names(tab) <- c(names(out[[5]]), "pvalue")
+    return(tab)
+  }))
+  
+  return(data.frame(district = unique(x$district), tab))
+}))
+
+rownames(dist.output) <- NULL
+dist.output$variable <- rep(out.list,13)	
+
+# order variables 
+dist.output <- dist.output[, c(1, 5, 2:4)]
+dist.output$pvalue <- p.adjust(dist.output$pvalue, method="fdr")
+dist.output <- dist.output[order(dist.output$pvalue),]
+
+dist.output$pvalue <- ifelse(dist.output$pvalue < 0.001, "< 0.001", round(dist.output$pvalue,3))
+colnames(dist.output) <- c("District", "Varible", "Control", "OAF Client", "p-value")	
+```
+
+```{r, results='asis'}
+print(kable(dist.output))
+```
+
+```{r}
+write.csv(dist.output, file=paste(od, "ke district balance.csv", sep="/"), row.names=T)
+```
+
+### Baseline balance by OAF tenure
+Look at farmers by duration of tenure farming with 1AF We want to understand, at least with an initial naive baseline sense, what is the cumulative effect of Tubura practices on soil health outcomes?
+
+We will look only at current 1AF farmers and compare first year farmers to farmers with more experience with Tubura.
+
+```{r}
+oafOnly <- d[which(d$oaf==0 & d$seasons_oaf>=1),]
+for(i in 1:length(soilVars)){
+print(
+  ggplot(oafOnly, aes(x=as.factor(seasons_oaf), y=oafOnly[,soilVars[i]])) + 
+    geom_boxplot() + 
+    labs(x="OAF Tenure", y=soilVars[i], title = paste("KE baseline soil by tenure - ", soilVars[i], sep = ""))
+  )  
+}
 ```
 
 
