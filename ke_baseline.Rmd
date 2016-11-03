@@ -9,6 +9,12 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+```{r}
+library(ggplot2)
+library(reshape2)
+library(stringr)
+```
+
 Quickly summarize lime adoption so far in Nambale only
 
 ```{r import}
@@ -45,28 +51,52 @@ We're currently missing `r table(d$id.Soil_Sample_Id %in% Identifiers$sample_id)
 
 ```{r}
 d$id.Soil_Sample_Id[!d$id.Soil_Sample_Id %in% Identifiers$sample_id]
+missing <- d$id.Soil_Sample_Id[!d$id.Soil_Sample_Id %in% Identifiers$sample_id]
 ```
 Issues seem to be:
 
 * KKM south - resolved, see block above
 * KKM north - resolved, see block above
-* assorted unmatched values from other districts
+* assorted unmatched values from other districts - no clear resolution yet. Print out these rows to resolve them later.
+
+```{r}
+missingAll <- d[!d$id.Soil_Sample_Id %in% Identifiers$sample_id,]
+write.csv(missingAll, paste(od, "missing_matches.csv", sep = "/"), row.names = F)
+```
+
+
+For the ids that should have an OAF id but don't see if that oaf id exists in the Identifiers data.
+```{r}
+missingId <- str_extract_all(missing,"\\(?[0-9,.]+\\)?")
+missingId <- unlist(missingId)
+table(missingId %in% Identifiers$oaf.ID)
+missingId[missingId %in% Identifiers$oaf.ID]
+```
 
 These are the ids that appear in the Identifiers data but not in the CommCare surey data:
-
-
-
-
 ```{r}
 Identifiers$sample_id[!Identifiers$sample_id %in%  d$id.Soil_Sample_Id]
 ```
 
+### Merge the data and drop non-merged obs
+
+**Come back to this**. I don't want to simply drop observations but we want to be working with full data for summaries and regressions.
+
 ```{r}
 d <- merge(d, Identifiers[,c("SSN", "sample_id")], by.x="id.Soil_Sample_Id", by.y="sample_id", all.x=TRUE)
+
+d <- d[!is.na(d$SSN),]
 ```
 
+### Merge in the soil data
 
+```{r}
+table(d$SSN %in% soil$SSN)
+```
 
+```{r}
+d <- merge(d, soil[,c(1,3,6:24)], by="SSN", all.x=TRUE)
+```
 
 
 
