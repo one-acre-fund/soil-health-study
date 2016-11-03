@@ -98,5 +98,102 @@ table(d$SSN %in% soil$SSN)
 d <- merge(d, soil[,c(1,3,6:24)], by="SSN", all.x=TRUE)
 ```
 
+## Cleaning baseline variables
+```{r}
+# take out weird CommCare stuff
+d[d=="---"] <- NA
+
+names(d) <- gsub("id.", "", names(d))
+names(d) <- gsub("livestock.", "", names(d))
+names(d)[24:27] <- gsub("plot_information.", "", names(d)[24:27])
+
+names(d)[34:65] <- gsub("plot_information.", "", names(d)[34:65])
+
+names(d)[28:33] <- gsub("plot_information.plot_information.","intercrop.",  names(d)[28:33])
+
+names(d) <- gsub("field_information.", "", names(d))
+```
+
+Recode variables to numeric
+```{r}
+varlist <- c("seedkgs", "yield", "intercrop.seedkgs", "intercrop.yield",
+             "inputs.dap_kg", "inputs.can_kg", "inputs.npk_kg", "inputs.urea_kg", "inputs.dap_kg_intercrop", "inputs.can_kg_intercrop",
+             "inputs.npk_kg_intercrop", "inputs.urea_kg_intercrop",
+             "inputs.lime_kg")
+
+d[, varlist] <- sapply(d[,varlist], as.numeric)
 
 
+d <- cbind(d, str_split_fixed(d$gps, " ", n=4))
+names(d)[93:96] <- c("lat", "lon", "alt", "precision")
+d[,c("lat", "lon", "alt", "precision")] <- sapply(
+  d[,c("lat", "lon", "alt", "precision")],                                          function(x){as.numeric(as.character(x))})
+
+```
+
+Count the number of missing values in all soil variables
+
+```{r}
+soilVars <- c("C.E.C", "Cu", "EC", "Exch.Al", "Hp", "K", "Mg", "Mn",
+              "pH", "B", "Ca", "Fe", "Na", "P", "PSI", "S", "Zn")
+
+naCount <- sapply(d[,soilVars], function(x){
+  return(sum(is.na(x)))
+}) 
+```
+
+Drop data with missing soil data - it's not useful for later summaries and regressions
+
+**note**: Come back and understand why we don't have perfect matches.
+```{r}
+d <- d[-which(is.na(d$Ca)),]
+```
+
+
+```{r}
+summary(d[,soilVars])
+```
+
+### Graphs of Kenya baseline soil variables
+
+```{r}
+for(i in 1:length(soilVars)){
+print(
+  ggplot(data=d, aes(x=as.factor(oaf), y=d[,soilVars[i]])) + 
+    geom_boxplot() +
+    labs(x="Tubura Farmer", y=soilVars[i], title = paste("Kenya baseline soil - ", soilVars[i], sep = ""))
+  )  
+}
+
+
+```
+
+### Soil chemical relationships
+There are biologically predictable relationships between soil chemical characteristics. For instance, we expect Ca and Mg to move in the same direction and be positively correlated with pH. If we had Aluminum as an outcome, we'd expect pH to be negatively correlated with soluable aluminum. Let's look quickly to confirm if those relationships are present:
+
+```{r}
+ggplot(d, aes(x=Ca, y=Mg)) + geom_point() +
+    stat_smooth(method = "loess") + 
+    labs(x = "Calcium", y= "Magnesium", title="Calcium/Magnesium relationship")
+
+ggplot(d, aes(x=pH, y=Ca)) + geom_point() +
+  stat_smooth(method = "loess") +
+  labs(x = "pH", y="Calcium", title = "pH and Calcium relationship")
+
+ggplot(d, aes(x=pH, y=Exch.Al)) + geom_point() +
+  stat_smooth(method = "loess") +
+  labs(x = "pH", y="Exchangable Aluminum", title = "pH and Exch.Al relationship")
+
+```
+
+**Interpretation** We see the predictable soil relationships we expected. This indicates that internally, our soil data are behaving in compliance with biological principles.
+
+Save clean demographic and soil data to external file
+```{r}
+write.csv(d, file=paste(dd, "shs ke baseline.csv", sep = "/"))
+save(d, file=paste(dd, "shs ke baseline.Rdata", sep = "/")))
+```
+
+
+
+--end
