@@ -324,7 +324,7 @@ write.csv(output, file=paste(od, "ke baseline balance.csv", sep="/"), row.names=
 
 
 ### Baseline balance by district
-```{r}
+```{r eval=FALSE}
 dist.output <- do.call(rbind, lapply(split(d, d$DistrictName), function(x) {
   
   tab <- do.call(rbind, lapply(out.list, function(y) {
@@ -351,11 +351,11 @@ dist.output$pvalue <- ifelse(dist.output$pvalue < 0.001, "< 0.001", round(dist.o
 colnames(dist.output) <- c("District", "Varible", "Control", "OAF Client", "p-value")	
 ```
 
-```{r, results='asis'}
+```{r, results='asis', eval=FALSE}
 print(kable(dist.output))
 ```
 
-```{r}
+```{r eval=FALSE}
 write.csv(dist.output, file=paste(od, "ke district balance.csv", sep="/"), row.names=T)
 ```
 
