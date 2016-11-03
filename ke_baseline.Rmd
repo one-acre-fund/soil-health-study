@@ -1,0 +1,72 @@
+---
+title: "Lime Adoption Summary"
+author: "Matt Lowes"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Quickly summarize lime adoption so far in Nambale only
+
+```{r import}
+wd <- "/Users/mlowes/drive/soil health study/data/ke baseline"
+dd <- paste(wd, "data", sep = "/")
+od <- paste(wd, 'output', sep = "/")
+
+d <- read.csv(paste(dd, "KE SHS Baseline Survey Data.csv", sep = '/'))
+soil <- read.csv(paste(dd, "Kenya_SHS_results.csv", sep = "/"))
+Identifiers <- read.csv(paste(dd, "Combined meta with SSN.csv", sep = '/'), stringsAsFactors = F)
+```
+
+First step is merging the data. The ids in the Identifiers data need to be adjusted so that they match the ids in the ids in CommCare
+
+```{r}
+Identifiers$oaf.ID <- tolower(Identifiers$oaf.ID)
+Identifiers$DISTRICT[Identifiers$DISTRICT=="Kakamega North"] <- "Kakamega B (North)"
+Identifiers$DISTRICT[Identifiers$DISTRICT=="Kakamega South"] <- "Kakamega (South)"
+
+
+d$id.Soil_Sample_Id <- tolower(d$id.Soil_Sample_Id)
+
+Identifiers$sample_id <- ifelse(grepl("c", Identifiers$oaf.ID), Identifiers$oaf.ID, paste(tolower(Identifiers$DISTRICT), Identifiers$oaf.ID, sep = ""))
+
+Identifiers$sample_id <- gsub(" ", "", Identifiers$sample_id)
+d$id.Soil_Sample_Id <- gsub(" ", "", d$id.Soil_Sample_Id)
+```
+
+```{r}
+table(d$id.Soil_Sample_Id %in% Identifiers$sample_id)
+```
+
+We're currently missing `r table(d$id.Soil_Sample_Id %in% Identifiers$sample_id)[1]` matches. Investigate why we're missing these. Below are the ids that do not appear in the Identifiers data but appear in the CommCare survey data:
+
+```{r}
+d$id.Soil_Sample_Id[!d$id.Soil_Sample_Id %in% Identifiers$sample_id]
+```
+Issues seem to be:
+
+* KKM south - resolved, see block above
+* KKM north - resolved, see block above
+* assorted unmatched values from other districts
+
+These are the ids that appear in the Identifiers data but not in the CommCare surey data:
+
+
+
+
+```{r}
+Identifiers$sample_id[!Identifiers$sample_id %in%  d$id.Soil_Sample_Id]
+```
+
+```{r}
+d <- merge(d, Identifiers[,c("SSN", "sample_id")], by.x="id.Soil_Sample_Id", by.y="sample_id", all.x=TRUE)
+```
+
+
+
+
+
+
