@@ -445,5 +445,162 @@ print(kable(tenure))
 
 ### Agronomic Behaviors
 
+```{r, results='asis', fig.align='center'}
+suppressMessages(library(stargazer))
+
+d[,grep("_5", names(d))] <- sapply(d[,grep("_5", names(d))], function(x){
+  ifelse(x==-99, NA, x)
+})
+
+apply(d[,grep("_5", names(d))],2, table)
+```
+
+Plot the variables as they are. Should we consider a log transform as we used for the Rwanda variables?
+
+```{r}
+for(i in names(d)[grep("_5", names(d))]) {
+  print(
+    ggplot(d, aes(x=d[,i])) + geom_histogram() + 
+      stat_bin(binwidth =1)
+  )
+}
+```
+
+```{r}
+d$logFert <- log(d$chemical_fertilizer_5+1)
+d$logCompost <- log(d$compost_fertilizer_5+1)
+d$logLime <- log(d$lime_fertilizer_5+1)
+d$logLegmain <- log(d$legum_maincrop_5+1)
+d$logLegint <- log(d$legum_intercrop_5+1)
+
+logVars <- paste(names(d[grep("log", names(d))]), collapse=" + ")
+```
+
+Keep only soil variables with reliable r2 values for the regressions. 
+*Confirm this list with Emmanuel and confirm when we'll get the C and N estimates*
+
+```{r}
+#soilVars <- c("C.E.C", "Cu", "EC", "Exch.Al", "Hp", "K", "Mg", "Mn",
+#             "pH", "B", "Ca", "Fe", "Na", "P", "PSI", "S", "Zn")
+
+soilVars <- c("Mg", "pH", "Ca")
+
+```
+
+
+
+```{r}
+list1 <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~",  logVars, "+ as.factor(SiteName)", sep="")), data=d)
+  return(mod)
+})
+
+stargazer(list1, type="html", 
+          title = "2016A Kenya Soil Health Baseline - Agronomic Practice Models (log)",
+          covariate.labels = c("Seasons of Fertilizer", "Seasons of Compost", 
+                               "Seasons of Lime", "Seasons of Legume (main)",
+                               "Seasons of Legume (inter)"),
+          dep.var.caption = "",
+          dep.var.labels = "",
+          column.labels = c(gsub("m3.","", soilVars)),
+          notes = "Includes FE for site",
+          omit=c("SiteName"), out=paste(od, "ke_baseline_agprac.htm",sep="/"))
+```
+
+### OAF tenure model
+
+```{r results='asis'}
+
+list2 <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~",  "seasons_oaf + as.factor(SiteName)", sep="")), data=d)
+  return(mod)
+})
+
+stargazer(list2, type="html", 
+          title = "2016A Kenya Soil Health Baseline - Naive Tenure Models",
+          covariate.labels = c("OAF Tenure"),
+          dep.var.caption = "",
+          dep.var.labels = "",
+          column.labels = c(gsub("m3.","", soilVars)),
+          notes = "Includes FE for site",
+          omit=c("SiteName"), out=paste(od, "ke_baseline_tenure.htm",sep="/"))
+```
+
+```{r results='asis'}
+list3 <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~",  logVars, "+ seasons_oaf + as.factor(SiteName)", sep="")), data=d)
+  return(mod)
+})
+
+stargazer(list3, type="html", 
+          title = "2016A Kenya Soil Health Baseline - Ag Practice and Tenure",
+          covariate.labels = c("Seasons of Fertilizer", "Seasons of Compost", 
+                               "Seasons of Lime", "Seasons of Legume (main)",
+                               "Seasons of Legume (inter)", "OAF Tenure"),
+          dep.var.caption = "",
+          dep.var.labels = "",
+          column.labels = c(gsub("m3.","", soilVars)),
+          notes = "Includes FE for site",
+          omit=c("SiteName"), out=paste(od, "ke_baseline_ag_tenure.htm", sep="/"))
+```
+
+
+## Propensity Score Matching
+We need to do a more rigorous job of accounting for differences between Tubura farmers and identified control farmers. Execute propensity score matching (PSM) to identify control farmers that overlap with Tubura farmers with regard to their likelihood of being a Tubura farmer.
+
+```{r}
+psmVars <- paste(c("female", "age", "hhsize", "total.seasons", "own", "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow"),
+                   collapse=" + ")
+
+reg <- glm(as.formula(paste("client ~", psmVars, sep="")),  data=d)
+summary(reg)	
+
+# summarize predicted probabilities
+pr <- data.frame(pr_score = predict(reg, type='response'), treat = d$client)
+
+# graph
+psmGraph <- ggplot() + geom_histogram(data=subset(pr, pr$treat==1), aes(x = pr_score, y=..count.., fill=as.factor(treat)), bins=80, position = "identity") +
+    geom_histogram(data=subset(pr, pr$treat==0), aes(x=pr_score, y=-..count.., fill=as.factor(treat)), bins=80, position = "identity") +
+    scale_y_continuous(limits=c(-150,150)) + 
+  labs(title ="PSM score overlap", x = "PSM score", y="Farmer count",
+       fill="Tubura/Control")
+
+print(psmGraph)
+
+pdf(file=paste(od, "rw_baseline_psm_overlap.pdf", sep="/"), height=8.5, width=11)
+print(psmGraph)
+dev.off()
+```
+
+```{r}
+# PSM prep
+tr <- cbind(d$client)
+x <- d[, unlist(strsplit(psmVars, " + ", fixed=T))]
+y <- c("m3.Ca", "m3.Mg", "pH", "Total.N", "Total.C")
+#y <- cbind(d$pH)
+
+# PSM
+set.seed(20161102)
+m <- lapply(y, function(response){
+
+  suppressWarnings(
+  mod <- Match(Y = d[,response], Tr = tr, X = reg$fitted, ties=FALSE, replace=FALSE,
+           caliper=0.25, estimand = "ATE")	
+  )
+
+  return(list("output"=mod, "df"=rbind(d[mod$index.treated,], d[mod$index.control,])))
+  
+  
+})
+```
+
+Store the PSM result and conduct analyses on the matched samples.
+
+```{r}
+dm <- rbind(d[m$index.treated,], d[m$index.control,])
+```
+
+
+
 
 --end
