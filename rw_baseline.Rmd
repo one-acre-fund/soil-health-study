@@ -205,15 +205,19 @@ There are biologically predictable relationships between soil chemical character
 
 ```{r}
 ggplot(d, aes(x=m3.Ca, y=m3.Mg)) + geom_point() +
+    stat_smooth(method="loess") +
     labs(x = "Calcium", y= "Magnesium", title="Calcium/Magnesium relationship")
 
 ggplot(d, aes(x=pH, y=m3.Ca)) + geom_point() +
+  stat_smooth(method="loess") +
   labs(x = "pH", y="Calcium", title = "pH and Calcium relationship")
 
 ggplot(d, aes(x=pH, y=m3.Mg)) + geom_point() +
+  stat_smooth(method="loess") +
   labs(x = "pH", y="Magnesium", title = "pH and Magnesium relationship")
 
 ggplot(d, aes(x=Total.C, y=Total.N)) + geom_point() + 
+  stat_smooth(method="loess") +
   labs(x = "Total Carbon", y="Total Nitrogen", title = "Carbon and Nitrogen relationship")
 ```
 
@@ -344,7 +348,7 @@ dist.output <- do.call(rbind, lapply(split(d, d$district), function(x) {
 }))
 
 rownames(dist.output) <- NULL
-dist.output$variable <- rep(out.list,13)	
+dist.output$variable <- rep(out.list,length(unique(d$district)))	
 
 # order variables 
 dist.output <- dist.output[, c(1, 5, 2:4)]
