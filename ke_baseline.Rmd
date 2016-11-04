@@ -48,7 +48,7 @@ Identifiers$oaf.ID <- tolower(Identifiers$oaf.ID)
 Identifiers$DISTRICT[Identifiers$DISTRICT=="Kakamega North"] <- "Kakamega B (North)"
 Identifiers$DISTRICT[Identifiers$DISTRICT=="Kakamega South"] <- "Kakamega (South)"
 
-
+d$id.DistrictName <- as.character(d$id.DistrictName)
 d$id.DistrictName[d$id.DistrictName=="GemLundha"] <- "Gem"
 d$id.DistrictName[d$id.DistrictName=="Lug Ari"] <- "Lugari"
 
@@ -324,11 +324,16 @@ write.csv(output, file=paste(od, "ke baseline balance.csv", sep="/"), row.names=
 
 
 ### Baseline balance by district
+I remove intercrop elements from out.list so that the code runs properly. I have to remove all fertilizer comparisons. CAN fails in Suneka. The others fail across districts due to insuffient observations.
+
 ```{r eval=FALSE}
+toMatch <- c("npk", "urea", "intercrop", "can")
+distList <- out.list[!out.list %in% unique(grep(paste(toMatch, collapse="|"), out.list, value=TRUE))]
+
+
 dist.output <- do.call(rbind, lapply(split(d, d$DistrictName), function(x) {
   
-  tab <- do.call(rbind, lapply(out.list, function(y) {
-    
+  tab <- do.call(rbind, lapply(distList, function(y) {
     out <- t.test(x[,y] ~ x[,"oaf"], data=x)
     tab <- data.frame(out[[5]][[1]], out[[5]][[2]], out[3])
     tab[,1:2] <- round(tab[,1:2],3)
@@ -336,11 +341,11 @@ dist.output <- do.call(rbind, lapply(split(d, d$DistrictName), function(x) {
     return(tab)
   }))
   
-  return(data.frame(district = unique(x$district), tab))
+  return(data.frame(district = unique(x$DistrictName), tab))
 }))
 
 rownames(dist.output) <- NULL
-dist.output$variable <- rep(out.list,13)	
+dist.output$variable <- rep(distList,length(unique(d$DistrictName)))	
 
 # order variables 
 dist.output <- dist.output[, c(1, 5, 2:4)]
