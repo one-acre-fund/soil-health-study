@@ -1,5 +1,5 @@
 ---
-title: "Lime Adoption Summary"
+title: "Kenya Baseline Demographic and Soil Summary and Analysis"
 author: "Matt Lowes"
 date: '`r format(Sys.Date(), "%B %d, %Y")`'
 output: html_document
@@ -28,8 +28,6 @@ library(gstat)
 library(htmltools)
 suppressMessages(library(Matching))
 ```
-
-Quickly summarize lime adoption so far in Nambale only
 
 ```{r import}
 wd <- "/Users/mlowes/drive/soil health study/data/ke baseline"
@@ -548,35 +546,52 @@ stargazer(list3, type="html",
 ## Propensity Score Matching
 We need to do a more rigorous job of accounting for differences between Tubura farmers and identified control farmers. Execute propensity score matching (PSM) to identify control farmers that overlap with Tubura farmers with regard to their likelihood of being a Tubura farmer.
 
-```{r}
-psmVars <- paste(c("female", "age", "hhsize", "total.seasons", "own", "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow"),
-                   collapse=" + ")
+```{r eval=FALSE}
+psmVars <- paste(out.list <- c("female", "age", "seasons_oaf", "cows", "goats", "chickens","pigs", "sheep", "field_size", "yield",  "chemical_fertilizer_5", "compost_fertilizer_5", "lime_fertilizer_5", "fertilizer_5", "legum_maincrop_5", "legum_intercrop_5"), collapse=" + ")
 
-reg <- glm(as.formula(paste("client ~", psmVars, sep="")),  data=d)
+# inputs.dap_kg", "inputs.can_kg", "inputs.npk_kg", "inputs.urea_kg", "inputs.dap_kg_intercrop", "inputs.can_kg_intercrop", "inputs.npk_kg_intercrop","inputs.urea_kg_intercrop",
+
+psmCheck <- unlist(strsplit(gsub("\\+", "", as.vector(psmVars))," ", fixed=TRUE))
+psmCheck <- psmCheck[-which(psmCheck=="")]
+naOut <- cbind(unlist(lapply(psmCheck, function(x){sum(is.na(d[,x]))})), psmCheck)
+
+naOut
+```
+
+We have missing values that are preventing the prediction function that preceeds PSM from running properly. Let's for now just remove yield as a conributing variable.
+
+```{r}
+h <- d[complete.cases(d[,psmCheck]),]
+toRemove <- c("seasons_oaf")
+# so few control farmesr have OAF experience this strongly distorts the Pr() match
+psmCheck <- psmCheck[!psmCheck %in% toRemove]
+
+psmVars <- paste(psmCheck, collapse=" + ")
+
+reg <- glm(as.formula(paste("oaf ~", psmVars, sep="")),  data=h)
 summary(reg)	
 
 # summarize predicted probabilities
-pr <- data.frame(pr_score = predict(reg, type='response'), treat = d$client)
+pr <- data.frame(pr_score = predict(reg, type='response'), treat = h$oaf)
 
 # graph
-psmGraph <- ggplot() + geom_histogram(data=subset(pr, pr$treat==1), aes(x = pr_score, y=..count.., fill=as.factor(treat)), bins=80, position = "identity") +
-    geom_histogram(data=subset(pr, pr$treat==0), aes(x=pr_score, y=-..count.., fill=as.factor(treat)), bins=80, position = "identity") +
+psmGraph <- ggplot() + geom_histogram(data=subset(pr, pr$treat==1), aes(x = pr_score, y=..count.., fill=as.factor(treat)), bins=80, position = "identity") + geom_histogram(data=subset(pr, pr$treat==0), aes(x=pr_score, y=-..count.., fill=as.factor(treat)), bins=80, position = "identity") +
     scale_y_continuous(limits=c(-150,150)) + 
   labs(title ="PSM score overlap", x = "PSM score", y="Farmer count",
-       fill="Tubura/Control")
+       fill="1AF/Control")
 
 print(psmGraph)
 
-pdf(file=paste(od, "rw_baseline_psm_overlap.pdf", sep="/"), height=8.5, width=11)
+pdf(file=paste(od, "ke_baseline_psm_overlap.pdf", sep="/"), height=8.5, width=11)
 print(psmGraph)
 dev.off()
 ```
 
-```{r}
+```{r eval=FALSE}
 # PSM prep
-tr <- cbind(d$client)
-x <- d[, unlist(strsplit(psmVars, " + ", fixed=T))]
-y <- c("m3.Ca", "m3.Mg", "pH", "Total.N", "Total.C")
+tr <- cbind(h$oaf)
+x <- h[, unlist(strsplit(psmVars, " + ", fixed=T))]
+y <- soilVars
 #y <- cbind(d$pH)
 
 # PSM
@@ -584,19 +599,16 @@ set.seed(20161102)
 m <- lapply(y, function(response){
 
   suppressWarnings(
-  mod <- Match(Y = d[,response], Tr = tr, X = reg$fitted, ties=FALSE, replace=FALSE,
-           caliper=0.25, estimand = "ATE")	
+  mod <- Match(Y = h[,response], Tr = tr, X = reg$fitted, ties=FALSE, replace=FALSE, caliper=0.25, estimand = "ATE")	
   )
 
-  return(list("output"=mod, "df"=rbind(d[mod$index.treated,], d[mod$index.control,])))
-  
-  
+  return(list("output"=mod, "df"=rbind(h[mod$index.treated,], h[mod$index.control,])))
 })
 ```
 
 Store the PSM result and conduct analyses on the matched samples.
 
-```{r}
+```{r eval=FALSE}
 dm <- rbind(d[m$index.treated,], d[m$index.control,])
 ```
 
