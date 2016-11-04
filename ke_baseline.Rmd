@@ -128,6 +128,7 @@ names(d)[34:65] <- gsub("plot_information.", "", names(d)[34:65])
 
 names(d)[28:33] <- gsub("plot_information.plot_information.","intercrop.",  names(d)[28:33])
 
+names(d) <- gsub("historical.", "", names(d))
 names(d) <- gsub("field_information.", "", names(d))
 ```
 
@@ -289,7 +290,9 @@ names(d)[names(d)=="gender"] <- "female"
 
 out.list <- c("female", "age", "seasons_oaf", "cows", "goats", "chickens",
               "pigs", "sheep", "field_size", "yield", "inputs.dap_kg", 
-              "inputs.can_kg", "inputs.npk_kg", "inputs.urea_kg", "inputs.dap_kg_intercrop", "inputs.can_kg_intercrop", "inputs.npk_kg_intercrop", "inputs.urea_kg_intercrop", soilVars)
+              "inputs.can_kg", "inputs.npk_kg", "inputs.urea_kg", "inputs.dap_kg_intercrop", "inputs.can_kg_intercrop", "inputs.npk_kg_intercrop", "inputs.urea_kg_intercrop",
+"chemical_fertilizer_5", "compost_fertilizer_5", "lime_fertilizer_5",
+"fertilizer_5", "legum_maincrop_5", "legum_intercrop_5", soilVars)
 
 d$seasons_oaf <- ifelse(d$seasons_oaf>8, NA, d$seasons_oaf)
 
@@ -308,14 +311,19 @@ output$pvalue <- p.adjust(output$pvalue, method="fdr")
 rownames(output) <- out.list
 output <- output[order(output$pvalue),]
 output$pvalue <- ifelse(output[, 3] < 0.001, "< 0.001", round(output[, 3], 3)) 
-
-
-colnames(output) <- c("Control", "OAF Client", "p-value")	
+colnames(output) <- c("Control", "1AF Client", "p-value")	
 ```
 
 ```{r, results='asis'}
 print(kable(output))
 ```
+
+**Demographic variables** 
+
+**Agricultural practice variables** 
+
+**Soil Variables**
+
 
 ```{r}
 #write table
@@ -327,7 +335,7 @@ write.csv(output, file=paste(od, "ke baseline balance.csv", sep="/"), row.names=
 I remove intercrop elements from out.list so that the code runs properly. I have to remove all fertilizer comparisons. CAN fails in Suneka. The others fail across districts due to insuffient observations.
 
 ```{r eval=FALSE}
-toMatch <- c("npk", "urea", "intercrop", "can")
+toMatch <- c("npk", "urea", "g_intercrop", "can")
 distList <- out.list[!out.list %in% unique(grep(paste(toMatch, collapse="|"), out.list, value=TRUE))]
 
 
@@ -353,12 +361,19 @@ dist.output$pvalue <- p.adjust(dist.output$pvalue, method="fdr")
 dist.output <- dist.output[order(dist.output$pvalue),]
 
 dist.output$pvalue <- ifelse(dist.output$pvalue < 0.001, "< 0.001", round(dist.output$pvalue,3))
-colnames(dist.output) <- c("District", "Varible", "Control", "OAF Client", "p-value")	
+colnames(dist.output) <- c("District", "Varible", "Control", "1AF Client", "p-value")	
 ```
 
 ```{r, results='asis', eval=FALSE}
 print(kable(dist.output))
 ```
+
+**Demographic variables** 
+
+**Agricultural practice variables** 
+
+**Soil Variables**
+
 
 ```{r eval=FALSE}
 write.csv(dist.output, file=paste(od, "ke district balance.csv", sep="/"), row.names=T)
@@ -380,6 +395,55 @@ print(
 }
 ```
 
+### Tenure summaries
+```{r}
+tenureSum <- aggregate(oafOnly[,out.list], by=list(oafOnly$seasons_oaf), function(x){
+  round(mean(x, na.rm=T),2)
+})
+tenureSum <- as.data.frame(t(tenureSum))
+colnames(tenureSum) <- c(paste(seq(1,5,1), " seas.", sep = ""), "8 seas.")
+```
+
+```{r, results='asis'}
+print(kable(tenureSum))
+```
+
+### OAF tenure balance table
+```{r}
+oafOnly$tenured <- ifelse(oafOnly$seasons_oaf==1,0,1)
+
+toMatch <- c("npk", "urea", "g_intercrop")
+tenureList <- out.list[!out.list %in% unique(grep(paste(toMatch, collapse="|"), out.list, value=TRUE))]
+
+
+tenure <- do.call(rbind, lapply(tenureList, function(x) {
+  
+  out <- t.test(oafOnly[,x] ~ oafOnly[,"tenured"], data=oafOnly)
+  tab <- data.frame(out[[5]][[1]], out[[5]][[2]], out[3])
+  tab[,1:2] <- round(tab[,1:2],3)
+  names(tab) <- c(names(out[[5]]), "pvalue")
+  return(tab)
+}))
+
+# use p.adjust with bonferroni correction
+tenure$pvalue <- p.adjust(tenure$pvalue, method="fdr")
+rownames(tenure) <- tenureList
+tenure <- tenure[order(tenure$pvalue),]
+tenure$pvalue <- ifelse(tenure[, 3] < 0.001, "< 0.001", round(tenure[, 3], 3)) 
+colnames(tenure) <- c("Control", "1AF Client", "p-value")	
+```
+
+```{r, results='asis'}
+print(kable(tenure))
+```
+
+**Demographic variables** 
+
+**Agricultural practice variables** 
+
+**Soil Variables**
+
+### Agronomic Behaviors
 
 
 --end
