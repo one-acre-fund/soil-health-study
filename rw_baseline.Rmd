@@ -174,7 +174,7 @@ d[,c("lat", "lon", "alt", "precision")] <- sapply(d[,c("lat", "lon", "alt", "pre
 
 ```
 
-### Cleaning soil data
+# Cleaning soil data
 Cleaning of soil data: Come back, check and clean the soil data before outputting to clean data set. Plot each of the soil variables to look for unrealistic values.
 ```{r}
 dim(d[is.na(d$m3.Ca),])
@@ -206,15 +206,15 @@ There are biologically predictable relationships between soil chemical character
 ```{r}
 ggplot(d, aes(x=m3.Ca, y=m3.Mg)) + geom_point() +
     stat_smooth(method="loess") +
-    labs(x = "Calcium", y= "Magnesium", title="Calcium/Magnesium relationship")
+    labs(x = "Calcium (m3)", y= "Magnesium (m3)", title="Calcium and Magnesium relationship")
 
 ggplot(d, aes(x=pH, y=m3.Ca)) + geom_point() +
   stat_smooth(method="loess") +
-  labs(x = "pH", y="Calcium", title = "pH and Calcium relationship")
+  labs(x = "pH", y="Calcium (m3)", title = "pH and Calcium relationship")
 
 ggplot(d, aes(x=pH, y=m3.Mg)) + geom_point() +
   stat_smooth(method="loess") +
-  labs(x = "pH", y="Magnesium", title = "pH and Magnesium relationship")
+  labs(x = "pH", y="Magnesium (m3)", title = "pH and Magnesium relationship")
 
 ggplot(d, aes(x=Total.C, y=Total.N)) + geom_point() + 
   stat_smooth(method="loess") +
@@ -266,7 +266,7 @@ map
 ```
 
 
-## Summary statistics
+# Summary statistics
 
 ### Table of final baseline breakdown
 ```{r}
@@ -384,10 +384,19 @@ We will look only at current Tubura farmers and compare first year farmers to fa
 
 ```{r}
 oafOnly <- d[which(d$client==0 & d$total.seasons>=1),]
+
+nTenure <- oafOnly %>% group_by(total.seasons) %>% 
+  summarize(
+    n = n()
+  ) %>% ungroup() %>% as.data.frame()
+nTenure$val <- paste(nTenure$total.seasons, " (", "n = ", nTenure$n, ")", sep = "")
+
 for(i in 1:length(soilVars)){
 print(
   ggplot(oafOnly, aes(x=as.factor(total.seasons), y=oafOnly[,soilVars[i]])) + 
-    geom_boxplot() + 
+    geom_boxplot() +
+    scale_x_discrete(labels=nTenure$val) + 
+    theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
     labs(x="Tubura Tenure", y=soilVars[i], title = paste("RW baseline soil by tenure - ", soilVars[i], sep = ""))
   )  
 }
@@ -406,9 +415,11 @@ colnames(tenureSum) <- c(paste(seq(1,11,1), " seas.", sep = ""), "13 seas.")
 print(kable(tenureSum))
 ```
 
+### Tenure balance
+We're defining Tubura tenure as having 3 or more seasons of experience farming with Tubura. We draw the line at 3 seasons as three seasons of fertilizer use is approximately when we'd expect fertilizer to start to have a detrimental effect on soil health.
 
 ```{r}
-oafOnly$tenured <- ifelse(oafOnly$total.seasons==1,0,1)
+oafOnly$tenured <- ifelse(oafOnly$total.seasons>=3,1,0)
 
 tenure <- do.call(rbind, lapply(out.list, function(x) {
   
@@ -434,7 +445,6 @@ print(kable(tenure))
 ```
 
 ### Tenured v. new balance interpretation
-Tubura tenure is being defined here as having more than 1 year experience farming with Tubura.
 
 **Demographic variables** We are well balanced along demographic variables.
 
@@ -477,7 +487,6 @@ stargazer(list1, type="html",
 
 **Interpretation** The naive model suggests that when we include site level fixed effects, duration of agronomic practices don't have a big effect on soil health outcomes. However, some of the practice intensity variables are not well distributed. Let's take a look at a log transformation. I'm adding one to the variables as to not end up with lots of Inf values.
 
-
 ```{r}
 agPrac <- c(names(d[grep('n_season_', names(d))]))
 
@@ -503,7 +512,10 @@ d$logFallow <- log(d$n_season_fallow+1)
 
 ```
 
-Let's look at the log results:
+Let's look at the log results: See [here](http://www.cazaar.com/ta/econ113/interpreting-beta) for guidance on intepreting log transformed right hand side variables.
+
+**How to interpret RHS log transform**: For a linear multivariate OLS regression, we say "a one unit increase in X causes a (coefficient) change in Y." For a linear-log regression where the X variable is log transformed, we say a L percent change in X leads to a (coefficient*L) change in Y.
+
 
 ```{r results='asis', fig.align='center'}
 
@@ -532,12 +544,25 @@ suppressWarnings(
 )
 ```
 
+```{r}
+# a 10 percent increase in x leads to B1*.1 change in Y
+logTrans <- do.call(cbind, lapply(list2, function(x){
+  coeff = x$coefficients[2:5]
+  tenPercent = round(coeff*.1, 5)
+  names(tenPercent) <- paste("10% increase in ", gsub("log","", names(tenPercent)), " leads to:", sep="")
+  return(tenPercent)
+}))
+colnames(logTrans) <- soilVars
+
+print(kable(logTrans))
+```
+
 
 **Interpretation**: When we transform the variables to log, the data starts to tell a more coherent story, at least directionally. If we remove the district FE, the coefficients gain significance.
 
 * Additional seasons of fertilizer use relates to a decrease in soil N and C. 
 * Seasons of compost and lime have the opposite, positive effect on soil N. 
-* Unsurprisingly, soil 
+* Unsurprisingly, soil health metrics are poorer for soils on which more fertilizer has been used and lime has not been used. 
 
 ### Tenure with One Acre Fund
 Let's look first at a naive model of One Acre Fund tenure on soil health. **Remember**: these data are not longitudinal! These data are not longitudinal and reflect farmer selection into One Acre Fund. While these models will try to be both robust and parsimonious, we will inevitabily suffer omitted variable bias due to a lack of an instrument.
@@ -619,6 +644,8 @@ stargazer(list5, type="html",
           omit=c("cell"), out=paste(od, "rw_baseline_15b_ag.htm", sep="/"))
 ```
 
+
+### Farmer fertility perception
 Let's look at farmer perceived fertility as a predictor of soil health. We'll set 'same fertility' as the reference category.
 
 ```{r results='asis'}
@@ -646,6 +673,10 @@ stargazer(list6, type="html",
 
 **Interpretation**: Farmers understand their fields well. Their categorization of which field are more and less fertile corresponds to our quantified measures of soil health. The only features farmers don't seem to get correct are nitrogen and carbon. The nitrogen and carbon levels are indistinguishable in 'low fertility' fields relative to the fields deemed to be the 'same fertility.' **Reminder**: We need to remember that farmers are only evaluting one of their fields thus we are not able to account for the quality of the farmer in assessing his/her fields.
 
+
+```{r}
+
+```
 ### Measured Yields
 We don't have measured yield data for the Rwanda baseline. Skip this for now.
 
@@ -655,7 +686,7 @@ We don't have measured yield data for the Rwanda baseline. Skip this for now.
 
 ### Soil health maps for soil health study areas
 
-```{r eval=FALSE}
+```{r eval=TRUE}
 #crdref <- CRS('+proj=longlat +datum=WGS84')
 crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
 e <- d[!is.na(d$lon),]
@@ -678,7 +709,7 @@ plotReady <- dplyr::left_join(frw, ss.soil, by=c("id"="Group.1"))
 ### Plot simple summary of soil characteristics
 
 Consider revising these maps to a smaller greographic unit. Add the name of the location for uninitiated users.
-```{r, eval=FALSE}
+```{r, eval=TRUE}
 library(RColorBrewer)
 mapList <- list()
 for(i in 1:length(soilVars)){
@@ -694,17 +725,23 @@ print(mapRes)
 } 
 ```
 
-```{r eval=FALSE}
+```{r eval=TRUE}
 # This is a small experiment to combine raster (spdf) and leaflet and be able to access the data in the raster interactively.
 mapLayer <- sp::merge(rw, ss.soil, by.x="NAME_3", by.y="Group.1")
 
+fill = T, fillOpacity = 0.7, fillColor = d.fill, 
+        stroke = T, color = "white", weight = 2, dashArray = 3, 
+        opacity = 0.5, popup = county.tt(d)
+
 leaflet(mapLayer) %>% addTiles() %>%
   setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=8) %>%
-  addPolygons(stroke = TRUE, opacity=0.2, smoothFactor = 0.5, fillColor=mapLayer$pH, fillOpacity = 0.5)
+  addPolygons(
+    stroke = TRUE, opacity=0.2, smoothFactor = 0.5, 
+    fillColor=mapLayer$pH, fillOpacity = 0.5)
 
 ```
 
-```{r message=FALSE, eval=FALSE}
+```{r message=FALSE, eval=TRUE}
 pdf(file=paste(md, "rw_shs_baseline_soil_maps.pdf", sep = "/"), width=11, height=8.5)
 for(i in 1:length(mapList)){
 print(mapList[[i]])
@@ -731,7 +768,7 @@ The code below will run 5 K-fold cross validation to compare interpolation model
 ss <- spTransform(ss, CRS=("+proj=utm +zone=36N +datum=WGS84"))
 ```
 
-```{r eval=FALSE}
+```{r eval=TRUE}
 
 # root mean sq error for evaluating models
 RMSE <- function(observed, predicted) {
@@ -786,7 +823,7 @@ cv <- function(x) {
 Now loop over the variables of interest where x is the soilVar variable. 
 
 
-```{r eval=FALSE}
+```{r eval=TRUE}
 output <- lapply(soilVars, function(x){
   ini <- data.frame(cv(x))
   ini$ave <- apply(ini[,1:5], 1, function(y){mean(y, na.rm=T)})
@@ -797,7 +834,7 @@ output <- lapply(soilVars, function(x){
 
 ### Interpolated soil maps
 
-```{r message=FALSE, eval=FALSE}
+```{r message=FALSE, eval=TRUE}
 r <- raster(res=1/12)
 r <- crop(r, floor(extent(rw)))
 
@@ -826,7 +863,7 @@ tagList(maps)
 
 Print out the interpolated values for inclusion in the report. 
 
-```{r echo=FALSE, eval=FALSE}
+```{r echo=FALSE, eval=TRUE}
 pdf(file=paste(md, "rw_shs_bl_interpolation_soil_vars.pdf", sep = '/'), width=11, height=8.5)
 lapply(soilVars, function(x) {
   m <- Tps(coordinates(ss), ss@data[,x])
