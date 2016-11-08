@@ -287,7 +287,7 @@ as.data.frame(count)
 
 ## Baseline balance
 
-Let's see how balanced our farmers are in terms of demographic variables. Tubura farmers were selected based on (list criteria) and control farmers in the same area tha fit the same criteria were also selected. No matching process has been performed to identify the control farmers that most closely resemble the Tubura farmers in the sample.
+Let's see how balanced our farmers are in terms of demographic variables. Tubura farmers were selected based on (list criteria) and control farmers in the same area tha fit the same criteria were also selected. No matching process has been performed to identify the control farmers that most closely resemble the Tubura farmers in the sample. These results are entirely reflecting the balance inherent in the identification process, not any statistical matching of treatment and control.
 
 ```{r}
 out.list <- c("female", "age", "hhsize", "own", "field.size",
@@ -465,14 +465,23 @@ I'm going to start with behaviors by sections and then move to a more comprehens
 
 ### Agronomic Behaviors
 
+**Check** for multicollinearity before adding number of seasons of agronomic inputs on the same side of the regression.  
+
 ```{r, results='asis', fig.align='center'}
 suppressMessages(library(stargazer))
 
-# rename selected_cell to just cell
-#names(d)[names(d)=="selected_cell"] <- "cell"
+inputUse <- c("n_season_fert","n_season_compost", "n_season_lime", "n_season_fallow")
+
+cor(d[,inputUse], use="complete.obs")
+```
+
+**Interpretation**: The strongest correlation between the input use intensity variables is between seasons of fertilizer and compost use, ~0.35. While this is on the higher end it's not necessarily cause for alarm.
+
+```{r}
+inputUse <- paste(c("n_season_fert","n_season_compost", "n_season_lime", "n_season_fallow"), collapse= " + ")
 
 list1 <- lapply(soilVars, function(x){
-  mod <- lm(as.formula(paste("d[,x] ~",  "n_season_fert + n_season_compost + n_season_lime + n_season_fallow + as.factor(cell)", sep="")), data=d)
+  mod <- lm(as.formula(paste("d[,x] ~", inputUse, "+ as.factor(cell)", sep="")), data=d)
   return(mod)
 })
 
@@ -788,7 +797,7 @@ We don't have measured yield data for the Rwanda baseline. Skip this for now.
 
 ### Soil health maps for soil health study areas
 
-```{r eval=TRUE}
+```{r eval=FALSE}
 #crdref <- CRS('+proj=longlat +datum=WGS84')
 crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
 e <- d[!is.na(d$lon),]
@@ -811,7 +820,7 @@ plotReady <- dplyr::left_join(frw, ss.soil, by=c("id"="Group.1"))
 ### Plot simple summary of soil characteristics
 
 Consider revising these maps to a smaller greographic unit. Add the name of the location for uninitiated users.
-```{r, eval=TRUE}
+```{r, eval=FALSE}
 library(RColorBrewer)
 mapList <- list()
 for(i in 1:length(soilVars)){
@@ -827,7 +836,7 @@ print(mapRes)
 } 
 ```
 
-```{r eval=TRUE}
+```{r eval=FALSE}
 # This is a small experiment to combine raster (spdf) and leaflet and be able to access the data in the raster interactively.
 #mapLayer <- sp::merge(rw, ss.soil, by.x="NAME_3", by.y="Group.1")
 
@@ -835,15 +844,15 @@ print(mapRes)
 #         stroke = T, color = "white", weight = 2, dashArray = 3, 
 #         opacity = 0.5, popup = county.tt(d)
 
-leaflet(mapLayer) %>% addTiles() %>%
-  setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=8) %>%
-  addPolygons(
-    stroke = TRUE, opacity=0.2, smoothFactor = 0.5, 
-    fillColor=mapLayer$pH, fillOpacity = 0.5)
+# leaflet(mapLayer) %>% addTiles() %>%
+#   setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=8) %>%
+#   addPolygons(
+#     stroke = TRUE, opacity=0.2, smoothFactor = 0.5, 
+#     fillColor=mapLayer$pH, fillOpacity = 0.5)
 
 ```
 
-```{r message=FALSE, eval=TRUE}
+```{r message=FALSE, eval=FALSE}
 pdf(file=paste(md, "rw_shs_baseline_soil_maps.pdf", sep = "/"), width=11, height=8.5)
 for(i in 1:length(mapList)){
 print(mapList[[i]])
@@ -870,7 +879,7 @@ The code below will run 5 K-fold cross validation to compare interpolation model
 ss <- spTransform(ss, CRS=("+proj=utm +zone=36N +datum=WGS84"))
 ```
 
-```{r eval=TRUE}
+```{r eval=FALSE}
 
 # root mean sq error for evaluating models
 RMSE <- function(observed, predicted) {
@@ -925,7 +934,7 @@ cv <- function(x) {
 Now loop over the variables of interest where x is the soilVar variable. 
 
 
-```{r eval=TRUE}
+```{r eval=FALSE}
 output <- lapply(soilVars, function(x){
   ini <- data.frame(cv(x))
   ini$ave <- apply(ini[,1:5], 1, function(y){mean(y, na.rm=T)})
@@ -936,7 +945,7 @@ output <- lapply(soilVars, function(x){
 
 ### Interpolated soil maps
 
-```{r message=FALSE, eval=TRUE}
+```{r message=FALSE, eval=FALSE}
 r <- raster(res=1/12)
 r <- crop(r, floor(extent(rw)))
 
@@ -965,7 +974,7 @@ tagList(maps)
 
 Print out the interpolated values for inclusion in the report. 
 
-```{r echo=FALSE, eval=TRUE}
+```{r echo=FALSE, eval=FALSE}
 pdf(file=paste(md, "rw_shs_bl_interpolation_soil_vars.pdf", sep = '/'), width=11, height=8.5)
 lapply(soilVars, function(x) {
   m <- Tps(coordinates(ss), ss@data[,x])
@@ -992,7 +1001,7 @@ This section will look at improving understanding of local context to inform loc
 We need to do a more rigorous job of accounting for differences between Tubura farmers and identified control farmers. Execute propensity score matching (PSM) to identify control farmers that overlap with Tubura farmers with regard to their likelihood of being a Tubura farmer.
 
 ```{r}
-psmVars <- paste(c("female", "age", "hhsize", "total.seasons", "own", "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow"),
+psmVars <- paste(c("female", "age", "hhsize", "total.seasons", "own"),
                    collapse=" + ")
 
 reg <- glm(as.formula(paste("client ~", psmVars, sep="")),  data=d)
@@ -1017,6 +1026,12 @@ dev.off()
 
 **Interpretation** We have some overlap but it's clear that Tubura farmers occupy a different range than the identified control farmers. Let's continue with the PSM matching process but restrict ourselves to Tubura and control farmers that meet a certain PSM matching radius.
 
+```{r}
+# check for balance ala teffects
+# check for difference in means and variance between variables >> see training
+```
+
+
 ### Notes on PSM process:
 We have to indicate a variable for matching. I'm choosing pH as we know it to be an issue in most of our operating areas and addressing soil acidity has numerous residual benefits to soil health. I'll want to do this for all soil outcomes, however.
 
@@ -1035,14 +1050,15 @@ set.seed(20161102)
 m <- lapply(y, function(response){
 
   suppressWarnings(
-  mod <- Match(Y = d[,response], Tr = tr, X = reg$fitted, ties=FALSE, replace=FALSE,
-           caliper=0.25, estimand = "ATE")	
+  mod <- Match(Y = d[,response], Tr = tr, X = reg$fitted, ties=FALSE, replace=FALSE, caliper=0.25, estimand = "ATE")	
   )
 
-  return(list("output"=mod, "df"=rbind(d[mod$index.treated,], d[mod$index.control,])))
+  return(mod)
+  #return(list("output"=mod, "df"=rbind(d[mod$index.treated,], d[mod$index.control,])))
   
   
 })
+lapply(m, summary)
 ```
 
 **Interpretation**: From an admittedly quick PSM exercise, we can find matches for a subset of the Tubura farmers and we see that we see no difference between the matched Tubura and control farmers on the pH outcome. We want to create matched groups and then assess the impact of Tubura duration and other covariates on soil health outcomes.
