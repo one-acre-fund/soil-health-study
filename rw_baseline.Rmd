@@ -291,8 +291,7 @@ Let's see how balanced our farmers are in terms of demographic variables. Tubura
 
 ```{r}
 out.list <- c("female", "age", "hhsize", "own", "field.size",
-              "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow", "n_seasons_leg_1", "n_seasons_leg_2", "m3.Ca", "m3.Mg",
-              "pH", "Total.C", "Total.N")
+              "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow", "n_seasons_leg_1", "n_seasons_leg_2", "m3.Ca", "m3.Mg", "pH", "Total.C", "Total.N")
 
 output <- do.call(rbind, lapply(out.list, function(x) {
   
@@ -1001,7 +1000,11 @@ This section will look at improving understanding of local context to inform loc
 We need to do a more rigorous job of accounting for differences between Tubura farmers and identified control farmers. Execute propensity score matching (PSM) to identify control farmers that overlap with Tubura farmers with regard to their likelihood of being a Tubura farmer.
 
 ```{r}
-psmVars <- paste(c("female", "age", "hhsize", "total.seasons", "own"),
+cor(d[, grep("betail_", names(d))], use='complete.obs')
+names(d)[grep("betail_", names(d))] <- c("cows", "goats", "chickens", "pigs", "sheep")
+
+psmVars <- paste(c("female", "age", "hhsize", "total.seasons",
+                   "cows", "goats", "chickens", "pigs", "sheep"),
                    collapse=" + ")
 
 reg <- glm(as.formula(paste("client ~", psmVars, sep="")),  data=d)
@@ -1058,14 +1061,81 @@ Now check the naive model approach for PSM balance.
 
 ```{r}
 matchRes <- do.call(rbind, lapply(1:length(m), function(model){
-  val <- as.data.frame(cbind(standard.diff=m[[model]][[2]]$AfterMatching[[1]]$sdiff,
-                       var.ratio = m[[model]][[2]]$AfterMatching[[1]]$var.ratio))
+  val <- as.data.frame(cbind(standard.diff=m[[model]][[2]]$AfterMatching[[1]]$sdiff, var.ratio = m[[model]][[2]]$AfterMatching[[1]]$var.ratio))
   return(val)
 }))
 rownames(matchRes) <- y
 ```
 
-**Interpretation**: 
+```{r}
+print(kable(matchRes))
+```
+
+**Interpretation**: We want to see standard mean differences less than the absolute value of 0.25 (or 0.1 if we're being conservative) and variance ratios close to 1 but certainly between 0.5 and 2. 
+
+### Let the PSM models vary
+
+The common model approach doesn't seem to be working for any of the variables. I'm going to rework the modeling approach so we can fit different models for each outcome upon which we're trying to match.
+
+```{r}
+d$age2 <- d$age^2
+d$hhsize_age <- d$hhsize*d$age
+
+
+psmList <- list(
+  list(tr = d$client,
+       psmVars = paste(c("female", "age", "hhsize",
+                         "cows", "goats", "chickens", "pigs", "sheep"),
+                   collapse=" + "),
+       y="m3.Ca"),
+  list(tr = d$client,
+       psmVars = paste(c("female", "age", "hhsize",
+                   "cows", "goats", "chickens", "pigs", "sheep"),
+                   collapse=" + "),
+       y="m3.Mg"),
+  list(tr = d$client,
+       psmVars = paste(c("female", "age", "hhsize", 
+                   "cows", "goats", "chickens", "pigs", "sheep"),
+                   collapse=" + "),
+       y="pH"),
+  list(tr = d$client,
+       psmVars = paste(c("female", "age", "hhsize", 
+                   "cows", "goats", "chickens", "pigs", "sheep"),
+                   collapse=" + "),
+       y="Total.N"),
+  list(tr = d$client,
+       psmVars = paste(c("female", "age", "hhsize",
+                   "cows", "goats", "chickens", "pigs", "sheep"),
+                   collapse=" + "),
+       y="Total.C")
+)
+
+# PSM
+set.seed(20161102)
+m <- lapply(psmList, function(listInput){
+
+  # run glm regression:
+  reg <- glm(as.formula(paste("client ~", listInput$psmVars, sep="")),  data=d)
+  
+  suppressWarnings(
+  mod <- Match(Y = d[,listInput$y], Tr = listInput$tr, X = reg$fitted, ties=FALSE, replace=FALSE, caliper=0.25, estimand = "ATE")	
+  )
+  matchRes <- MatchBalance(tr ~ d[,listInput$y], match.out=mod, nboots=500, data=d, print.level = 0)
+  return(list(mod, matchRes))
+})
+#lapply(m, summary)
+```
+
+The models can now vary by outcome. Let's see if we can improve our results.
+
+```{r}
+matchRes <- do.call(rbind, lapply(1:length(m), function(model){
+  val <- as.data.frame(cbind(standard.diff=m[[model]][[2]]$AfterMatching[[1]]$sdiff, var.ratio = m[[model]][[2]]$AfterMatching[[1]]$var.ratio))
+  return(val)
+}))
+rownames(matchRes) <- y
+print(kable(matchRes))
+```
 
 
 
