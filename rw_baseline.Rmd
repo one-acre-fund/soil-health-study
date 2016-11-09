@@ -709,7 +709,7 @@ for(i in 1:length(wetVars)){
 
 ```
 
-```{r}
+```{r results='asis'}
 list7 <- lapply(wetVars, function(x){
   mod <- lm(as.formula(paste("d[,x] ~", "+ fertility_qual + as.factor(cell)", sep="")), data=d)
   return(mod)
@@ -768,7 +768,7 @@ ggplot(as.data.frame(pca2$x),aes(x=PC1,y=PC2)) + geom_point()
 pca2$rotation
 ```
 
-```{r}
+```{r results='asis'}
 
 # put pca2$x PC1 in the main data to run the fertility perception model.
 #mod8 <- lm(
@@ -1026,17 +1026,13 @@ dev.off()
 
 **Interpretation** We have some overlap but it's clear that Tubura farmers occupy a different range than the identified control farmers. Let's continue with the PSM matching process but restrict ourselves to Tubura and control farmers that meet a certain PSM matching radius.
 
-```{r}
-# check for balance ala teffects
-# check for difference in means and variance between variables >> see training
-```
-
-
 ### Notes on PSM process:
 We have to indicate a variable for matching. I'm choosing pH as we know it to be an issue in most of our operating areas and addressing soil acidity has numerous residual benefits to soil health. I'll want to do this for all soil outcomes, however.
 
 * As a next step, I'd like to identify the matched subset and then regress Tubura tenure on soil outcomes. Does that make sense?
 * I chose a caliper of 0.25. I should review this process with Maya to make certain I'm following best practice. I sort of just pulled that sd figure out of the sky.
+* An initial check of the match quality using a common model indicates that the matches are poor.
+
 
 ```{r}
 # PSM prep
@@ -1052,22 +1048,25 @@ m <- lapply(y, function(response){
   suppressWarnings(
   mod <- Match(Y = d[,response], Tr = tr, X = reg$fitted, ties=FALSE, replace=FALSE, caliper=0.25, estimand = "ATE")	
   )
-
-  return(mod)
-  #return(list("output"=mod, "df"=rbind(d[mod$index.treated,], d[mod$index.control,])))
-  
-  
+  matchRes <- MatchBalance(tr ~ d[,response], match.out=mod, nboots=500, data=d, print.level = 0)
+  return(list(mod, matchRes))
 })
-lapply(m, summary)
+#lapply(m, summary)
 ```
 
-**Interpretation**: From an admittedly quick PSM exercise, we can find matches for a subset of the Tubura farmers and we see that we see no difference between the matched Tubura and control farmers on the pH outcome. We want to create matched groups and then assess the impact of Tubura duration and other covariates on soil health outcomes.
-
-Store the PSM result and conduct analyses on the matched samples.
+Now check the naive model approach for PSM balance.
 
 ```{r}
-dm <- rbind(d[m$index.treated,], d[m$index.control,])
+matchRes <- do.call(rbind, lapply(1:length(m), function(model){
+  val <- as.data.frame(cbind(standard.diff=m[[model]][[2]]$AfterMatching[[1]]$sdiff,
+                       var.ratio = m[[model]][[2]]$AfterMatching[[1]]$var.ratio))
+  return(val)
+}))
+rownames(matchRes) <- y
 ```
+
+**Interpretation**: 
+
 
 
 --end
