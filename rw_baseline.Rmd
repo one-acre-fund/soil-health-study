@@ -1145,5 +1145,22 @@ print(kable(matchRes))
 
 **Interpretation** If undivide the standardized mean differences by 100, we meet the balance criteria of the standardized mean difference being close to 0 and the variance being close to 1. Let's print out the model results to see how Tubura and control farmers compare on key soil meterics. These results should supercede the naive balance tables presented above.
 
+```{r}
+coefTable <- do.call(rbind, lapply(1:length(m), function(model){
+  beta = round(m[[model]][[1]]$est.noadj,3)
+  pval = (1 - pnorm(abs(m[[model]][[1]]$est/m[[model]][[1]]$se.standard))) * 2
+  pval = ifelse(pval < 0.001, "0.001", round(pval, 3))
+  
+  res = data.frame(beta, pval)
+  return(res)
+}))
+row.names(coefTable) <- y
+coefTable$pval.adj <- round(p.adjust(coefTable$pval, method="fdr"),3)
+print(kable(coefTable))
+```
+**Interpretation**: Propensity score matching gives us a comparable treatment and control group. The table above shows that after matching on those characteristics, there are effectively no differences between One Acre Fund farmer and Tubura farmers. The unadjusted p-values show 1AF farmers to have slow levels of soil nitrogen but this finding disappears if we account for running multiple matching models.
+
+### Models with PSM matched farmers
+
 
 --end
