@@ -1007,7 +1007,8 @@ psmVars <- paste(c("female", "age", "hhsize", "total.seasons",
                    "cows", "goats", "chickens", "pigs", "sheep"),
                    collapse=" + ")
 
-reg <- glm(as.formula(paste("client ~", psmVars, sep="")),  data=d)
+reg <- glm(as.formula(paste("client ~", psmVars, sep="")), 
+           family= binomial(link="logit"), data=d)
 summary(reg)	
 
 # summarize predicted probabilities
@@ -1042,7 +1043,7 @@ We have to indicate a variable for matching. I'm choosing pH as we know it to be
 tr <- cbind(d$client)
 x <- d[, unlist(strsplit(psmVars, " + ", fixed=T))]
 y <- c("m3.Ca", "m3.Mg", "pH", "Total.N", "Total.C")
-#y <- cbind(d$pH)
+
 
 # PSM
 set.seed(20161102)
@@ -1061,50 +1062,52 @@ Now check the naive model approach for PSM balance.
 
 ```{r}
 matchRes <- do.call(rbind, lapply(1:length(m), function(model){
-  val <- as.data.frame(cbind(standard.diff=m[[model]][[2]]$AfterMatching[[1]]$sdiff, var.ratio = m[[model]][[2]]$AfterMatching[[1]]$var.ratio))
+  val <- as.data.frame(cbind(
+    standard.diff=m[[model]][[2]]$AfterMatching[[1]]$sdiff, 
+    var.ratio = m[[model]][[2]]$AfterMatching[[1]]$var.ratio,
+    sdiff.adj = m[[model]][[2]]$AfterMatching[[1]]$sdiff/100))
   return(val)
 }))
 rownames(matchRes) <- y
-```
-
-```{r}
 print(kable(matchRes))
 ```
 
+
 **Interpretation**: We want to see standard mean differences less than the absolute value of 0.25 (or 0.1 if we're being conservative) and variance ratios close to 1 but certainly between 0.5 and 2. 
 
-### Let the PSM models vary
+According to the [CRAN summary](https://cran.r-project.org/web/packages/Matching/Matching.pdf), sdiff is the standardized difference between the treatment and control units *multiplied by 100*. If I divide by 100, the values come much closer to reasonable value.
 
+### Let the PSM models vary
 The common model approach doesn't seem to be working for any of the variables. I'm going to rework the modeling approach so we can fit different models for each outcome upon which we're trying to match.
 
 ```{r}
 d$age2 <- d$age^2
 d$hhsize_age <- d$hhsize*d$age
-
+d$hhsize2 <- d$hhsize^2
 
 psmList <- list(
   list(tr = d$client,
-       psmVars = paste(c("female", "age", "hhsize",
+       psmVars = paste(c("female", "age", "hhsize", "as.factor(district)",
                          "cows", "goats", "chickens", "pigs", "sheep"),
                    collapse=" + "),
        y="m3.Ca"),
   list(tr = d$client,
-       psmVars = paste(c("female", "age", "hhsize",
+       psmVars = paste(c("female", "age", "hhsize", "as.factor(district)",
                    "cows", "goats", "chickens", "pigs", "sheep"),
                    collapse=" + "),
        y="m3.Mg"),
   list(tr = d$client,
-       psmVars = paste(c("female", "age", "hhsize", 
+       psmVars = paste(c("female", "age", "hhsize", "as.factor(district)",
                    "cows", "goats", "chickens", "pigs", "sheep"),
                    collapse=" + "),
        y="pH"),
   list(tr = d$client,
-       psmVars = paste(c("female", "age", "hhsize", 
+       psmVars = paste(c("female", "age", "hhsize", "as.factor(district)",
                    "cows", "goats", "chickens", "pigs", "sheep"),
                    collapse=" + "),
        y="Total.N"),
   list(tr = d$client,
-       psmVars = paste(c("female", "age", "hhsize",
+       psmVars = paste(c("female", "age", "hhsize","as.factor(district)",
                    "cows", "goats", "chickens", "pigs", "sheep"),
                    collapse=" + "),
        y="Total.C")
@@ -1115,7 +1118,7 @@ set.seed(20161102)
 m <- lapply(psmList, function(listInput){
 
   # run glm regression:
-  reg <- glm(as.formula(paste("client ~", listInput$psmVars, sep="")),  data=d)
+  reg <- glm(as.formula(paste("client ~", listInput$psmVars, sep="")),  family= binomial(link="logit"), data=d)
   
   suppressWarnings(
   mod <- Match(Y = d[,listInput$y], Tr = listInput$tr, X = reg$fitted, ties=FALSE, replace=FALSE, caliper=0.25, estimand = "ATE")	
@@ -1130,13 +1133,17 @@ The models can now vary by outcome. Let's see if we can improve our results.
 
 ```{r}
 matchRes <- do.call(rbind, lapply(1:length(m), function(model){
-  val <- as.data.frame(cbind(standard.diff=m[[model]][[2]]$AfterMatching[[1]]$sdiff, var.ratio = m[[model]][[2]]$AfterMatching[[1]]$var.ratio))
+  val <- as.data.frame(cbind(
+    standard.diff=m[[model]][[2]]$AfterMatching[[1]]$sdiff, 
+    var.ratio = m[[model]][[2]]$AfterMatching[[1]]$var.ratio,
+    sdiff.adj = m[[model]][[2]]$AfterMatching[[1]]$sdiff/100))
   return(val)
 }))
 rownames(matchRes) <- y
 print(kable(matchRes))
 ```
 
+**Interpretation** If undivide the standardized mean differences by 100, we meet the balance criteria of the standardized mean difference being close to 0 and the variance being close to 1. Let's print out the model results to see how Tubura and control farmers compare on key soil meterics. These results should supercede the naive balance tables presented above.
 
 
 --end
