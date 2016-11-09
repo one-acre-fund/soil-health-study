@@ -1175,5 +1175,32 @@ print(kable(coefTable))
 
 ### Models with PSM matched farmers
 
+Per Robert's suggestion, now that we've matched Tubura and non-Tubura farmers, let's assess the severity of Tubura tenure on key soil health outcomes.
+
+```{r}
+tenureTab <- lapply(1:length(m), function(model){
+  
+  dm <- as.data.frame(rbind(d[m[[model]][[1]]$index.treated,], 
+              d[m[[model]][[1]]$index.control,]))
+  dm$client_tenure <- dm$client*dm$total.seasons
+  mod <- lm(as.formula(paste("dm[,psmList[[model]]$y] ~", "total.seasons + as.factor(cell)", sep ="")), data=dm)
+  return(mod)
+})
+```
+
+
+```{r, results='asis'}
+stargazer(tenureTab, type="html", 
+          title = "2016A Rwanda Soil Health Baseline - PSM Tenure",
+          covariate.labels = c("One Acre Fund Tenure"),
+          dep.var.caption = "",
+          dep.var.labels = "",
+          column.labels = c(gsub("m3.","", soilVars)),
+          notes = "Includes FE for cell",
+          omit=c("cell"), out=paste(od, "rw_baseline_matched_tenure.htm", sep="/"))
+```
+**Interpretation**: Using a PSM matched sample, the models above assess the effects of additional years of farming with Tubura. Numerous control farmers have also been Tubura farmers in previous seasons. Thus, I'm keeping the model simple instead of adding a client*tenure interaction. We can easily test that as well though.
+
+
 
 --end
