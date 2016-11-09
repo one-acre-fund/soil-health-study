@@ -466,7 +466,7 @@ I'm going to start with behaviors by sections and then move to a more comprehens
 
 **Check** for multicollinearity before adding number of seasons of agronomic inputs on the same side of the regression.  
 
-```{r, results='asis', fig.align='center'}
+```{r}
 suppressMessages(library(stargazer))
 
 inputUse <- c("n_season_fert","n_season_compost", "n_season_lime", "n_season_fallow")
@@ -476,7 +476,7 @@ cor(d[,inputUse], use="complete.obs")
 
 **Interpretation**: The strongest correlation between the input use intensity variables is between seasons of fertilizer and compost use, ~0.35. While this is on the higher end it's not necessarily cause for alarm.
 
-```{r}
+```{r results='asis'}
 inputUse <- paste(c("n_season_fert","n_season_compost", "n_season_lime", "n_season_fallow"), collapse= " + ")
 
 list1 <- lapply(soilVars, function(x){
@@ -564,7 +564,9 @@ logTrans <- do.call(cbind, lapply(list2, function(x){
   return(tenPercent)
 }))
 colnames(logTrans) <- soilVars
+```
 
+```{r results='asis'}
 print(kable(logTrans))
 ```
 
@@ -1069,6 +1071,9 @@ matchRes <- do.call(rbind, lapply(1:length(m), function(model){
   return(val)
 }))
 rownames(matchRes) <- y
+```
+
+```{r results='asis'}
 print(kable(matchRes))
 ```
 
@@ -1140,6 +1145,9 @@ matchRes <- do.call(rbind, lapply(1:length(m), function(model){
   return(val)
 }))
 rownames(matchRes) <- y
+```
+
+```{r results='asis'}
 print(kable(matchRes))
 ```
 
@@ -1156,8 +1164,13 @@ coefTable <- do.call(rbind, lapply(1:length(m), function(model){
 }))
 row.names(coefTable) <- y
 coefTable$pval.adj <- round(p.adjust(coefTable$pval, method="fdr"),3)
+```
+
+```{r results='asis'}
 print(kable(coefTable))
 ```
+
+
 **Interpretation**: Propensity score matching gives us a comparable treatment and control group. The table above shows that after matching on those characteristics, there are effectively no differences between One Acre Fund farmer and Tubura farmers. The unadjusted p-values show 1AF farmers to have slow levels of soil nitrogen but this finding disappears if we account for running multiple matching models.
 
 ### Models with PSM matched farmers
