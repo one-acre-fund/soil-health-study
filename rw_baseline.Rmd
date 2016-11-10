@@ -745,15 +745,52 @@ pca1$rotation
 
 The first principal component is composed primarily of soil pH related variables, Ca, Mg, and pH. The second capture N and C. These groupings (pH grouping and C and N) are not all that surprising given that our predicted soil variable set is fairly limited.
 
+If the variables have the same sign that indicates that they are positively correlated in the principal component. In the first principal component, we see Ca, Mg and pH loading in the same direction. In the second principal component, we see N and C moving in the same direction. Ca and Mg are also associated in the same direction but to a lesser extent. 
+
 
 ```{r}
 ggplot(as.data.frame(pca1$x),aes(x=PC1,y=PC2, color=d$fertility_qual)) + geom_point() + 
   labs(title = "PCA of soil attributes and farmer perceived soil fertility",
        x = "First PCA", y= "Second PCA", color="Field Quality")
 ```
-When we layer farmer perceived soil fertility on top of the principal component scatter plot, no clear pattern emergres. 
+When we layer farmer perceived soil fertility on top of the principal component scatter plot, no clear pattern emergres. Fields with the same fertilitiy, less and more fertility are indistinguishable by the principal components. Thus, there is not a clear profile for farmer identified healthier soil or weaker soil based on principal components.
+
+### Geographic Descriptors - PCA for soil profiles
+This section will build on the principal component work above and look at improving understanding of local context to inform local adaptation. Here we will also construct soil profiles to simplify the scaling of promising products and practices to targeted locations. We don't have a full suite of predictors so we can't look at a comprehensive soil profile.
+
+```{r}
+ggplot(as.data.frame(pca1$x),aes(x=PC1,y=PC2, color=d$district)) + geom_point() + 
+  labs(title = "PCA of soil attributes and district",
+       x = "First PCA", y= "Second PCA", color="District")
+```
+
+When we color the figure by district, we start to see a pattern emerge. However, there are too many points to clearly detect where all districts fall. Let's instead look at the data by AEZ.
 
 
+```{r}
+ggplot(as.data.frame(pca1$x),aes(x=PC1,y=PC2, color=d$aez)) + geom_point() + 
+  labs(title = "PCA of soil attributes and AEZ",
+       x = "First PCA", y= "Second PCA", color="AEZ")
+```
+
+Coloring the points by AEZ, we see a much clearer trend. The east is to the right of our graphic, then the central plateau followed by lake Kive and then Congo Nile in green on the left. What does this mean in terms of actual soil features? Let's look at the figure but with the variable associations layered on top. See here for [documentation](http://stats.stackexchange.com/questions/88880/does-the-sign-of-scores-or-of-loadings-in-pca-or-fa-have-a-meaning-may-i-revers)
+
+```{r}
+library( pca3d )
+pca2d( pca1, biplot= TRUE, shape= 19, col= "black"  )
+```
+
+It appears that the right side of the graph, the eastern AEZ, is associated with pH, Mg and Ca. This indicates that as the first principal component increases, so does the level of pH, Ca and Mg. Conversely, total N and C increase as the second principal component decreases. In terms of the AEZ figure above, this suggest that the Congo Nile AEZ has higher levels of N and C. Let's test these hypotheses with a simple summary table:
+
+```{r results='asis'}
+print(kable(aggregate(d[,soilVars], by=list(d$aez), function(x){
+  round(mean(x, na.rm=T),5)
+})))
+```
+
+Confirmed! This likely also suggests that Congo Nile is at a higher altitude than the surrounding areas and that eastern Rwanda has relatively less weathered soils compared to western.
+
+**Consequence for trial placement**: The Rwanda program is already blocking trials by AEZ but these data confirm that AEZ reflects meaningfu soil variation and thus captures key growing conditions for Rwandan farmers. Blocking trials by AEZ in Rwanda will enable us to evaluate trial hypotheses in more neutral pH ranges and higher N and C conditions.
 
 ### Principal Component Analysis (wet chemistry values)
 ```{r}
@@ -994,9 +1031,6 @@ suppressMessages(
 })
 dev.off()
 ```
-
-## Geographic Descriptors
-This section will look at improving understanding of local context to inform local adaptation. It will also construct soil profiles to simplify the scaling of promising products and practices to targeted locations.
 
 ## Propensity Score Matching
 We need to do a more rigorous job of accounting for differences between Tubura farmers and identified control farmers. Execute propensity score matching (PSM) to identify control farmers that overlap with Tubura farmers with regard to their likelihood of being a Tubura farmer.
