@@ -511,16 +511,24 @@ for(i in 1:length(agPrac)){
 # since these are all skewed, consider a log transform 
 for(i in 1:length(agPrac)){
   print(
-    ggplot(d, aes(x=log(d[,agPrac[i]]+1))) + geom_histogram(binwidth = 1) +
+    ggplot(d, aes(x=log10(d[,agPrac[i]]+1))) + geom_histogram(binwidth = 0.25) +
       labs(x = agPrac[i])
         )
 }
+
+# visualize the outcomes as well to see if a transformation is warranted
+for(i in 1:length(soilVars)){
+  print(
+    ggplot(d, aes(x=d[,soilVars[i]])) + geom_density() +
+      labs(x = soilVars[i], title = soilVars[i])
+        )
+}
+
 
 d$logFert <- log(d$n_season_fert+1)
 d$logCompost <- log(d$n_season_compost+1)
 d$logLime <- log(d$n_season_lime+1)
 d$logFallow <- log(d$n_season_fallow+1)
-
 ```
 
 Let's look at the log results: See [here](http://www.cazaar.com/ta/econ113/interpreting-beta) for guidance on intepreting log transformed right hand side variables.
@@ -770,13 +778,13 @@ When we color the figure by district, we start to see a pattern emerge. However,
 ```{r}
 ggplot(as.data.frame(pca1$x),aes(x=PC1,y=PC2, color=d$aez)) + geom_point() + 
   labs(title = "PCA of soil attributes and AEZ",
-       x = "First PCA", y= "Second PCA", color="AEZ")
+       x = "First PCA - Ca/Mg/pH", y= "Second PCA - N and C", color="AEZ")
 ```
 
 Coloring the points by AEZ, we see a much clearer trend. The east is to the right of our graphic, then the central plateau followed by lake Kive and then Congo Nile in green on the left. What does this mean in terms of actual soil features? Let's look at the figure but with the variable associations layered on top. See here for [documentation](http://stats.stackexchange.com/questions/88880/does-the-sign-of-scores-or-of-loadings-in-pca-or-fa-have-a-meaning-may-i-revers)
 
 ```{r}
-library( pca3d )
+library(pca3d)
 pca2d( pca1, biplot= TRUE, shape= 19, col= "black"  )
 ```
 
@@ -797,20 +805,27 @@ Confirmed! This likely also suggests that Congo Nile is at a higher altitude tha
 wetVal <- d[complete.cases(d[,wetVars]),]
 
 pca2 <- prcomp(wetVal[,c("wet.C.E.C", "wet.pH", "wet.Mg", "wet.Ca")], center=TRUE, scale=TRUE)
+
+pca2 <- prcomp(wetVal[, wetVars], center=TRUE, scale=TRUE)
 ```
 
 
 ```{r}
-plot(pca2)
-ggplot(as.data.frame(pca2$x),aes(x=PC1,y=PC2)) + geom_point()
-pca2$rotation
+#plot(pca2)
+ggplot(as.data.frame(pca2$x),aes(x=PC1,y=PC2, color=as.factor(wetVal$aez))) + geom_point() +
+  labs(title = "Wet Chem PCA with AEZ", x = "First PC", y="Second PC",
+       color="AEZ")
+#pca2$rotation
+```
+
+```{r}
+pca2d(pca2, biplot= TRUE, shape= 19, col= "black")
 ```
 
 ```{r results='asis'}
 
 # put pca2$x PC1 in the main data to run the fertility perception model.
 #mod8 <- lm(
-
 suppressWarnings(
 stargazer(list7, type="html", 
           title = "2016A Rwanda Soil Health Baseline - Farmer Perceived Fertility (wet chem)",
@@ -825,17 +840,16 @@ stargazer(list7, type="html",
 )
 ```
 
-
 ### Measured Yields
 We don't have measured yield data for the Rwanda baseline. Skip this for now.
 
 ### Distributions of soil health levels for different sub-groups
 
-## Visualizations
+# Mapping
 
 ### Soil health maps for soil health study areas
 
-```{r eval=FALSE}
+```{r cache=TRUE}
 #crdref <- CRS('+proj=longlat +datum=WGS84')
 crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
 e <- d[!is.na(d$lon),]
@@ -858,7 +872,7 @@ plotReady <- dplyr::left_join(frw, ss.soil, by=c("id"="Group.1"))
 ### Plot simple summary of soil characteristics
 
 Consider revising these maps to a smaller greographic unit. Add the name of the location for uninitiated users.
-```{r, eval=FALSE}
+```{r cache=TRUE}
 library(RColorBrewer)
 mapList <- list()
 for(i in 1:length(soilVars)){
@@ -890,7 +904,7 @@ print(mapRes)
 
 ```
 
-```{r message=FALSE, eval=FALSE}
+```{r message=FALSE, cache=TRUE}
 pdf(file=paste(md, "rw_shs_baseline_soil_maps.pdf", sep = "/"), width=11, height=8.5)
 for(i in 1:length(mapList)){
 print(mapList[[i]])
@@ -912,12 +926,12 @@ The code below will run 5 K-fold cross validation to compare interpolation model
 
 **Check that I'm handling the projection correctly with Robert**
 
-```{r eval= FALSE}
+```{r cache=TRUE}
 #proj4string(ss) <- CRS("+init=epsg:4326")
 ss <- spTransform(ss, CRS=("+proj=utm +zone=36N +datum=WGS84"))
 ```
 
-```{r eval=FALSE}
+```{r cache=TRUE}
 
 # root mean sq error for evaluating models
 RMSE <- function(observed, predicted) {
@@ -972,7 +986,7 @@ cv <- function(x) {
 Now loop over the variables of interest where x is the soilVar variable. 
 
 
-```{r eval=FALSE}
+```{r cache=TRUE}
 output <- lapply(soilVars, function(x){
   ini <- data.frame(cv(x))
   ini$ave <- apply(ini[,1:5], 1, function(y){mean(y, na.rm=T)})
@@ -983,7 +997,7 @@ output <- lapply(soilVars, function(x){
 
 ### Interpolated soil maps
 
-```{r message=FALSE, eval=FALSE}
+```{r message=FALSE, cache=TRUE}
 r <- raster(res=1/12)
 r <- crop(r, floor(extent(rw)))
 
@@ -995,13 +1009,13 @@ maps <- lapply(soilVars, function(x){
   tps <- mask(tps, rw) # cuts the tps raster down to the rw boundaries
   x <- gsub("m3.", "", x)
   
-  pal <- colorNumeric(palette = "Reds", values(tps), na.color = "transparent")
+  palColors <- colorNumeric(palette = "Reds", values(tps), na.color = "transparent")
   
   suppressWarnings(
   leaflet() %>% addTiles() %>%
   addRasterImage(tps, colors=pal, opacity = 0.8) %>%
   setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=8) %>%
-  addLegend(pal = pal, values = values(tps), title = paste("Soil Value ", x, sep=""))
+  addLegend(pal = palColors, values = values(tps), title = paste("Soil Value ", x, sep=""))
   )
 })
 
@@ -1012,7 +1026,7 @@ tagList(maps)
 
 Print out the interpolated values for inclusion in the report. 
 
-```{r echo=FALSE, eval=FALSE}
+```{r echo=FALSE, cache=TRUE}
 pdf(file=paste(md, "rw_shs_bl_interpolation_soil_vars.pdf", sep = '/'), width=11, height=8.5)
 lapply(soilVars, function(x) {
   m <- Tps(coordinates(ss), ss@data[,x])
@@ -1149,8 +1163,35 @@ psmList <- list(
        psmVars = paste(c("female", "age", "hhsize","as.factor(district)",
                    "cows", "goats", "chickens", "pigs", "sheep"),
                    collapse=" + "),
-       y="Total.C")
+       y="Total.C"),
+  list(tr = d$client,
+       psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
+                   "cows", "goats", "chickens", "pigs", "sheep",
+                   "age2", "hhsize2"),
+                   collapse=" + "),
+       y="n_season_fert"),
+  list(tr = d$client,
+       psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
+                   "cows", "goats", "chickens", "pigs", "sheep",
+                   "age2", "hhsize2"),
+                   collapse=" + "),
+       y="n_season_compost"),
+  list(tr = d$client,
+       psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
+                   "cows", "goats", "chickens", "pigs", "sheep",
+                   "age2", "hhsize2"),
+                   collapse=" + "),
+       y="n_seasons_leg_1"),
+  list(tr = d$client,
+       psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
+                   "cows", "goats", "chickens", "pigs", "sheep",
+                   "age2", "hhsize2"),
+                   collapse=" + "),
+       y="n_season_fallow")
 )
+
+# wanted to include alt but we have missing values - resolve this.
+# also skipping lime because of a small number of positive values
 
 # PSM
 set.seed(20161102)
@@ -1165,7 +1206,7 @@ m <- lapply(psmList, function(listInput){
   matchRes <- MatchBalance(tr ~ d[,listInput$y], match.out=mod, nboots=500, data=d, print.level = 0)
   return(list(mod, matchRes))
 })
-#lapply(m, summary)
+
 ```
 
 The models can now vary by outcome. Let's see if we can improve our results.
@@ -1178,7 +1219,12 @@ matchRes <- do.call(rbind, lapply(1:length(m), function(model){
     sdiff.adj = m[[model]][[2]]$AfterMatching[[1]]$sdiff/100))
   return(val)
 }))
-rownames(matchRes) <- y
+
+namesInput <- NULL
+for(i in 1:length(psmList)){
+  namesInput[i] <- psmList[[i]]$y
+}
+rownames(matchRes) <- namesInput
 ```
 
 ```{r results='asis'}
@@ -1186,6 +1232,8 @@ print(kable(matchRes))
 ```
 
 **Interpretation** If undivide the standardized mean differences by 100, we meet the balance criteria of the standardized mean difference being close to 0 and the variance being close to 1. Let's print out the model results to see how Tubura and control farmers compare on key soil meterics. These results should supercede the naive balance tables presented above.
+
+We achieve acceptable balance for the soil attributes but we don't for seasons of fertilizer use. This is isn't entirely unexpected given that Tubura's primary service is providing fertilizer inputs and training.
 
 ```{r}
 coefTable <- do.call(rbind, lapply(1:length(m), function(model){
@@ -1196,7 +1244,7 @@ coefTable <- do.call(rbind, lapply(1:length(m), function(model){
   res = data.frame(beta, pval)
   return(res)
 }))
-row.names(coefTable) <- y
+row.names(coefTable) <- namesInput
 coefTable$pval.adj <- round(p.adjust(coefTable$pval, method="fdr"),3)
 ```
 
@@ -1204,8 +1252,20 @@ coefTable$pval.adj <- round(p.adjust(coefTable$pval, method="fdr"),3)
 print(kable(coefTable))
 ```
 
+```{r}
+write.csv(coefTable, file=paste(od, "psm coefficients.csv", sep = "/"),
+          row.names = F)
+```
 
-**Interpretation**: Propensity score matching gives us a comparable treatment and control group. The table above shows that after matching on those characteristics, there are effectively no differences between One Acre Fund farmer and Tubura farmers. The unadjusted p-values show 1AF farmers to have slow levels of soil nitrogen but this finding disappears if we account for running multiple matching models.
+**Interpretation**: Propensity score matching gives us a comparable treatment and control group. The table above shows that after matching on those characteristics, there are effectively no differences between One Acre Fund farmer and Tubura farmers on soil attributes. The unadjusted p-values show 1AF farmers to have slow levels of soil nitrogen but this finding disappears if we account for running multiple matching models.
+
+When we expand the outcome variable set to include practice variables, we first no longer get a good propensity score match for all variables. 
+
+* Tubura participation so strongly overlaps with fertilizer use that the comparison group is no longer comparable. The resulting model shows a significant difference in seasons of fertilizer use.
+* Tubura farmers have used compost for 0.3 more seasons than non-Tubura farmers. We don't observe a difference in N or C levels in the soil attributes however.
+* We don't see a difference between Tubura and non-Tubura farmers on seasons of legumes being the primary crop in the study plot.
+
+
 
 ### Models with PSM matched farmers
 
@@ -1222,17 +1282,17 @@ tenureTab <- lapply(1:length(m), function(model){
 })
 ```
 
-
 ```{r, results='asis'}
+suppressWarnings(
 stargazer(tenureTab, type="html", 
           title = "2016A Rwanda Soil Health Baseline - PSM Tenure",
           covariate.labels = c("One Acre Fund Tenure"),
-          dep.var.caption = "",
-          dep.var.labels = "",
-          column.labels = c(gsub("m3.","", soilVars)),
+          #column.labels = c(gsub("m3.", "", as.character(namesInput))),
           notes = "Includes FE for cell",
           omit=c("cell"), out=paste(od, "rw_baseline_matched_tenure.htm", sep="/"))
+)
 ```
+
 **Interpretation**: Using a PSM matched sample, the models above assess the effects of additional years of farming with Tubura. Numerous control farmers have also been Tubura farmers in previous seasons. Thus, I'm keeping the model simple instead of adding a client*tenure interaction. We can easily test that as well though.
 
 
