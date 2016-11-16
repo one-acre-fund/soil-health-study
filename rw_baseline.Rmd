@@ -647,6 +647,19 @@ stargazer(list4, type="html",
 Thus far we have looked at aggregated historical plot level practices and their effect on soil health. We also asked farmers about their cultivation practices on their plot in the previous season, 15B. We have more precise information for fertilizer, compost and liming practices for the 15B season.
 
 ```{r}
+intensityVars <- c("field_kg_fert1_15b", "field_kg_fert2_15b",
+                   "field_kg_compost_15b", "kg_lime_15b")
+
+# scale all the field application variables to ares
+d$ares <- d$field.size/100
+d$fert1.are <- d$field_kg_fert1_15b/d$ares
+d$fert2.are <- d$field_kg_fert2_15b/d$ares
+d$compost.are <- d$field_kg_compost_15b/d$ares
+d$lime.are <- d$kg_lime_15b/d$ares
+```
+
+
+```{r}
 # this should be kg of fertilizer used in this field. Compost is off the charts. Convert this to compost per sq meter
 d$fert_15b_log <- ifelse(d$field_kg_fert1_15b<=20, 
                          log(d$field_kg_fert1_15b+1), NA)
@@ -1209,7 +1222,12 @@ psmList <- list(
                    "cows", "goats", "chickens", "pigs", "sheep", "age2",
                    "hhsize2"),
                    collapse=" + "),
-       y="n_seasons_leg_2")
+       y="n_seasons_leg_2"),
+  list(tr = "client",
+       psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
+                   "cows", "goats", "chickens", "pigs", "sheep"),
+                   collapse=" + "),
+       y="")
 )
 
 # wanted to include alt but we have missing values - resolve this.
