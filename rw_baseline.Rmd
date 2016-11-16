@@ -1265,10 +1265,13 @@ We achieve acceptable balance for the soil attributes but we don't for seasons o
 ```{r}
 coefTable <- do.call(rbind, lapply(1:length(m), function(model){
   beta = round(m[[model]][[1]]$est.noadj,3)
-  pval = (1 - pnorm(abs(m[[model]][[1]]$est/m[[model]][[1]]$se.standard))) * 2
+  mean.Tr = round(m[[model]][[2]]$AfterMatching[[1]][[3]], 2)
+  mean.Co = round(m[[model]][[2]]$AfterMatching[[1]][[4]], 2)
+  pval = m[[model]][[2]]$AfterMatching[[1]][[10]][[3]] # p.value
+  #pval = (1 - pnorm(abs(m[[model]][[1]]$est/m[[model]][[1]]$se.standard))) * 2
   pval = ifelse(pval < 0.001, "0.001", round(pval, 3))
   
-  res = data.frame(beta, pval)
+  res = data.frame(beta, mean.Tr, mean.Co, pval)
   return(res)
 }))
 row.names(coefTable) <- namesInput
@@ -1282,6 +1285,15 @@ print(kable(coefTable))
 ```{r}
 write.csv(coefTable, file=paste(od, "psm coefficients.csv", sep = "/"),
           row.names = T)
+
+# sort by the order Eric wants
+coefTableES1 <- coefTable[c(3,5,4,1,2),]
+
+write.csv(coefTableES1, file=paste(od, "psm coefficients ordered for ES.csv", sep = "/"))
+
+coefTableES2 <- coefTable[c(6,7,9,8,11),]
+
+write.csv(coefTableES2, file=paste(od, "psm coefficients ordered for ES_agprac.csv", sep = "/"))
 ```
 
 **Interpretation**: Propensity score matching gives us a comparable treatment and control group. The table above shows that after matching on those characteristics, there are effectively no differences between One Acre Fund farmer and Tubura farmers on soil attributes. The unadjusted p-values show 1AF farmers to have slow levels of soil nitrogen but this finding disappears if we account for running multiple matching models.
