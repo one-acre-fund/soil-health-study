@@ -95,6 +95,15 @@ names(d)[names(d)=="field_dim"] <- "field_dim1"
 names(d)[names(d)=="v51"] <- "field_dim2"
 ```
 
+Address unusual field sizes
+
+```{r}
+ggplot(d, aes(x=field_dim1, y=field_dim2)) + geom_point()
+```
+
+It seems really unlikely that fields are 200 meters long while only being 20 meters wide. I don't know how to check this though. 
+
+
 Take care of demographic data formatting issues
 ```{r formatting}
 # deal with names and drop unnecessary variables
@@ -647,34 +656,35 @@ stargazer(list4, type="html",
 Thus far we have looked at aggregated historical plot level practices and their effect on soil health. We also asked farmers about their cultivation practices on their plot in the previous season, 15B. We have more precise information for fertilizer, compost and liming practices for the 15B season.
 
 ```{r}
-intensityVars <- c("field_kg_fert1_15b", "field_kg_fert2_15b",
-                   "field_kg_compost_15b", "kg_lime_15b")
-
 # scale all the field application variables to ares
 d$ares <- d$field.size/100
 d$fert1.are <- d$field_kg_fert1_15b/d$ares
 d$fert2.are <- d$field_kg_fert2_15b/d$ares
 d$compost.are <- d$field_kg_compost_15b/d$ares
 d$lime.are <- d$kg_lime_15b/d$ares
+
+intensityVars <- c("fert1.are", "fert2.are",
+                   "compost.are", "lime.are")
+
+cor(d[,intensityVars], use="complete.obs")
+```
+### Graph the application/are variables
+
+```{r}
+for(i in 1:length(intensityVars)){
+  print(
+  ggplot(d, aes(x=d[,intensityVars[i]])) + geom_density() +
+      labs(x = intensityVars[i], title = intensityVars[i])
+  )
+}
 ```
 
+**Conclusion - Take 1**: The application rate per are variables are weird. I think it's because of the field dimensions. I'm going to go back to the field dimensions and check this. 
 
 ```{r}
 # this should be kg of fertilizer used in this field. Compost is off the charts. Convert this to compost per sq meter
-d$fert_15b_log <- ifelse(d$field_kg_fert1_15b<=20, 
-                         log(d$field_kg_fert1_15b+1), NA)
 
-d$field_dim <- d$field_dim1*d$field_dim2
-
-d$compost_15b_sqm <- d$field_kg_compost_15b/d$field_dim
-d$compost_15b_sqm_log <- log(d$compost_15b_sqm+1)
-
-
-# more than 20 kg per are seems like too much.
-suppressMessages(qplot(d$fert_15b_log, binwidth=1))
-suppressMessages(qplot(d$compost_15b_sqm_log, binwidth=1))
-
-previousSeason <- paste("fert_15b_log", "compost_15b_sqm_log", "as.factor(cell)", sep=" + ")
+previousSeason <- paste("fert1.are", "as.factor(cell)", sep=" + ")
 
 list5 <- lapply(soilVars, function(x){
   mod <- lm(as.formula(paste("d[,x] ~", previousSeason, sep="")), data=d)
@@ -685,7 +695,7 @@ list5 <- lapply(soilVars, function(x){
 ```{r results='asis'}
 stargazer(list5, type="html", 
           title = "2016A Rwanda Soil Health Baseline - 15B practices",
-          covariate.labels = c("Fertilizer Rate (log)", "Compost Rate kg/m^2 (log)"),
+          covariate.labels = c("Fertilizer Rate (log)"),
           dep.var.caption = "",
           dep.var.labels = "",
           column.labels = c(gsub("m3.","", soilVars)),
