@@ -1095,7 +1095,9 @@ We need to do a more rigorous job of accounting for differences between Tubura f
 ```{r}
 cor(d[, grep("betail_", names(d))], use='complete.obs')
 names(d)[grep("betail_", names(d))] <- c("cows", "goats", "chickens", "pigs", "sheep")
+```
 
+```{r}
 psmVars <- paste(c("female", "age", "hhsize", "total.seasons",
                    "cows", "goats", "chickens", "pigs", "sheep"),
                    collapse=" + ")
@@ -1237,7 +1239,13 @@ psmList <- list(
                    "cows", "goats", "chickens", "pigs", "sheep", "age2",
                    "hhsize2"),
                    collapse=" + "),
-       y="n_seasons_leg_2")
+       y="n_seasons_leg_2"),
+  list(tr = "client",
+       psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
+                   "cows", "goats", "chickens", "pigs", "sheep", "age2",
+                   "hhsize2"),
+                   collapse=" + "),
+       y="n_season_lime")
 )
 
 # list(tr = "client",
@@ -1352,7 +1360,8 @@ coefTableES1 <- coefTable[c(3,5,4,1,2),]
 
 write.csv(coefTableES1, file=paste(od, "psm coefficients ordered for ES.csv", sep = "/"))
 
-coefTableES2 <- coefTable[c(6,7,9,8,11),]
+# 11/17 added lime
+coefTableES2 <- coefTable[c(6,7,12,9,8,11),]
 
 write.csv(coefTableES2, file=paste(od, "psm coefficients ordered for ES_agprac.csv", sep = "/"))
 ```
@@ -1381,7 +1390,7 @@ tenureTab <- lapply(1:length(m), function(model){
 ```
 
 ```{r, results='asis'}
-modNames <- c("Calcium", "Magnesium", "pH", "Nitrogen", "Carbon", "Seasons fertilizer", "Seasons compost", "Seasons legumes", "Seasons fallow", "Fertilizer (log)")
+modNames <- c("Calcium", "Magnesium", "pH", "Nitrogen", "Carbon", "Seasons fertilizer", "Seasons compost", "Seasons legumes", "Seasons fallow", "Fertilizer (log)", "Season Sec. legumes")
 
 suppressWarnings(
 stargazer(tenureTab, type="html", 
