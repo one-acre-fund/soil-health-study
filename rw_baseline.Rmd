@@ -106,6 +106,7 @@ It seems really unlikely that fields are 200 meters long while only being 20 met
 
 ```{r}
 # clean field dimensions here - winsor the values to something reasonable.
+d[(d$field_dim1>=100 | d$field_dim2>=100) & !is.na(d$field_dim1), c("field_dim1", "field_dim2")]
 ```
 
 
@@ -194,7 +195,16 @@ varlist <- c("client", "own", "crop1_15b_seedkg", "crop1_15b_yield", "crop1_15b_
 
 # recode characters to numerics
 d[, varlist] <- sapply(d[,varlist], as.numeric)
+```
 
+# Sort out kgs of lime applied
+```{r}
+table(d$kg_lime_15b, useNA = 'ifany')
+d$kg_lime_15b <- ifelse(abs(d$kg_lime_15b)==88, NA, d$kg_lime_15b)
+```
+
+
+```{r}
 # divide out GPS coordinates
 # http://rfunction.com/archives/1499
 
@@ -527,23 +537,34 @@ stargazer(list1, type="html",
 
 **Interpretation** The naive model suggests that when we include site level fixed effects, duration of agronomic practices don't have a big effect on soil health outcomes. However, some of the practice intensity variables are not well distributed. Let's take a look at a log transformation. I'm adding one to the variables as to not end up with lots of Inf values.
 
+Log transformations in theory are appropriate for variables that are right skewed (vavlues clustered to the left of the distribution) and see diminishing returns to increasing values. The shape of the data suggests a log transformation but it's debateable whether the relationship is diminishing.
+
 ```{r}
 agPrac <- c(names(d[grep('n_season_', names(d))]))
 
 for(i in 1:length(agPrac)){
   print(
-    ggplot(d, aes(x=d[,agPrac[i]])) + geom_histogram(binwidth = 1) +
-      labs(x = agPrac[i])
+    ggplot(d, aes(x=d[,agPrac[i]])) + geom_density() +
+      labs(x = paste(agPrac[i], " No transform", sep = ""))
         )
 }
 
 # since these are all skewed, consider a log transform 
 for(i in 1:length(agPrac)){
   print(
-    ggplot(d, aes(x=log10(d[,agPrac[i]]+1))) + geom_histogram(binwidth = 0.25) +
-      labs(x = agPrac[i])
+    ggplot(d, aes(x=log10(d[,agPrac[i]]+1))) + geom_density() + 
+      labs(x = paste(agPrac[i], " Log transform", sep = ""))
         )
 }
+
+# look at other transfomations
+for(i in 1:length(agPrac)){
+  print(
+    ggplot(d, aes(x=d[,agPrac[i]]^(1/3))) + geom_density() +
+      labs(x = paste(agPrac[i], " cubic root transform", sep = ""))
+        )
+}
+
 
 # visualize the outcomes as well to see if a transformation is warranted
 for(i in 1:length(soilVars)){
@@ -560,7 +581,24 @@ d$logLime <- log(d$n_season_lime+1)
 d$logFallow <- log(d$n_season_fallow+1)
 ```
 
-Let's look at the log results: See [here](http://www.cazaar.com/ta/econ113/interpreting-beta) for guidance on intepreting log transformed right hand side variables.
+Or look at BoxCox graph to empirically determine the right transformation. Log is assuming a diminishing return to an increasing X. That's probably not the case with fertilizer. We'd actually expect an increasing return as values get larger. We use boxcox to see what the data suggest. We interpret it as follows:
+
+* lambda = 2 -> square
+* lambda = 1 -> no transformation
+* lambda = 0.5 -> square root
+* lambda = 0 -> log
+* lamdba = -1 -> inverse
+
+```{r}
+library(MASS)
+for(i in 1:length(agPrac)){
+boxcox(lm(pH ~ d[,agPrac[i]], data=d))
+}
+```
+
+For pH at least it seems like a log transform is appropriate. We can run this for all other variables as well to see what we get as well.
+
+Let's look at the log results: See [here](http://www.cazaar.com/ta/econ113/interpreting-beta) and [here](http://www.kenbenoit.net/courses/ME104/logmodels2.pdf) for guidance on intepreting log transformed right hand side variables. See [here](http://seismo.berkeley.edu/~kirchner/eps_120/Toolkits/Toolkit_03.pdf) for additional guidance on choosing a transformation.
 
 **How to interpret RHS log transform**: For a linear multivariate OLS regression, we say "a one unit increase in X causes a (coefficient) change in Y." For a linear-log regression where the X variable is log transformed, we say a L percent change in X leads to a (coefficient*L) change in Y.
 
@@ -686,9 +724,21 @@ for(i in 1:length(intensityVars)){
 
 **Conclusion - Take 1**: The application rate per are variables are weird. I think it's because of the field dimensions. I'm going to go back to the field dimensions and check this. 
 
+Let's look at the dimensions of the fields that have large application rates
+```{r}
+d[d$fert1.are>10 & !is.na(d$fert1.are), c("field_dim1", "field_dim2", "field.size", "fert1.are")]
+
+d[d$fert2.are>10 & !is.na(d$fert2.are), c("field_dim1", "field_dim2", "field.size", "fert2.are")]
+
+d[d$compost.are>500 & !is.na(d$compost.are), c("field_dim1", "field_dim2", "field.size", "compost.are")]
+# there's a field that is 1 meter wide? Surely not.
+
+d[abs(d$lime.are)>40 & !is.na(d$lime.are), c("field_dim1", "field_dim2", "field.size", "lime.are")]
+# how is there a negative quantity of lime?
+```
+
 ```{r}
 # this should be kg of fertilizer used in this field. Compost is off the charts. Convert this to compost per sq meter
-
 previousSeason <- paste("fert1.are", "as.factor(cell)", sep=" + ")
 
 list5 <- lapply(soilVars, function(x){
