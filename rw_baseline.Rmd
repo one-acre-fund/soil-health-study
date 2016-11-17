@@ -32,6 +32,7 @@ suppressMessages(library(fields))
 library(gstat)
 library(htmltools)
 suppressMessages(library(Matching))
+library(reshape2)
 options("RStata.StataVersion" = 12)
 options("RStata.StataPath" = "/Applications/Stata/StataSE.app/Contents/MacOS/stata-se")
 #chooseStataBin("/Applications/Stata/StataSE.app/Contents/MacOS/stata-se")
@@ -102,6 +103,10 @@ ggplot(d, aes(x=field_dim1, y=field_dim2)) + geom_point()
 ```
 
 It seems really unlikely that fields are 200 meters long while only being 20 meters wide. I don't know how to check this though. 
+
+```{r}
+# clean field dimensions here - winsor the values to something reasonable.
+```
 
 
 Take care of demographic data formatting issues
@@ -1232,13 +1237,14 @@ psmList <- list(
                    "cows", "goats", "chickens", "pigs", "sheep", "age2",
                    "hhsize2"),
                    collapse=" + "),
-       y="n_seasons_leg_2"),
-  list(tr = "client",
-       psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
-                   "cows", "goats", "chickens", "pigs", "sheep"),
-                   collapse=" + "),
-       y="")
+       y="n_seasons_leg_2")
 )
+
+# list(tr = "client",
+#        psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
+#                    "cows", "goats", "chickens", "pigs", "sheep"),
+#                    collapse=" + "),
+#        y="")
 
 # wanted to include alt but we have missing values - resolve this.
 # also skipping lime because of a small number of positive values
@@ -1257,7 +1263,7 @@ m <- lapply(psmList, function(listInput){
   mod <- Match(Y = k[,listInput$y], Tr = k[,listInput$tr], X = reg$fitted, ties=FALSE, replace=FALSE, caliper=0.25, estimand = "ATE")	
   )
   matchRes <- MatchBalance(k[,listInput$tr] ~ k[,listInput$y], match.out=mod, nboots=500, data=k, print.level = 0)
-  print(listInput$y)
+  #print(listInput$y)
   return(list(mod, matchRes))
   
 })
@@ -1311,6 +1317,33 @@ print(kable(coefTable))
 ```
 
 ```{r}
+thresh <- d %>% group_by(client) %>% summarize(
+  count = n(),
+  ph = sum(pH<5.8),
+  carbon = sum(Total.C < 2),
+  nitrogen = sum(Total.N < 0.1),
+  calcium = sum(m3.Ca < 720),
+  magnesium = sum(m3.Mg < 100)
+) %>% mutate(
+  under.ph = paste(paste(round(ph/count,4)*100, "%", sep=""), " (", ph, ")", sep=""),
+  under.carbon = paste(paste(round(carbon/count,4)*100,"%", sep=""), " (", carbon, ")", sep=""),
+  under.nitrogen = paste(paste(round(nitrogen/count,4)*100, "%", sep=""), " (", nitrogen, ")", sep=""),
+  under.calcium = paste(paste(round(calcium/count,4)*100, "%", sep=""), " (", calcium, ")", sep=""),
+  under.mag = paste(paste(round(magnesium/count,4)*100,"%", sep=""), " (", magnesium, ")", sep="")
+) %>% as.data.frame() 
+
+thresh <- thresh[, c("client", names(thresh)[grep("under", names(thresh))])]
+thresh <- t(thresh)
+colnames(thresh) = thresh[1, ] # the first row will be the header
+colnames(thresh) = c("non-client", "client")
+thresh = thresh[-1, ]
+
+write.csv(thresh, file=paste(od, "table1_rw_thresholds.csv", sep = "/"), row.names = T)
+```
+
+
+
+```{r}
 write.csv(coefTable, file=paste(od, "psm coefficients.csv", sep = "/"),
           row.names = T)
 
@@ -1331,8 +1364,6 @@ When we expand the outcome variable set to include practice variables, we first 
 * Tubura participation so strongly overlaps with fertilizer use that the comparison group is no longer comparable. The resulting model shows a significant difference in seasons of fertilizer use.
 * Tubura farmers have used compost for 0.3 more seasons than non-Tubura farmers. We don't observe a difference in N or C levels in the soil attributes however.
 * We don't see a difference between Tubura and non-Tubura farmers on seasons of legumes being the primary crop in the study plot.
-
-
 
 ### Models with PSM matched farmers
 
