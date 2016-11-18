@@ -39,7 +39,7 @@ options("RStata.StataPath" = "/Applications/Stata/StataSE.app/Contents/MacOS/sta
 ```
 
 ```{r directory}
-wd <- "/Users/mlowes/drive/soil health study/data/rw baseline"
+wd <- "/Users/mlowes/drive/optimized_agronomy/soil/soil_health_study/data/rw baseline"
 dd <- paste(wd, "data", sep = "/")
 od <- paste(wd, "output", sep="/")
 md <- paste(wd, "maps", sep="/")
@@ -339,14 +339,21 @@ names(d)[names(d)=="general_field_infograde_hill"] <- "slope"
 ```
 
 ```{r}
+cor(d[, grep("betail_", names(d))], use='complete.obs')
+names(d)[grep("betail_", names(d))] <- c("cows", "goats", "chickens", "pigs", "sheep")
+```
+
+
+```{r}
 out.list <- c("female", "age", "hhsize", "own", "field.size",
               "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow", "n_seasons_leg_1", "n_seasons_leg_2", "m3.Ca", "m3.Mg", "pH", "Total.C", "Total.N",
-              "slope",  "alt", "valley", "hillside", "hilltop")
+              "slope",  "alt", "valley", "hillside", "hilltop", "cows", "goats",
+              "chickens", "pigs", "sheep")
 
 output <- do.call(rbind, lapply(out.list, function(x) {
   
   out <- t.test(d[,x] ~ d[,"client"], data=d)
-  tab <- data.frame(out[[5]][[1]], out[[5]][[2]], out[3])
+  tab <- data.frame(out[[5]][[2]],out[[5]][[1]], out[3])
   tab[,1:2] <- round(tab[,1:2],3)
   names(tab) <- c(names(out[[5]]), "pvalue")
   return(tab)
@@ -359,7 +366,7 @@ output <- output[order(output$pvalue),]
 output$pvalue <- ifelse(output[, 3] < 0.001, "< 0.001", round(output[, 3], 3)) 
 
 
-colnames(output) <- c("Non-Tubura", "Tubura Client", "p-value")	
+colnames(output) <- c("Tubura Client","Non-Tubura", "p-value")	
 ```
 
 ```{r, results='asis'}
@@ -409,7 +416,7 @@ dist.output <- do.call(rbind, lapply(split(d, d$district), function(x) {
   tab <- do.call(rbind, lapply(out.list, function(y) {
     
     out <- t.test(x[,y] ~ x[,"client"], data=x)
-    tab <- data.frame(out[[5]][[1]], out[[5]][[2]], out[3])
+    tab <- data.frame(out[[5]][[2]],out[[5]][[1]], out[3])
     tab[,1:2] <- round(tab[,1:2],3)
     names(tab) <- c(names(out[[5]]), "pvalue")
     #tab[,3] <- p.adjust(tab[,3], method="holm")
@@ -430,7 +437,7 @@ dist.output$pvalue <- p.adjust(dist.output$pvalue, method="fdr")
 dist.output <- dist.output[order(dist.output$pvalue),]
 
 dist.output$pvalue <- ifelse(dist.output$pvalue < 0.001, "< 0.001", round(dist.output$pvalue,3))
-colnames(dist.output) <- c("District", "Varible", "Non-Tubura", "Tubura Client", "p-value")	
+colnames(dist.output) <- c("District", "Varible", "Tubura Client","Non-Tubura", "p-value")	
 ```
 
 ```{r, results='asis'}
@@ -1177,11 +1184,6 @@ dev.off()
 We need to do a more rigorous job of accounting for differences between Tubura farmers and identified control farmers. Execute propensity score matching (PSM) to identify control farmers that overlap with Tubura farmers with regard to their likelihood of being a Tubura farmer.
 
 ```{r}
-cor(d[, grep("betail_", names(d))], use='complete.obs')
-names(d)[grep("betail_", names(d))] <- c("cows", "goats", "chickens", "pigs", "sheep")
-```
-
-```{r}
 psmVars <- paste(c("female", "age", "hhsize", "total.seasons",
                    "cows", "goats", "chickens", "pigs", "sheep"),
                    collapse=" + ")
@@ -1327,12 +1329,12 @@ psmList <- list(
                          "hhsize_age"),
                    collapse=" + "),
        y="fert1.are"),
-  list(tr = "client",
-       psmVars = paste(c("female", "age", "hhsize","as.factor(district)",
-                   "cows", "goats", "chickens", "pigs", "sheep","age2", "hhsize2",
-                         "hhsize_age"),
-                   collapse=" + "),
-       y="fert2.are"),
+  # list(tr = "client",
+  #      psmVars = paste(c("female", "age", "hhsize","as.factor(district)",
+  #                  "cows", "goats", "chickens", "pigs", "sheep","age2", "hhsize2",
+  #                        "hhsize_age"),
+  #                  collapse=" + "),
+  #      y="fert2.are"),
   list(tr = "client",
        psmVars = paste(c("female", "age", "hhsize","as.factor(district)",
                    "cows", "goats", "chickens", "pigs", "sheep","age2", "hhsize2",
@@ -1510,7 +1512,7 @@ postMatch <- do.call(rbind, lapply(1:length(m), function(model){
 ```{r}
 write.csv(postMatch, file=paste(od, "rw post match covars.csv", sep = "/"),
           row.names = F)
-  ```
+```
 
 
 ### Models with PSM matched farmers
@@ -1529,7 +1531,7 @@ tenureTab <- lapply(1:length(m), function(model){
 ```
 
 ```{r, results='asis'}
-modNames <- c("Calcium", "Magnesium", "pH", "Nitrogen", "Carbon", "Seasons fertilizer", "Seasons compost", "Seasons legumes", "Seasons fallow", "Fertilizer (log)", "Season Sec. legumes")
+modNames <- c("Calcium", "Magnesium", "pH", "Nitrogen", "Carbon", "Seasons fertilizer", "Seasons compost", "Seasons legumes", "Seasons fallow", "Fertilizer (log)", "Season Sec. legumes", "Seasons Lime", "Fertilizer/Are", "Compost/are")
 
 suppressWarnings(
 stargazer(tenureTab, type="html", 
