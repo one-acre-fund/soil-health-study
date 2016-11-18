@@ -573,8 +573,9 @@ for(i in 1:length(soilVars)){
       labs(x = soilVars[i], title = soilVars[i])
         )
 }
+```
 
-
+```{r}
 d$logFert <- log(d$n_season_fert+1)
 d$logCompost <- log(d$n_season_compost+1)
 d$logLime <- log(d$n_season_lime+1)
@@ -1233,76 +1234,87 @@ d$age2 <- d$age^2
 d$hhsize_age <- d$hhsize*d$age
 d$hhsize2 <- d$hhsize^2
 
+coreVars = c("female", "age", "hhsize", "own", "as.factor(cell)", "cows", "goats", "chickens", "pigs", "sheep")
+
 psmList <- list(
   list(tr = "client",
-       psmVars = paste(c("female", "age", "hhsize", "as.factor(cell)",
-                         "cows", "goats", "chickens", "pigs", "sheep"),
+       psmVars = paste(coreVars,
                    collapse=" + "),
        y="m3.Ca"),
   list(tr = "client",
-       psmVars = paste(c("female", "age", "hhsize", "as.factor(cell)",
-                   "cows", "goats", "chickens", "pigs", "sheep"),
+       psmVars = paste(coreVars,
                    collapse=" + "),
        y="m3.Mg"),
   list(tr = "client",
-       psmVars = paste(c("female", "age", "hhsize", "as.factor(cell)",
-                   "cows", "goats", "chickens", "pigs", "sheep"),
+       psmVars = paste(coreVars,
                    collapse=" + "),
        y="pH"),
   list(tr = "client",
-       psmVars = paste(c("female", "age", "hhsize", "as.factor(cell)",
-                   "cows", "goats", "chickens", "pigs", "sheep"),
+       psmVars = paste(coreVars,
                    collapse=" + "),
        y="Total.N"),
   list(tr = "client",
-       psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
-                   "cows", "goats", "chickens", "pigs", "sheep"),
+       psmVars = paste(coreVars,
                    collapse=" + "),
        y="Total.C"),
   list(tr = "client",
-       psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
-                   "cows", "goats", "chickens", "pigs", "sheep"),
+       psmVars = paste(coreVars,
                    collapse=" + "),
        y="n_season_fert"),
   list(tr = "client",
-       psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
-                   "cows", "goats", "chickens", "pigs", "sheep"),
+       psmVars = paste(coreVars,
                    collapse=" + "),
        y="n_season_compost"),
   list(tr = "client",
-       psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
-                   "cows", "goats", "chickens", "pigs", "sheep"),
+       psmVars = paste(coreVars,
                    collapse=" + "),
        y="n_seasons_leg_1"),
   list(tr = "client",
-       psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
-                   "cows", "goats", "chickens", "pigs", "sheep"),
+       psmVars = paste(coreVars,
                    collapse=" + "),
        y="n_season_fallow"),
   list(tr = "client",
-       psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
-                   "cows", "goats", "chickens", "pigs", "sheep"),
+       psmVars = paste(coreVars,
                    collapse=" + "),
        y="logFert"),
   list(tr = "client",
-       psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
-                   "cows", "goats", "chickens", "pigs", "sheep", "age2",
+       psmVars = paste(c(coreVars, "age2",
                    "hhsize2"),
                    collapse=" + "),
        y="n_seasons_leg_2"),
   list(tr = "client",
-       psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
-                   "cows", "goats", "chickens", "pigs", "sheep", "age2",
+       psmVars = paste(c(coreVars, "age2",
                    "hhsize2"),
                    collapse=" + "),
        y="n_season_lime")
+  
 )
 
 # list(tr = "client",
 #        psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
-#                    "cows", "goats", "chickens", "pigs", "sheep"),
+#                    "cows", "goats", "chickens", "pigs", "sheep", "age2",
+#                    "hhsize2"),
 #                    collapse=" + "),
-#        y="")
+#        y="fert1.are"),
+#   list(tr = "client",
+#        psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
+#                    "cows", "goats", "chickens", "pigs", "sheep", "age2",
+#                    "hhsize2"),
+#                    collapse=" + "),
+#        y="fert2.are"),
+#   list(tr = "client",
+#        psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
+#                    "cows", "goats", "chickens", "pigs", "sheep", "age2",
+#                    "hhsize2"),
+#                    collapse=" + "),
+#        y="compost.are"),
+#   list(tr = "client",
+#        psmVars = paste(c("female", "age", "hhsize","as.factor(cell)",
+#                    "cows", "goats", "chickens", "pigs", "sheep", "age2",
+#                    "hhsize2"),
+#                    collapse=" + "),
+#        y="lime.are")
+
 
 # wanted to include alt but we have missing values - resolve this.
 # also skipping lime because of a small number of positive values
@@ -1374,6 +1386,9 @@ coefTable$pval.adj <- round(p.adjust(coefTable$pval, method="fdr"),3)
 print(kable(coefTable))
 ```
 
+### Calculate farmers under soil health thresholds
+
+
 ```{r}
 thresh <- d %>% group_by(client) %>% summarize(
   count = n(),
@@ -1423,6 +1438,49 @@ When we expand the outcome variable set to include practice variables, we first 
 * Tubura participation so strongly overlaps with fertilizer use that the comparison group is no longer comparable. The resulting model shows a significant difference in seasons of fertilizer use.
 * Tubura farmers have used compost for 0.3 more seasons than non-Tubura farmers. We don't observe a difference in N or C levels in the soil attributes however.
 * We don't see a difference between Tubura and non-Tubura farmers on seasons of legumes being the primary crop in the study plot.
+
+### Study group balance post-match
+
+See [here](http://stats.stackexchange.com/questions/50013/reconstructing-matched-data-set-from-rs-matching-package) for some guidance on hwo to use weights to reconstruct the group balance following the matches.
+
+See [here](http://finzi.psych.upenn.edu/library/weights/html/wtd.t.test.html) for weighted t.test documentation
+
+```{r}
+suppressMessages(library(weights))
+tableVars <- c("age", "female", "hhsize", "own")
+
+postMatch <- do.call(rbind, lapply(1:length(m), function(model){
+  
+  innerPost <- do.call(rbind, lapply(tableVars, function(x){
+  
+  mean.t = weighted.mean(d[m[[model]][[1]]$index.treated,][,x], m[[model]][[1]]$weights)
+  mean.c = weighted.mean(d[m[[model]][[1]]$index.control,][,x], m[[model]][[1]]$weights)
+  
+  # combined data
+  dm <- as.data.frame(rbind(d[m[[model]][[1]]$index.treated,], 
+              d[m[[model]][[1]]$index.control,]))
+  
+  test = wtd.t.test(d[m[[model]][[1]]$index.treated,][,x], 
+                    d[m[[model]][[1]]$index.control,][,x],
+                    weight=m[[model]][[1]]$weights,
+                    samedata=TRUE)
+  
+  return(data.frame(model.num = model, 
+                    outcome=x, 
+                    tr=mean.t, 
+                    contr = mean.c,
+                    pval = test$coefficients[3][[1]]))
+  }))
+  
+  return(innerPost)
+}))
+```
+
+```{r}
+write.csv(postMatch, file=paste(od, "rw post match covars.csv", sep = "/"),
+          row.names = F)
+```
+
 
 ### Models with PSM matched farmers
 
