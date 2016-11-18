@@ -329,8 +329,16 @@ as.data.frame(count)
 Let's see how balanced our farmers are in terms of demographic variables. Tubura farmers were selected based on (list criteria) and control farmers in the same area tha fit the same criteria were also selected. No matching process has been performed to identify the control farmers that most closely resemble the Tubura farmers in the sample. These results are entirely reflecting the balance inherent in the identification process, not any statistical matching of treatment and control.
 
 ```{r}
+d$valley <- ifelse(d$general_field_infofield_location=="valley", 1,0)
+d$hillside <- ifelse(d$general_field_infofield_location=="hillside", 1,0)
+d$hilltop <- ifelse(d$general_field_infofield_location=="hilltop", 1,0)
+names(d)[names(d)=="general_field_infograde_hill"] <- "slope"
+```
+
+```{r}
 out.list <- c("female", "age", "hhsize", "own", "field.size",
-              "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow", "n_seasons_leg_1", "n_seasons_leg_2", "m3.Ca", "m3.Mg", "pH", "Total.C", "Total.N")
+              "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow", "n_seasons_leg_1", "n_seasons_leg_2", "m3.Ca", "m3.Mg", "pH", "Total.C", "Total.N",
+              "slope",  "alt", "valley", "hillside", "hilltop")
 
 output <- do.call(rbind, lapply(out.list, function(x) {
   
@@ -359,6 +367,28 @@ print(kable(output))
 #write table
 write.csv(output, file=paste(od, "baseline balance.csv", sep="/"), row.names=T)
 ```
+
+```{r}
+# write baseline balance table for ES per his table layouts
+table4vars <- paste(c("age", "female", "hhsize", "own"), collapse="|")
+
+rw.table4 <- output[grepl(table4vars, rownames(output)),]
+write.csv(rw.table4, file=paste(od, "pre match balance table4.csv", sep="/"),
+          row.names = T)
+
+table5vars <- paste(c("field.size", "slope", "alt", "hilltop", "hillside", "valley"),
+                    collapse="|")
+
+rw.table5 <- output[grepl(table5vars, rownames(output)),]
+write.csv(rw.table5, file=paste(od, "pre match balance table5.csv", sep = "/"),
+          row.names = T)
+
+table6vars <- paste(c("cows", "pigs", "sheep", "goats", "chickens"), collapse = "|")
+rw.table6 <- output[grep(table6vars, rownames(output)), ]
+write.csv(rw.table6, file=paste(od, "pre match balance table6.csv", sep = "/"), 
+          row.names=F)
+```
+
 
 ### Overall balance interpretation
 **Demographic variables** We are not well balanced along the main demographic variables we collected, sex, age and HH size. For the purposes of inference we can test some matching algorithms to improve the match between Tubura and control farmers. 
@@ -1390,7 +1420,7 @@ print(kable(coefTable))
 
 
 ```{r}
-thresh <- d %>% group_by(client) %>% summarize(
+thresh <- d %>% group_by(client) %>% dplyr::summarize(
   count = n(),
   ph = sum(pH<5.8),
   carbon = sum(Total.C < 2),
@@ -1479,7 +1509,7 @@ postMatch <- do.call(rbind, lapply(1:length(m), function(model){
 ```{r}
 write.csv(postMatch, file=paste(od, "rw post match covars.csv", sep = "/"),
           row.names = F)
-```
+  ```
 
 
 ### Models with PSM matched farmers
