@@ -484,7 +484,7 @@ We will look only at current Tubura farmers and compare first year farmers to fa
 oafOnly <- d[which(d$client==0 & d$total.seasons>=1),]
 
 nTenure <- oafOnly %>% group_by(total.seasons) %>% 
-  summarize(
+  dplyr::summarize(
     n = n()
   ) %>% ungroup() %>% as.data.frame()
 nTenure$val <- paste(nTenure$total.seasons, " (", "n = ", nTenure$n, ")", sep = "")
@@ -996,207 +996,6 @@ We don't have measured yield data for the Rwanda baseline. Skip this for now.
 
 ### Distributions of soil health levels for different sub-groups
 
-# Mapping
-
-### Soil health maps for soil health study areas
-
-```{r cache=TRUE}
-#crdref <- CRS('+proj=longlat +datum=WGS84')
-crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
-e <- d[!is.na(d$lon),]
-ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e, proj4string = crdref)
-
-rw <- getData("GADM", country='RW', level=3, path = "/Users/mlowes/drive/soil health study/data") # the higher the number, the higher the resolution
-
-#ext.rw.ss matches points with spatial polygons in rw
-ext.rw.ss <- extract(rw[, "NAME_3"], ss)
-ss$spatialname <- ext.rw.ss$NAME_3
-
-frw <- fortify(rw, region="NAME_3")
-ss.soil <- aggregate(ss@data[,soilVars], by=list(ss@data$spatialname), function(x){
-  mean(x, na.rm=T)
-})
-
-plotReady <- dplyr::left_join(frw, ss.soil, by=c("id"="Group.1"))
-```
-
-### Plot simple summary of soil characteristics
-
-Consider revising these maps to a smaller greographic unit. Add the name of the location for uninitiated users.
-```{r cache=TRUE}
-library(RColorBrewer)
-mapList <- list()
-for(i in 1:length(soilVars)){
-mapRes <-  ggplot(plotReady, aes(x=long, y=lat, group=group)) + geom_path() + 
-  geom_polygon(aes(fill=plotReady[,soilVars[i]])) + 
-  scale_fill_gradientn(colours = rev(brewer.pal(9,"Reds")), # define colors
-                       name = soilVars[i],
-                       guide = guide_colorbar(legend.direction = "vertical")) + 
-  theme_bw() + 
-  labs(title=paste("Rwanda long term soil health baseline - 2016", soilVars[i], sep= " "), x = "Longitude", y="Latitude")
-mapList[[i]] <- mapRes
-print(mapRes)
-} 
-```
-
-```{r eval=FALSE}
-# This is a small experiment to combine raster (spdf) and leaflet and be able to access the data in the raster interactively.
-#mapLayer <- sp::merge(rw, ss.soil, by.x="NAME_3", by.y="Group.1")
-
-# fill = T, fillOpacity = 0.7, fillColor = d.fill, 
-#         stroke = T, color = "white", weight = 2, dashArray = 3, 
-#         opacity = 0.5, popup = county.tt(d)
-
-# leaflet(mapLayer) %>% addTiles() %>%
-#   setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=8) %>%
-#   addPolygons(
-#     stroke = TRUE, opacity=0.2, smoothFactor = 0.5, 
-#     fillColor=mapLayer$pH, fillOpacity = 0.5)
-
-```
-
-```{r message=FALSE, cache=TRUE}
-pdf(file=paste(md, "rw_shs_baseline_soil_maps.pdf", sep = "/"), width=11, height=8.5)
-for(i in 1:length(mapList)){
-print(mapList[[i]])
-}  
-dev.off()
-```
-
-### Interpolations of soil health values
-Interpolate soil health values for full operating area using soil health study values. We want to eventually add all Rwandan soil values into a single dataset to update and hone these values. See [here](https://rstudio.github.io/leaflet/raster.html) for more guidanace
-
-**note**: 
-
-* Layer on the Tubura sites to the interpolated map. 
-* Use leaflet so you can zoom in and out more easily. 
-* Make it a raster layer that you can click on understand the values at different locations and the name of the location. I'll need to make this a [shiny app](http://stackoverflow.com/questions/28938642/marker-mouse-click-event-in-r-leaflet-for-shiny) to have that functionality
-
-The code below will run 5 K-fold cross validation to compare interpolation models. The output will be fed into the interpolate leaflet code below.
-
-
-**Check that I'm handling the projection correctly with Robert**
-
-```{r cache=FALSE}
-# proj4string(ss) <- CRS("+init=epsg:4326")
-# ss <- spTransform(ss, CRS=("+proj=utm +zone=36N +datum=WGS84"))
-```
-
-```{r results=FALSE}
-
-# root mean sq error for evaluating models
-RMSE <- function(observed, predicted) {
-  sqrt(mean((predicted - observed)^2, na.rm=TRUE))
-}
-
-# set k folds to 5
-set.seed(20161030)
-nfolds <- 5
-k <- kfold(ss, nfolds) # from dismo
-
-# cross validation of models
-ensrmse <- tpsrmse <- idwrmse <- rep(NA, 5) # assing multiple objects at once
-
-cv <- function(x) {
-  
-  for(i in 1:nfolds) {
-    train <- ss[k!=i,]
-    test <- ss[k==i,]
-
-  train <- train[!is.na(train@data[,x]),]
-  
-  # inverse distance weights
-  m <- gstat(formula=as.formula(paste(x, '~ 1')), locations=train)
-  p1 <- predict(m, newdata=test, debug.level=0)$var1.pred
-  idwrmse[i] <-  RMSE(test@data[,x], p1) #idw rsme
-  
-  # krieging
-  # m <- autoKrige(formula=as.formula(paste(x, "~ 1")), input_data = train)
-  # p2 <- predict(m, newdata=test, debug.level=0)$var1.pred
-  # krigrmse[i] <-  RMSE(test$OZDLYAV, p2)
-  
-  # thin plate spline
-  m <- Tps(coordinates(train), train@data[,x]) 
-  p3 <- predict(m, coordinates(test))
-  tpsrmse[i] <-  RMSE(test@data[,x], p3)
-  
-  w <- c(idwrmse[i], tpsrmse[i]) # combine the rmse
-  weights <- w / sum(w) # weight them
-  ensemble <- p1 * weights[1] + p3 * weights[2] 
-  # multiply predictions by weights
-  ensrmse[i] <-  RMSE(test@data[,x], ensemble) # truly an ensemble result?
-  }
-  
-  output <- rbind(idwrmse, tpsrmse, ensrmse)
-  return(output)
-  
-}
-```
-
-
-Now loop over the variables of interest where x is the soilVar variable. 
-
-
-```{r results=FALSE}
-output <- lapply(soilVars, function(x){
-  ini <- data.frame(cv(x))
-  ini$ave <- apply(ini[,1:5], 1, function(y){mean(y, na.rm=T)})
-  res <- paste("Best model is ", row.names(ini[which.min(ini$ave),]),  sep = "")
-  return(list(ini, res))
-})
-```
-
-### Interpolated soil maps
-
-```{r message=FALSE, cache=TRUE}
-r <- raster(res=1/12)
-r <- crop(r, floor(extent(rw)))
-
-maps <- lapply(soilVars, function(x){
-  m <- Tps(coordinates(ss), ss@data[,x])
-  # make raster layer with model, raster is rwanda empty raster, model is m
-  tps <- interpolate(r, m)
-  tps <- crop(tps, rw)
-  tps <- mask(tps, rw) # cuts the tps raster down to the rw boundaries
-  x <- gsub("m3.", "", x)
-  
-  palColors <- leaflet::colorNumeric(palette = "Reds", values(tps), na.color = "transparent")
-  
-  suppressWarnings(
-  leaflet() %>% addTiles() %>%
-  addRasterImage(tps, colors=palColors, opacity = 0.8) %>%
-  setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=8) %>%
-  addLegend(pal = palColors, values = values(tps), title = paste("Soil Value ", x, sep=""))
-  )
-})
-
-save(maps,ss, file=paste(dd, "rw_baseline_interpolation_maps.Rdata", sep = "/"))
-
-tagList(maps)
-```
-
-Print out the interpolated values for inclusion in the report. 
-
-```{r echo=FALSE, cache=TRUE}
-pdf(file=paste(md, "rw_shs_bl_interpolation_soil_vars.pdf", sep = '/'), width=11, height=8.5)
-lapply(soilVars, function(x) {
-  m <- Tps(coordinates(ss), ss@data[,x])
-  # make raster layer with model, raster is rwanda empty raster, model is m
-  tps <- interpolate(r, m)
-  tps <- crop(tps, rw)
-  tps <- mask(tps, rw) # cuts the tps raster down to the rw boundaries
-  x <- gsub("m3.", "", x)
-  
-suppressMessages(
-  outPlot <- invisible(print(
-  plot(tps, main= paste("Soil TPS Interpolation ", x, sep="- ")),
-  plot(rw, add=T, na.print=NULL)
-  ))
-)
-})
-dev.off()
-```
-
 ## Propensity Score Matching
 We need to do a more rigorous job of accounting for differences between Tubura farmers and identified control farmers. Execute propensity score matching (PSM) to identify control farmers that overlap with Tubura farmers with regard to their likelihood of being a Tubura farmer.
 
@@ -1542,7 +1341,7 @@ write.csv(postMatch, file=paste(od, "rw post match covars.csv", sep = "/"),
 Per Robert's suggestion, now that we've matched Tubura and non-Tubura farmers, let's assess the severity of Tubura tenure on key soil health outcomes.
 
 ```{r}
-tenureTab <- lapply(1:length(m), function(model){
+tenureTab.add <- lapply(1:length(m), function(model){
   
   dm <- as.data.frame(rbind(d[m[[model]][[1]]$index.treated,], 
               d[m[[model]][[1]]$index.control,]))
@@ -1550,13 +1349,24 @@ tenureTab <- lapply(1:length(m), function(model){
   mod <- lm(as.formula(paste("dm[,psmList[[model]]$y] ~", "total.seasons + as.factor(cell)", sep ="")), data=dm)
   return(mod)
 })
+
+tenureTab.binary <- lapply(1:length(m), function(model){
+  
+  dm <- as.data.frame(rbind(d[m[[model]][[1]]$index.treated,], 
+              d[m[[model]][[1]]$index.control,]))
+  dm$client_tenure <- dm$client*dm$total.seasons
+  mod <- lm(as.formula(paste("dm[,psmList[[model]]$y] ~", "tenured + as.factor(cell)", sep ="")), data=dm)
+  return(mod)
+})
+
+
 ```
 
 ```{r, results='asis'}
 modNames <- c("Calcium", "Magnesium", "pH", "Nitrogen", "Carbon", "Seasons fertilizer", "Seasons compost", "Seasons legumes", "Seasons fallow", "Fertilizer (log)", "Season Sec. legumes", "Seasons Lime", "Fertilizer/Are", "Compost/are")
 
 suppressWarnings(
-stargazer(tenureTab, type="html", 
+stargazer(tenureTab.add, type="html", 
           title = "2016A Rwanda Soil Health Baseline - PSM Tenure",
           covariate.labels = "One Acre Fund Tenure", 
           dep.var.labels = "",
@@ -1569,6 +1379,207 @@ stargazer(tenureTab, type="html",
 
 **Interpretation**: Using a PSM matched sample, the models above assess the effects of additional years of farming with Tubura. Numerous control farmers have also been Tubura farmers in previous seasons. Thus, I'm keeping the model simple instead of adding a client*tenure interaction. We can easily test that as well though.
 
+# Mapping
+
+### Soil health maps for soil health study areas
+
+
+```{r cache=TRUE}
+#crdref <- CRS('+proj=longlat +datum=WGS84')
+crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
+e <- d[!is.na(d$lon),]
+ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e, proj4string = crdref)
+
+rw <- getData("GADM", country='RW', level=3, path = "/Users/mlowes/drive/soil health study/data") # the higher the number, the higher the resolution
+
+#ext.rw.ss matches points with spatial polygons in rw
+ext.rw.ss <- extract(rw[, "NAME_3"], ss)
+ss$spatialname <- ext.rw.ss$NAME_3
+
+frw <- fortify(rw, region="NAME_3")
+ss.soil <- aggregate(ss@data[,soilVars], by=list(ss@data$spatialname), function(x){
+  mean(x, na.rm=T)
+})
+
+plotReady <- dplyr::left_join(frw, ss.soil, by=c("id"="Group.1"))
+```
+
+### Plot simple summary of soil characteristics
+
+Consider revising these maps to a smaller greographic unit. Add the name of the location for uninitiated users.
+```{r cache=TRUE}
+library(RColorBrewer)
+mapList <- list()
+for(i in 1:length(soilVars)){
+mapRes <-  ggplot(plotReady, aes(x=long, y=lat, group=group)) + geom_path() + 
+  geom_polygon(aes(fill=plotReady[,soilVars[i]])) + 
+  scale_fill_gradientn(colours = rev(brewer.pal(9,"Reds")), # define colors
+                       name = soilVars[i],
+                       guide = guide_colorbar(legend.direction = "vertical")) + 
+  theme_bw() + 
+  labs(title=paste("Rwanda long term soil health baseline - 2016", soilVars[i], sep= " "), x = "Longitude", y="Latitude")
+mapList[[i]] <- mapRes
+print(mapRes)
+} 
+```
+
+```{r eval=FALSE}
+# This is a small experiment to combine raster (spdf) and leaflet and be able to access the data in the raster interactively.
+#mapLayer <- sp::merge(rw, ss.soil, by.x="NAME_3", by.y="Group.1")
+
+# fill = T, fillOpacity = 0.7, fillColor = d.fill, 
+#         stroke = T, color = "white", weight = 2, dashArray = 3, 
+#         opacity = 0.5, popup = county.tt(d)
+
+# leaflet(mapLayer) %>% addTiles() %>%
+#   setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=8) %>%
+#   addPolygons(
+#     stroke = TRUE, opacity=0.2, smoothFactor = 0.5, 
+#     fillColor=mapLayer$pH, fillOpacity = 0.5)
+
+```
+
+```{r message=FALSE, cache=TRUE}
+pdf(file=paste(md, "rw_shs_baseline_soil_maps.pdf", sep = "/"), width=11, height=8.5)
+for(i in 1:length(mapList)){
+print(mapList[[i]])
+}  
+dev.off()
+```
+
+### Interpolations of soil health values
+Interpolate soil health values for full operating area using soil health study values. We want to eventually add all Rwandan soil values into a single dataset to update and hone these values. See [here](https://rstudio.github.io/leaflet/raster.html) for more guidanace
+
+**note**: 
+
+* Layer on the Tubura sites to the interpolated map. 
+* Use leaflet so you can zoom in and out more easily. 
+* Make it a raster layer that you can click on understand the values at different locations and the name of the location. I'll need to make this a [shiny app](http://stackoverflow.com/questions/28938642/marker-mouse-click-event-in-r-leaflet-for-shiny) to have that functionality
+
+The code below will run 5 K-fold cross validation to compare interpolation models. The output will be fed into the interpolate leaflet code below.
+
+
+**Check that I'm handling the projection correctly with Robert**
+
+```{r cache=FALSE}
+# proj4string(ss) <- CRS("+init=epsg:4326")
+# ss <- spTransform(ss, CRS=("+proj=utm +zone=36N +datum=WGS84"))
+```
+
+```{r results=FALSE}
+
+# root mean sq error for evaluating models
+RMSE <- function(observed, predicted) {
+  sqrt(mean((predicted - observed)^2, na.rm=TRUE))
+}
+
+# set k folds to 5
+set.seed(20161030)
+nfolds <- 5
+k <- kfold(ss, nfolds) # from dismo
+
+# cross validation of models
+ensrmse <- tpsrmse <- idwrmse <- rep(NA, 5) # assing multiple objects at once
+
+cv <- function(x) {
+  
+  for(i in 1:nfolds) {
+    train <- ss[k!=i,]
+    test <- ss[k==i,]
+
+  train <- train[!is.na(train@data[,x]),]
+  
+  # inverse distance weights
+  m <- gstat(formula=as.formula(paste(x, '~ 1')), locations=train)
+  p1 <- predict(m, newdata=test, debug.level=0)$var1.pred
+  idwrmse[i] <-  RMSE(test@data[,x], p1) #idw rsme
+  
+  # krieging
+  # m <- autoKrige(formula=as.formula(paste(x, "~ 1")), input_data = train)
+  # p2 <- predict(m, newdata=test, debug.level=0)$var1.pred
+  # krigrmse[i] <-  RMSE(test$OZDLYAV, p2)
+  
+  # thin plate spline
+  m <- Tps(coordinates(train), train@data[,x]) 
+  p3 <- predict(m, coordinates(test))
+  tpsrmse[i] <-  RMSE(test@data[,x], p3)
+  
+  w <- c(idwrmse[i], tpsrmse[i]) # combine the rmse
+  weights <- w / sum(w) # weight them
+  ensemble <- p1 * weights[1] + p3 * weights[2] 
+  # multiply predictions by weights
+  ensrmse[i] <-  RMSE(test@data[,x], ensemble) # truly an ensemble result?
+  }
+  
+  output <- rbind(idwrmse, tpsrmse, ensrmse)
+  return(output)
+  
+}
+```
+
+
+Now loop over the variables of interest where x is the soilVar variable. 
+
+
+```{r results=FALSE}
+output <- lapply(soilVars, function(x){
+  ini <- data.frame(cv(x))
+  ini$ave <- apply(ini[,1:5], 1, function(y){mean(y, na.rm=T)})
+  res <- paste("Best model is ", row.names(ini[which.min(ini$ave),]),  sep = "")
+  return(list(ini, res))
+})
+```
+
+### Interpolated soil maps
+
+```{r message=FALSE, cache=TRUE}
+r <- raster(res=1/12)
+r <- crop(r, floor(extent(rw)))
+
+maps <- lapply(soilVars, function(x){
+  m <- Tps(coordinates(ss), ss@data[,x])
+  # make raster layer with model, raster is rwanda empty raster, model is m
+  tps <- interpolate(r, m)
+  tps <- crop(tps, rw)
+  tps <- mask(tps, rw) # cuts the tps raster down to the rw boundaries
+  x <- gsub("m3.", "", x)
+  
+  palColors <- leaflet::colorNumeric(palette = "Reds", values(tps), na.color = "transparent")
+  
+  suppressWarnings(
+  leaflet() %>% addTiles() %>%
+  addRasterImage(tps, colors=palColors, opacity = 0.8) %>%
+  setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=8) %>%
+  addLegend(pal = palColors, values = values(tps), title = paste("Soil Value ", x, sep=""))
+  )
+})
+
+save(maps,ss, file=paste(dd, "rw_baseline_interpolation_maps.Rdata", sep = "/"))
+
+tagList(maps)
+```
+
+Print out the interpolated values for inclusion in the report. 
+
+```{r echo=FALSE, cache=TRUE}
+pdf(file=paste(md, "rw_shs_bl_interpolation_soil_vars.pdf", sep = '/'), width=11, height=8.5)
+lapply(soilVars, function(x) {
+  m <- Tps(coordinates(ss), ss@data[,x])
+  # make raster layer with model, raster is rwanda empty raster, model is m
+  tps <- interpolate(r, m)
+  tps <- crop(tps, rw)
+  tps <- mask(tps, rw) # cuts the tps raster down to the rw boundaries
+  x <- gsub("m3.", "", x)
+  
+suppressMessages(
+  outPlot <- invisible(print(
+  plot(tps, main= paste("Soil TPS Interpolation ", x, sep="- ")),
+  plot(rw, add=T, na.print=NULL)
+  ))
+)
+})
+dev.off()
+```
 
 
 --end
