@@ -689,6 +689,38 @@ suppressWarnings(
 ```
 
 ```{r}
+plm.log <- function(x, range){
+  
+  beta = round(summary(x)$coefficients[range,1],3)
+  beta.pval = summary(x)$coefficients[range,4]
+  beta.conv = ifelse(beta.pval < 0.01, "***", ifelse(
+    beta.pval < 0.05, "**", ifelse(
+      beta.pval < 0.1, "*", "")))
+  #beta.pval = round(beta.pval, 3)
+  outcome = paste(beta, beta.conv, sep = "")
+  outcome = c(outcome, unique(round(summary(x)$coefficients[1,1],3)))
+  res = data.frame(outcome, stringsAsFactors = F)
+  
+  return(res)  
+}
+
+rw.table15 <- do.call(cbind, lapply(list2, function(x){
+  plm.log(x, 2:5)
+}))
+
+colnames(rw.table15) <- soilVars
+rownames(rw.table15) <- c(names(d)[grep("log", names(d))], "constant")
+```
+
+```{r}
+rw.table15 <- rw.table15[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg")]
+
+write.csv(rw.table15, file=paste(od, "rwtable15_reg.csv", sep = "/"),
+          row.names = F)
+```
+
+
+```{r}
 # a 10 percent increase in x leads to B1*.1 change in Y
 logTrans <- do.call(cbind, lapply(list2, function(x){
   coeff = x$coefficients[2:5]
@@ -795,17 +827,74 @@ d[abs(d$lime.are)>40 & !is.na(d$lime.are), c("field_dim1", "field_dim2", "field.
 # how is there a negative quantity of lime?
 ```
 
+### Table 16 - Kgs of soil ammendments - fertilizer (kg)
+
 ```{r}
 # this should be kg of fertilizer used in this field. Compost is off the charts. Convert this to compost per sq meter
-previousSeason <- paste("fert1.are", "as.factor(cell)", sep=" + ")
+previousSeasonfert <- paste("fert1.are", "as.factor(cell)", sep=" + ")
 
 list5 <- lapply(soilVars, function(x){
-  mod <- lm(as.formula(paste("d[,x] ~", previousSeason, sep="")), data=d)
+  mod <- lm(as.formula(paste("d[,x] ~", previousSeasonfert, sep="")), data=d)
   return(mod)
 })
+
+table16 <- do.call(cbind, lapply(list5, function(x){
+  plm.log(x, 2)
+}))
+colnames(table16) <- soilVars
+rownames(table16) <- c("Fertilizer (kg/are)", "constant")
+
+table16 <- table16[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg")]
+write.csv(table16, file=paste(od, "rwtable16_fert.csv", sep = "/"),
+          row.names = T)
 ```
 
-```{r results='asis'}
+### Table 16 - Kgs of soil ammendments - compost (kg)
+
+```{r}
+# these objects have the same name as the fertilizer objects for simplicity. Run
+# from the top to avoid overwriting issues.
+previousSeasoncompost <- paste("compost.are", "as.factor(cell)", sep=" + ")
+list5b <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~", previousSeasoncompost, sep="")), data=d)
+  return(mod)
+})
+
+table16b <- do.call(cbind, lapply(list5b, function(x){
+  plm.log(x, 2)
+}))
+colnames(table16b) <- soilVars
+rownames(table16b) <- c("Compost (kg/are)", "constant")
+
+table16b <- table16b[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg")]
+write.csv(table16b, file=paste(od, "rwtable16_compost.csv", sep = "/"),
+          row.names = T)
+```
+
+### Table 16 - Kgs of soil ammendments - lime (kg)
+
+```{r}
+# these objects have the same name as the fertilizer objects for simplicity. Run
+# from the top to avoid overwriting issues.
+previousSeasonlime <- paste("lime.are", "as.factor(cell)", sep=" + ")
+list5c <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~", previousSeasonlime, sep="")), data=d)
+  return(mod)
+})
+
+table16c <- do.call(cbind, lapply(list5c, function(x){
+  plm.log(x, 2)
+}))
+colnames(table16c) <- soilVars
+rownames(table16c) <- c("Lime (kg/are)", "constant")
+
+table16c <- table16c[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg")]
+write.csv(table16c, file=paste(od, "rwtable16_lime.csv", sep = "/"),
+          row.names = T)
+```
+
+
+```{r results='asis', eval=FALSE}
 stargazer(list5, type="html", 
           title = "2016A Rwanda Soil Health Baseline - 15B practices",
           covariate.labels = c("Fertilizer Rate (log)"),
@@ -1386,7 +1475,7 @@ stargazer(tenureTab.add, type="html",
 ```
 
 ```{r}
-plm.tenure <- function(x, number){
+plm.tenure <- function(x){
   
   intercept = x$coefficients[[1]]
   beta = x$coefficients[[2]]
