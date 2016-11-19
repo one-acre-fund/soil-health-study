@@ -1182,7 +1182,7 @@ m <- lapply(psmList, function(listInput){
   mod <- Match(Y = k[,listInput$y], Tr = k[,listInput$tr], X = reg$fitted, ties=FALSE, replace=FALSE, caliper=0.25, estimand = "ATE")	
   )
   matchRes <- MatchBalance(k[,listInput$tr] ~ k[,listInput$y], match.out=mod, nboots=500, data=k, print.level = 0)
-  print(listInput$y)
+  #print(listInput$y)
   return(list(mod, matchRes))
   
 })
@@ -1350,6 +1350,8 @@ tenureTab.add <- lapply(1:length(m), function(model){
   return(mod)
 })
 
+# add tenured>=3 to d if we want to run this as a binary comparison
+
 tenureTab.binary <- lapply(1:length(m), function(model){
   
   dm <- as.data.frame(rbind(d[m[[model]][[1]]$index.treated,], 
@@ -1363,18 +1365,60 @@ tenureTab.binary <- lapply(1:length(m), function(model){
 ```
 
 ```{r, results='asis'}
-modNames <- c("Calcium", "Magnesium", "pH", "Nitrogen", "Carbon", "Seasons fertilizer", "Seasons compost", "Seasons legumes", "Seasons fallow", "Fertilizer (log)", "Season Sec. legumes", "Seasons Lime", "Fertilizer/Are", "Compost/are")
+# modNames <- c("Calcium", "Magnesium", "pH", "Nitrogen", "Carbon", "Seasons fertilizer", "Seasons compost", "Seasons legumes", "Seasons fallow", "Fertilizer (log)", "Season Sec. legumes", "Seasons Lime", "Fertilizer/Are", "Compost/are")
 
+modNames <- unlist(lapply(psmList, function(x){
+  return(x$y)
+}))
+```
+
+```{r eval=FALSE}
 suppressWarnings(
 stargazer(tenureTab.add, type="html", 
           title = "2016A Rwanda Soil Health Baseline - PSM Tenure",
           covariate.labels = "One Acre Fund Tenure", 
           dep.var.labels = "",
-          column.labels = modNames,
+          #column.labels = modNames,
           #column.labels = c(gsub("m3.", "", as.vector(namesInput))),
           notes = "Includes FE for cell",
           omit=c("cell"), out=paste(od, "rw_baseline_matched_tenure.htm", sep="/"))
 )
+```
+
+```{r}
+plm.tenure <- function(x, number){
+  
+  intercept = x$coefficients[[1]]
+  beta = x$coefficients[[2]]
+  int.pval = summary(x)$coefficients[1,4]
+  int.pval = ifelse(int.pval < 0.001, "< 0.001", round(as.numeric(int.pval),3))
+  beta.pval = summary(x)$coefficients[2,4]
+  beta.pval = ifelse(beta.pval < 0.001, "< 0.001", round(as.numeric(beta.pval),3))
+  res = data.frame(intercept, int.pval, beta, beta.pval, stringsAsFactors = F)
+  
+  return(res)  
+}
+
+tenure.reg <- do.call(rbind, lapply(tenureTab.add, function(x){
+  plm.tenure(x)
+}))
+
+rownames(tenure.reg) <- modNames
+```
+
+```{r}
+t6order <- c("cows", "pigs", "sheep", "goats", "chickens")
+table6vars <- paste(t6order, collapse = "|")
+rw.table6 <- output[grep(table6vars, rownames(output)), ]
+rw.table6 <- rw.table6[order(match(rownames(rw.table6), t4order)),]
+
+ESorder <- c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "n_season_fert",
+             "logFert", "n_season_compost", "n_seasons_leg_1", "n_season_fallow")
+ESorder.grep <- paste(ESorder, collapse = "|")
+tenure.reg <- tenure.reg[grep(ESorder.grep,rownames(tenure.reg)),]
+tenure.reg <- tenure.reg[order(match(row.names(tenure.reg), ESorder)),]
+
+write.csv(tenure.reg, file=paste(od, "table13_reg.csv", sep = "/"), row.names=T)
 ```
 
 **Interpretation**: Using a PSM matched sample, the models above assess the effects of additional years of farming with Tubura. Numerous control farmers have also been Tubura farmers in previous seasons. Thus, I'm keeping the model simple instead of adding a client*tenure interaction. We can easily test that as well though.
