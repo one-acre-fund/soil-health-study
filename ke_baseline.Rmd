@@ -30,10 +30,15 @@ suppressMessages(library(Matching))
 ```
 
 ```{r import}
-wd <- "/Users/mlowes/drive/soil health study/data/ke baseline"
+wd <- "/Users/mlowes/drive/optimized_agronomy/soil/soil_health_study/data/ke baseline"
 dd <- paste(wd, "data", sep = "/")
 od <- paste(wd, 'output', sep = "/")
 
+load(paste("/Users/mlowes/drive/R_help/3_analyze/regressions", "regression_functions.Rdata", sep = "/"))
+
+```
+
+```{r}
 d <- read.csv(paste(dd, "KE SHS Baseline Survey Data.csv", sep = '/'))
 soil <- read.csv(paste(dd, "Kenya_SHS_results.csv", sep = "/"))
 Identifiers <- read.csv(paste(dd, "Combined meta with SSN.csv", sep = '/'), stringsAsFactors = F)
@@ -138,8 +143,10 @@ varlist <- c("seedkgs", "yield", "intercrop.seedkgs", "intercrop.yield",
              "inputs.lime_kg")
 
 d[, varlist] <- sapply(d[,varlist], as.numeric)
+```
 
 
+```{r}
 d <- cbind(d, str_split_fixed(d$gps, " ", n=4))
 names(d)[93:96] <- c("lat", "lon", "alt", "precision")
 d[,c("lat", "lon", "alt", "precision")] <- sapply(
@@ -156,6 +163,7 @@ soilVars <- c("C.E.C", "Cu", "EC", "Exch.Al", "Hp", "K", "Mg", "Mn",
 naCount <- sapply(d[,soilVars], function(x){
   return(sum(is.na(x)))
 }) 
+naCount
 ```
 
 Drop data with missing soil data - it's not useful for later summaries and regressions
@@ -177,7 +185,7 @@ for(i in 1:length(soilVars)){
 print(
   ggplot(data=d, aes(x=as.factor(oaf), y=d[,soilVars[i]])) + 
     geom_boxplot() +
-    labs(x="Tubura Farmer", y=soilVars[i], title = paste("Kenya baseline soil - ", soilVars[i], sep = ""))
+    labs(x="One Acre Fund Farmer", y=soilVars[i], title = paste("Kenya baseline soil - ", soilVars[i], sep = ""))
   )  
 }
 
@@ -186,7 +194,7 @@ pdf(paste(od, "ke_baseline_soil.pdf", sep = "/"), width=11, height=8.5)
 print(
   ggplot(data=d, aes(x=as.factor(oaf), y=d[,soilVars[i]])) + 
     geom_boxplot() +
-    labs(x="Tubura Farmer", y=soilVars[i], title = paste("Kenya baseline soil - ", soilVars[i], sep = ""))
+    labs(x="One Acre Fund Farmer", y=soilVars[i], title = paste("Kenya baseline soil - ", soilVars[i], sep = ""))
   )  
 dev.off()
 
@@ -227,42 +235,6 @@ write.csv(d, file=paste(dd, "shs ke baseline.csv", sep = "/"))
 save(d, file=paste(dd, "shs ke baseline.Rdata", sep = "/"))
 ```
 
-### Map of baseline observations
-Produce a simple map of where our observations are
-
-```{r get_map, include=F}
-if (!(exists("kenya"))){
-  # Only need to geocode once per session library(dismo)
-  kenya <- try(geocode("Kenya"))
-  # If the internet fails, use a local value 
-  if (class(kenya) == "try-error") {
-    kenya <- ""
-  } 
-}
-```
-
-See [here](http://rstudio-pubs-static.s3.amazonaws.com/208998_3592d3c6ac9a47ccbf3a3997ec2b68ec.html) for more on using markerClusterOptions in leaflet.
-
-In the map below, the larger green circles are One Acre Fund farmers and the smaller blue circles are control farmers.
-
-```{r leaflet, fig.width=9, fig.height=7}
-e <- d[!is.na(d$lon),]
-ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e)
-
-pal <- colorNumeric(c("navy", "green"), domain=unique(ss$oaf))
-map <- leaflet() %>% addTiles() %>%
-  setView(lng=kenya$longitude, lat=kenya$latitude, zoom=6) %>%
-  addCircleMarkers(lng=ss$lon, lat=ss$lat, 
-                   radius= ifelse(ss$oaf==1, 10,6),
-                   color = pal(ss$oaf),
-clusterOptions = markerClusterOptions(disableClusteringAtZoom=12, spiderfyOnMaxZoom=FALSE))
-
-map
-```
-
-**Notes**: We have a lot of GPS points piled on the Bungoma office. We need to address the GPS collection practices that lead to incorrectly logged GPS.
-
-
 ## Summary statistics
 
 ### Table of final baseline breakdown
@@ -279,6 +251,18 @@ write.csv(count, file=paste(od, "final ke sample breakdown.csv", sep="/"), row.n
 as.data.frame(count)
 ```
 
+```{r}
+d$valley <- ifelse(d$location=="valley", 1,0)
+d$hilltop <- ifelse(d$location=="hilltop", 1,0)
+d$hillside <- ifelse(d$location=="hillside", 1,0)
+```
+
+
+```{r}
+sort(prop.table(table(d$plot_information.maincrop, useNA = 'ifany')))
+d$crop.maize <- ifelse(d$plot_information.maincrop=="maize", 1,0)
+```
+
 ## Baseline balance
 
 Let's see how balanced our farmers are in terms of demographic variables. One Acre Fund farmers were selected based on *(list criteria)* and control farmers in the same area tha fit the same criteria were also selected. No matching process has been performed to identify the control farmers that most closely resemble the One Acre Fund farmers in the sample.
@@ -286,11 +270,11 @@ Let's see how balanced our farmers are in terms of demographic variables. One Ac
 ```{r}
 names(d)[names(d)=="gender"] <- "female"
 
-out.list <- c("female", "age", "seasons_oaf", "cows", "goats", "chickens",
+out.list <- c("female", "age", "cows", "goats", "chickens",
               "pigs", "sheep", "field_size", "yield", "inputs.dap_kg", 
               "inputs.can_kg", "inputs.npk_kg", "inputs.urea_kg", "inputs.dap_kg_intercrop", "inputs.can_kg_intercrop", "inputs.npk_kg_intercrop", "inputs.urea_kg_intercrop",
 "chemical_fertilizer_5", "compost_fertilizer_5", "lime_fertilizer_5",
-"fertilizer_5", "legum_maincrop_5", "legum_intercrop_5", soilVars)
+"fertilizer_5", "legum_maincrop_5", "legum_intercrop_5", soilVars, "valley", "hilltop", "hillside", "crop.maize")
 
 d$seasons_oaf <- ifelse(d$seasons_oaf>8, NA, d$seasons_oaf)
 
@@ -298,7 +282,7 @@ d$seasons_oaf <- ifelse(d$seasons_oaf>8, NA, d$seasons_oaf)
 output <- do.call(rbind, lapply(out.list, function(x) {
   
   out <- t.test(d[,x] ~ d[,"oaf"], data=d)
-  tab <- data.frame(out[[5]][[1]], out[[5]][[2]], out[3])
+  tab <- data.frame(out[[5]][[2]],out[[5]][[1]], out[3])
   tab[,1:2] <- round(tab[,1:2],3)
   names(tab) <- c(names(out[[5]]), "pvalue")
   return(tab)
@@ -309,18 +293,43 @@ output$pvalue <- p.adjust(output$pvalue, method="fdr")
 rownames(output) <- out.list
 output <- output[order(output$pvalue),]
 output$pvalue <- ifelse(output[, 3] < 0.001, "< 0.001", round(output[, 3], 3)) 
-colnames(output) <- c("Control", "1AF Client", "p-value")	
+colnames(output) <- c("1AF Client","Control", "p-value")	
 ```
 
 ```{r, results='asis'}
 print(kable(output))
 ```
 
-**Demographic variables** 
+**Demographic variables**:
 
-**Agricultural practice variables** 
+**Agricultural practice variables**: 
 
-**Soil Variables**
+**Soil Variables**:
+
+```{r}
+t10order <- c("age", "female")
+table10vars <- paste(t10order, collapse="|")
+
+ke.table10 <- output[grepl(table10vars, rownames(output)),]
+ke.table10 <- ke.table10[order(match(rownames(ke.table10), t10order)),]
+write.csv(ke.table10, file=paste(od, "pre match balance table10.csv", sep="/"),
+          row.names = T)
+
+t11order <- c("field_size", "alt", "hilltop", "hillside", "valley", "crop.maize")
+table11vars <- paste(t11order, collapse="|")
+ke.table11 <- output[grepl(table11vars, rownames(output)),]
+ke.table11 <- ke.table11[order(match(rownames(ke.table11), t11order)),]
+write.csv(ke.table11, file=paste(od, "pre match balance table 11.csv", sep = "/"),
+          row.names=T)
+
+t12order <- c("cows", "pigs", "sheep", "goats", "chickens")
+table12vars <- paste(t12order, collapse="|")
+ke.table12 <- output[grepl(table12vars, rownames(output)),]
+ke.table12 <- ke.table12[order(match(rownames(ke.table12), t12order)),]
+write.csv(ke.table12, file=paste(od, "pre match balance table 12.csv", sep = "/"),
+          row.names=T)
+
+```
 
 
 ```{r}
@@ -332,7 +341,7 @@ write.csv(output, file=paste(od, "ke baseline balance.csv", sep="/"), row.names=
 ### Baseline balance by district
 I remove intercrop elements from out.list so that the code runs properly. I have to remove all fertilizer comparisons. CAN fails in Suneka. The others fail across districts due to insuffient observations.
 
-```{r eval=FALSE}
+```{r}
 toMatch <- c("npk", "urea", "g_intercrop", "can")
 distList <- out.list[!out.list %in% unique(grep(paste(toMatch, collapse="|"), out.list, value=TRUE))]
 
@@ -341,7 +350,7 @@ dist.output <- do.call(rbind, lapply(split(d, d$DistrictName), function(x) {
   
   tab <- do.call(rbind, lapply(distList, function(y) {
     out <- t.test(x[,y] ~ x[,"oaf"], data=x)
-    tab <- data.frame(out[[5]][[1]], out[[5]][[2]], out[3])
+    tab <- data.frame(out[[5]][[2]], out[[5]][[1]], out[3])
     tab[,1:2] <- round(tab[,1:2],3)
     names(tab) <- c(names(out[[5]]), "pvalue")
     return(tab)
@@ -359,21 +368,21 @@ dist.output$pvalue <- p.adjust(dist.output$pvalue, method="fdr")
 dist.output <- dist.output[order(dist.output$pvalue),]
 
 dist.output$pvalue <- ifelse(dist.output$pvalue < 0.001, "< 0.001", round(dist.output$pvalue,3))
-colnames(dist.output) <- c("District", "Varible", "Control", "1AF Client", "p-value")	
+colnames(dist.output) <- c("District", "Varible", "1AF Client","Control", "p-value")	
 ```
 
-```{r, results='asis', eval=FALSE}
+```{r, results='asis'}
 print(kable(dist.output))
 ```
 
-**Demographic variables** 
+**Demographic variables**: 
 
-**Agricultural practice variables** 
+**Agricultural practice variables**: 
 
-**Soil Variables**
+**Soil Variables**:
 
 
-```{r eval=FALSE}
+```{r}
 write.csv(dist.output, file=paste(od, "ke district balance.csv", sep="/"), row.names=T)
 ```
 
@@ -408,7 +417,7 @@ print(kable(tenureSum))
 
 ### OAF tenure balance table
 ```{r}
-oafOnly$tenured <- ifelse(oafOnly$seasons_oaf==1,0,1)
+oafOnly$tenured <- ifelse(oafOnly$seasons_oaf>=3,0,1)
 
 toMatch <- c("npk", "urea", "g_intercrop")
 tenureList <- out.list[!out.list %in% unique(grep(paste(toMatch, collapse="|"), out.list, value=TRUE))]
@@ -417,7 +426,7 @@ tenureList <- out.list[!out.list %in% unique(grep(paste(toMatch, collapse="|"), 
 tenure <- do.call(rbind, lapply(tenureList, function(x) {
   
   out <- t.test(oafOnly[,x] ~ oafOnly[,"tenured"], data=oafOnly)
-  tab <- data.frame(out[[5]][[1]], out[[5]][[2]], out[3])
+  tab <- data.frame(out[[5]][[2]],out[[5]][[1]], out[3])
   tab[,1:2] <- round(tab[,1:2],3)
   names(tab) <- c(names(out[[5]]), "pvalue")
   return(tab)
@@ -428,18 +437,18 @@ tenure$pvalue <- p.adjust(tenure$pvalue, method="fdr")
 rownames(tenure) <- tenureList
 tenure <- tenure[order(tenure$pvalue),]
 tenure$pvalue <- ifelse(tenure[, 3] < 0.001, "< 0.001", round(tenure[, 3], 3)) 
-colnames(tenure) <- c("Control", "1AF Client", "p-value")	
+colnames(tenure) <- c("Tenured (3+)","New (< 3)", "p-value")	
 ```
 
 ```{r, results='asis'}
 print(kable(tenure))
 ```
 
-**Demographic variables** 
+**Demographic variables**: 
 
-**Agricultural practice variables** 
+**Agricultural practice variables**: 
 
-**Soil Variables**
+**Soil Variables**:
 
 ### Agronomic Behaviors
 
@@ -458,8 +467,8 @@ Plot the variables as they are. Should we consider a log transform as we used fo
 ```{r}
 for(i in names(d)[grep("_5", names(d))]) {
   print(
-    ggplot(d, aes(x=d[,i])) + geom_histogram() + 
-      stat_bin(binwidth =1)
+    ggplot(d, aes(x=d[,i])) + geom_histogram(binwidth=1) +
+      labs(x = paste("Past five seasons of ", i, sep = ""))
   )
 }
 ```
@@ -481,7 +490,7 @@ Keep only soil variables with reliable r2 values for the regressions.
 #soilVars <- c("C.E.C", "Cu", "EC", "Exch.Al", "Hp", "K", "Mg", "Mn",
 #             "pH", "B", "Ca", "Fe", "Na", "P", "PSI", "S", "Zn")
 
-soilVars <- c("Mg", "pH", "Ca")
+soilVars <- c("Mg", "pH", "Ca", "Exch.Al", "C.E.C")
 
 ```
 
@@ -493,6 +502,9 @@ list1 <- lapply(soilVars, function(x){
   return(mod)
 })
 
+```
+
+```{r results='asis'}
 stargazer(list1, type="html", 
           title = "2016A Kenya Soil Health Baseline - Agronomic Practice Models (log)",
           covariate.labels = c("Seasons of Fertilizer", "Seasons of Compost", 
@@ -546,8 +558,8 @@ stargazer(list3, type="html",
 ## Propensity Score Matching
 We need to do a more rigorous job of accounting for differences between Tubura farmers and identified control farmers. Execute propensity score matching (PSM) to identify control farmers that overlap with Tubura farmers with regard to their likelihood of being a Tubura farmer.
 
-```{r eval=FALSE}
-psmVars <- paste(out.list <- c("female", "age", "seasons_oaf", "cows", "goats", "chickens","pigs", "sheep", "field_size", "yield",  "chemical_fertilizer_5", "compost_fertilizer_5", "lime_fertilizer_5", "fertilizer_5", "legum_maincrop_5", "legum_intercrop_5"), collapse=" + ")
+```{r}
+psmVars <- paste(out.list <- c("female", "age", "cows", "goats", "chickens","pigs", "sheep"), collapse=" + ")
 
 # inputs.dap_kg", "inputs.can_kg", "inputs.npk_kg", "inputs.urea_kg", "inputs.dap_kg_intercrop", "inputs.can_kg_intercrop", "inputs.npk_kg_intercrop","inputs.urea_kg_intercrop",
 
@@ -562,14 +574,9 @@ We have missing values that are preventing the prediction function that preceeds
 
 ```{r}
 h <- d[complete.cases(d[,psmCheck]),]
-toRemove <- c("seasons_oaf")
-# so few control farmesr have OAF experience this strongly distorts the Pr() match
-psmCheck <- psmCheck[!psmCheck %in% toRemove]
-
 psmVars <- paste(psmCheck, collapse=" + ")
 
-reg <- glm(as.formula(paste("oaf ~", psmVars, sep="")),  data=h)
-summary(reg)	
+reg <- glm(as.formula(paste("oaf ~", psmVars, sep="")),  family= binomial(link="logit"), data=h)
 
 # summarize predicted probabilities
 pr <- data.frame(pr_score = predict(reg, type='response'), treat = h$oaf)
@@ -587,32 +594,151 @@ print(psmGraph)
 dev.off()
 ```
 
-```{r eval=FALSE}
-# PSM prep
-tr <- cbind(h$oaf)
-x <- h[, unlist(strsplit(psmVars, " + ", fixed=T))]
-y <- soilVars
-#y <- cbind(d$pH)
+```{r}
+d$age2 <- d$age^2
+d$hhsize_age <- d$hhsize*d$age
+d$hhsize2 <- d$hhsize^2
+
+coreVars = c("female", "age", "hhsize", "own", "as.factor(cell)", "cows", "goats", "chickens", "pigs", "sheep")
+
+psmList <- list(
+  list(tr = "client",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="m3.Ca"),
+  list(tr = "client",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="m3.Mg"),
+  list(tr = "client",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="pH"),
+  list(tr = "client",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="Total.N"),
+  list(tr = "client",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="Total.C"),
+  list(tr = "client",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="n_season_fert"),
+  list(tr = "client",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="n_season_compost"),
+  list(tr = "client",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="n_seasons_leg_1"),
+  list(tr = "client",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="n_season_fallow"),
+  list(tr = "client",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="logFert"),
+  list(tr = "client",
+       psmVars = paste(c(coreVars, "age2",
+                   "hhsize2"),
+                   collapse=" + "),
+       y="n_seasons_leg_2"),
+  list(tr = "client",
+       psmVars = paste(c(coreVars, "age2",
+                   "hhsize2"),
+                   collapse=" + "),
+       y="n_season_lime"),
+  list(tr = "client",
+       psmVars = paste(c("female", "age", "hhsize", "own",
+                         "cows", "goats", "chickens", "pigs", "sheep",
+                         "as.factor(district)", "age2", "hhsize2",
+                         "hhsize_age"),
+                   collapse=" + "),
+       y="fert1.are"),
+  # list(tr = "client",
+  #      psmVars = paste(c("female", "age", "hhsize","as.factor(district)",
+  #                  "cows", "goats", "chickens", "pigs", "sheep","age2", "hhsize2",
+  #                        "hhsize_age"),
+  #                  collapse=" + "),
+  #      y="fert2.are"),
+  list(tr = "client",
+       psmVars = paste(c("female", "age", "hhsize","as.factor(district)",
+                   "cows", "goats", "chickens", "pigs", "sheep","age2", "hhsize2",
+                         "hhsize_age"),
+                   collapse=" + "),
+       y="compost.are")
+  
+)
+
+# fertilizer application in 15B has missing values at the cell level so i include
+# a district level control instead. We don't get a good fit with the current model.
+# adjust!
+# aggregate(d$fert1.are, by=list(d$client, d$cell), FUN=mean, na.rm=T)
+# lime.are is also being finicky
+
+
 
 # PSM
 set.seed(20161102)
-m <- lapply(y, function(response){
+m <- lapply(psmList, function(listInput){
 
+  # keep complete cases of outcome variable
+  k <- d[complete.cases(d[,listInput$y]),]
+  
+  # run glm regression:
+  reg <- glm(as.formula(paste(listInput$tr, "~", listInput$psmVars, sep="")),  family= binomial(link="logit"), data=k)
+  
   suppressWarnings(
-  mod <- Match(Y = h[,response], Tr = tr, X = reg$fitted, ties=FALSE, replace=FALSE, caliper=0.25, estimand = "ATE")	
+  mod <- Match(Y = k[,listInput$y], Tr = k[,listInput$tr], X = reg$fitted, ties=FALSE, replace=FALSE, caliper=0.25, estimand = "ATE")	
   )
-
-  return(list("output"=mod, "df"=rbind(h[mod$index.treated,], h[mod$index.control,])))
+  matchRes <- MatchBalance(k[,listInput$tr] ~ k[,listInput$y], match.out=mod, nboots=500, data=k, print.level = 0)
+  #print(listInput$y)
+  return(list(mod, matchRes))
+  
 })
 ```
 
-Store the PSM result and conduct analyses on the matched samples.
 
-```{r eval=FALSE}
-dm <- rbind(d[m$index.treated,], d[m$index.control,])
+
+# Mapping
+
+### Map of baseline observations
+Produce a simple map of where our observations are
+
+```{r get_map, include=F}
+if (!(exists("kenya"))){
+  # Only need to geocode once per session library(dismo)
+  kenya <- try(geocode("Kenya"))
+  # If the internet fails, use a local value 
+  if (class(kenya) == "try-error") {
+    kenya <- ""
+  } 
+}
 ```
 
+See [here](http://rstudio-pubs-static.s3.amazonaws.com/208998_3592d3c6ac9a47ccbf3a3997ec2b68ec.html) for more on using markerClusterOptions in leaflet.
 
+In the map below, the larger green circles are One Acre Fund farmers and the smaller blue circles are control farmers.
 
+```{r leaflet, fig.width=9, fig.height=7}
+e <- d[!is.na(d$lon),]
+ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e)
+
+pal <- colorNumeric(c("navy", "green"), domain=unique(ss$oaf))
+map <- leaflet() %>% addTiles() %>%
+  setView(lng=kenya$longitude, lat=kenya$latitude, zoom=6) %>%
+  addCircleMarkers(lng=ss$lon, lat=ss$lat, 
+                   radius= ifelse(ss$oaf==1, 10,6),
+                   color = pal(ss$oaf),
+clusterOptions = markerClusterOptions(disableClusteringAtZoom=12, spiderfyOnMaxZoom=FALSE))
+
+map
+```
+
+**Notes**: We have a lot of GPS points piled on the Bungoma office. We need to address the GPS collection practices that lead to incorrectly logged GPS.
 
 --end
