@@ -263,6 +263,11 @@ sort(prop.table(table(d$plot_information.maincrop, useNA = 'ifany')))
 d$crop.maize <- ifelse(d$plot_information.maincrop=="maize", 1,0)
 ```
 
+# Kgs of inputs per acre and hectare
+```{r}
+
+```
+
 ## Baseline balance
 
 Let's see how balanced our farmers are in terms of demographic variables. One Acre Fund farmers were selected based on *(list criteria)* and control farmers in the same area tha fit the same criteria were also selected. No matching process has been performed to identify the control farmers that most closely resemble the One Acre Fund farmers in the sample.
@@ -392,7 +397,7 @@ Look at farmers by duration of tenure farming with 1AF We want to understand, at
 We will look only at current 1AF farmers and compare first year farmers to farmers with more experience with Tubura.
 
 ```{r}
-oafOnly <- d[which(d$oaf==0 & d$seasons_oaf>=1),]
+oafOnly <- d[which(d$oaf==1 & d$seasons_oaf>=1),]
 for(i in 1:length(soilVars)){
 print(
   ggplot(oafOnly, aes(x=as.factor(seasons_oaf), y=oafOnly[,soilVars[i]])) + 
@@ -478,13 +483,14 @@ d$logFert <- log(d$chemical_fertilizer_5+1)
 d$logCompost <- log(d$compost_fertilizer_5+1)
 d$logLime <- log(d$lime_fertilizer_5+1)
 d$logLegmain <- log(d$legum_maincrop_5+1)
-d$logLegint <- log(d$legum_intercrop_5+1)
+#d$logLegint <- log(d$legum_intercrop_5+1)
 
 logVars <- paste(names(d[grep("log", names(d))]), collapse=" + ")
+cor(d[,grep("log", names(d))], use = "complete.obs")
 ```
 
 Keep only soil variables with reliable r2 values for the regressions. 
-*Confirm this list with Emmanuel and confirm when we'll get the C and N estimates*
+**Confirm this list with Emmanuel and confirm when we'll get the C and N estimates**
 
 ```{r}
 #soilVars <- c("C.E.C", "Cu", "EC", "Exch.Al", "Hp", "K", "Mg", "Mn",
@@ -494,17 +500,45 @@ soilVars <- c("Mg", "pH", "Ca", "Exch.Al", "C.E.C")
 
 ```
 
-
-
 ```{r}
+# This is currently only for OAF clients!
 list1 <- lapply(soilVars, function(x){
-  mod <- lm(as.formula(paste("d[,x] ~",  logVars, "+ as.factor(SiteName)", sep="")), data=d)
+  mod <- lm(as.formula(paste("oafOnly[,x] ~",  logVars, "+ as.factor(SiteName)", sep="")), data=oafOnly)
   return(mod)
 })
 
 ```
 
-```{r results='asis'}
+### Table 17 - years of input use
+
+```{r}
+plm.log <- function(x, range){
+  
+  beta = round(summary(x)$coefficients[range,1],3)
+  beta.pval = summary(x)$coefficients[range,4]
+  beta.conv = ifelse(beta.pval < 0.01, "***", ifelse(
+    beta.pval < 0.05, "**", ifelse(
+      beta.pval < 0.1, "*", "")))
+  #beta.pval = round(beta.pval, 3)
+  outcome = paste(beta, beta.conv, sep = "")
+  outcome = c(outcome, unique(round(summary(x)$coefficients[1,1],3)))
+  res = data.frame(outcome, stringsAsFactors = F)
+  
+  return(res)  
+}
+
+ke.table17 <- do.call(cbind, lapply(list1, function(x){
+  plm.log(x, 2:5)
+}))
+colnames(ke.table17) <- soilVars
+rownames(ke.table17) <- c(unlist(strsplit(gsub(" \\+ ", " ", logVars), " ")), "constant")
+ke.table17 <- ke.table17[,c("pH", "Ca", "Mg", "Exch.Al", "C.E.C")]
+
+write.csv(ke.table17, file=paste(od, "ketable17.csv", sep="/"), row.names=T)
+```
+
+
+```{r results='asis', eval=F}
 stargazer(list1, type="html", 
           title = "2016A Kenya Soil Health Baseline - Agronomic Practice Models (log)",
           covariate.labels = c("Seasons of Fertilizer", "Seasons of Compost", 
@@ -517,15 +551,25 @@ stargazer(list1, type="html",
           omit=c("SiteName"), out=paste(od, "ke_baseline_agprac.htm",sep="/"))
 ```
 
-### OAF tenure model
+### OAF tenure model - table 14
 
-```{r results='asis'}
-
+```{r}
 list2 <- lapply(soilVars, function(x){
   mod <- lm(as.formula(paste("d[,x] ~",  "seasons_oaf + as.factor(SiteName)", sep="")), data=d)
   return(mod)
 })
+```
 
+```{r}
+
+
+ke.table14 <- do.call(cbind, lapply(list2, function(x){
+  plm.log(x, 2)
+}))
+```
+
+
+```{r results='asis', eval=F}
 stargazer(list2, type="html", 
           title = "2016A Kenya Soil Health Baseline - Naive Tenure Models",
           covariate.labels = c("OAF Tenure"),
@@ -554,14 +598,14 @@ stargazer(list3, type="html",
           omit=c("SiteName"), out=paste(od, "ke_baseline_ag_tenure.htm", sep="/"))
 ```
 
+### Table 18 
 
-## Propensity Score Matching
+
+# Propensity Score Matching
 We need to do a more rigorous job of accounting for differences between Tubura farmers and identified control farmers. Execute propensity score matching (PSM) to identify control farmers that overlap with Tubura farmers with regard to their likelihood of being a Tubura farmer.
 
 ```{r}
 psmVars <- paste(out.list <- c("female", "age", "cows", "goats", "chickens","pigs", "sheep"), collapse=" + ")
-
-# inputs.dap_kg", "inputs.can_kg", "inputs.npk_kg", "inputs.urea_kg", "inputs.dap_kg_intercrop", "inputs.can_kg_intercrop", "inputs.npk_kg_intercrop","inputs.urea_kg_intercrop",
 
 psmCheck <- unlist(strsplit(gsub("\\+", "", as.vector(psmVars))," ", fixed=TRUE))
 psmCheck <- psmCheck[-which(psmCheck=="")]
@@ -596,20 +640,18 @@ dev.off()
 
 ```{r}
 d$age2 <- d$age^2
-d$hhsize_age <- d$hhsize*d$age
-d$hhsize2 <- d$hhsize^2
 
-coreVars = c("female", "age", "hhsize", "own", "as.factor(cell)", "cows", "goats", "chickens", "pigs", "sheep")
+coreVars = c("female", "age", "as.factor(site)", "cows", "goats", "chickens", "pigs", "sheep")
 
 psmList <- list(
   list(tr = "client",
        psmVars = paste(coreVars,
                    collapse=" + "),
-       y="m3.Ca"),
+       y="Ca"),
   list(tr = "client",
        psmVars = paste(coreVars,
                    collapse=" + "),
-       y="m3.Mg"),
+       y="Mg"),
   list(tr = "client",
        psmVars = paste(coreVars,
                    collapse=" + "),
@@ -617,27 +659,27 @@ psmList <- list(
   list(tr = "client",
        psmVars = paste(coreVars,
                    collapse=" + "),
-       y="Total.N"),
+       y=""),
   list(tr = "client",
        psmVars = paste(coreVars,
                    collapse=" + "),
-       y="Total.C"),
+       y=""),
   list(tr = "client",
        psmVars = paste(coreVars,
                    collapse=" + "),
-       y="n_season_fert"),
+       y="chemical_fertilizer_5"),
   list(tr = "client",
        psmVars = paste(coreVars,
                    collapse=" + "),
-       y="n_season_compost"),
+       y="compost_fertilizer_5"),
   list(tr = "client",
        psmVars = paste(coreVars,
                    collapse=" + "),
-       y="n_seasons_leg_1"),
+       y="legum_maincrop_5"),
   list(tr = "client",
        psmVars = paste(coreVars,
                    collapse=" + "),
-       y="n_season_fallow"),
+       y="legum_intercrop_5"),
   list(tr = "client",
        psmVars = paste(coreVars,
                    collapse=" + "),
@@ -646,12 +688,12 @@ psmList <- list(
        psmVars = paste(c(coreVars, "age2",
                    "hhsize2"),
                    collapse=" + "),
-       y="n_seasons_leg_2"),
+       y=""),
   list(tr = "client",
        psmVars = paste(c(coreVars, "age2",
                    "hhsize2"),
                    collapse=" + "),
-       y="n_season_lime"),
+       y="lime_fertilizer_5"),
   list(tr = "client",
        psmVars = paste(c("female", "age", "hhsize", "own",
                          "cows", "goats", "chickens", "pigs", "sheep",
