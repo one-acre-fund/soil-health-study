@@ -263,9 +263,9 @@ sort(prop.table(table(d$plot_information.maincrop, useNA = 'ifany')))
 d$crop.maize <- ifelse(d$plot_information.maincrop=="maize", 1,0)
 ```
 
-# Kgs of inputs per acre and hectare - Kalie/Charles?
+# Kgs of inputs per acre and hectare
 
-**Scenario 1**: It's already per acre. This is not what the codebook suggests but it's possible?
+**Notes from Kalie**: We should be dividing input quantity by land size. 100 kgs of inputs is the soft ceiling for OAF fields as we didn't offer more than 100 kgs of fertilizer per acre. It's also impossible for an OAF field to be smaller than 0.25 acres.
 
 ```{r}
 ggplot(d, aes(x=field_size, y=inputs.dap_kg)) + geom_point()
@@ -285,13 +285,14 @@ Multiplying certainly keeps us in a more normal range. The scatter plot looks ok
 ggplot(d, aes(x=field_size, y=dap.check)) + geom_point()
 ```
 
-However, if the input quatity variable is already per plot size, as the codebook suggests, I'd want to divide by the size of the plot to get the per acre application rate. 
+However, if the input quatity variable is already per plot size, as the codebook suggests, I'd want to divide by the size of the plot to get the per acre application rate. **This is what [Kalie](kalie.gold@oneacrefund.org) suggests**
 
 ```{r}
 d$dap.acre <- d$inputs.dap_kg/d$field_size
 d$can.acre <- d$inputs.can_kg/d$field_size
 d$npk.acre <- d$inputs.npk_kg/d$field_size
 d$urea.acre <- d$inputs.urea_kg/d$field_size
+d$compost.acre <- d$inputs.compost/d$field_size
 
 acreInputs <- names(d)[grep("acre", names(d))]
 ```
@@ -299,8 +300,8 @@ acreInputs <- names(d)[grep("acre", names(d))]
 Print out the calculation to make certain I'm doing this right:
 
 ```{r}
-head(d[, c("inputs.dap_kg", "field_size", "dap.acre")])
-d[which.max(d$dap.acre), c("inputs.dap_kg", "field_size", "dap.acre")]
+#head(d[, c("inputs.dap_kg", "field_size", "dap.acre")])
+d[which.max(d$dap.acre), c("inputs.dap_kg", "field_size", "dap.acre", "oaf")]
 
 ```
 
@@ -309,32 +310,14 @@ d[which.max(d$dap.acre), c("inputs.dap_kg", "field_size", "dap.acre")]
 for(i in 1:length(acreInputs)){
   print(
   ggplot(data=d, aes(x=d[,acreInputs[i]])) +
-    geom_density() +
+    geom_histogram() +
+    facet_wrap(~ oaf, scales='free') +
     labs(x=acreInputs[i], title = paste("Kenya input quantity per acre - ", acreInputs[i], sep = ""))
   )  
 }
 ```
 
-```{r eval=F}
-d$dap.ha <- (d$inputs.dap_kg/d$field_size)*2.47
-d$can.ha <-(d$inputs.can_kg/d$field_size)*2.47
-d$npk.ha <- (d$inputs.npk_kg/d$field_size)*2.47
-d$urea.ha <- (d$inputs.urea_kg/d$field_size)*2.47
-
-haInputs <- names(d)[grep(".ha", names(d))]
-
-for(i in 1:length(haInputs)){
-  print(
-  ggplot(data=d, aes(x=d[,haInputs[i]])) +
-    geom_density() +
-    labs(x=haInputs[i], title = paste("Kenya input quantity per hectare - ", haInputs[i], sep = ""))
-  )  
-}
-
-```
-
-
-These values are totally unreasonable! These per acre and per hectare values seem too big. Let's look at the per acre rates by field size
+These values are totally unreasonable! These per acre (and per hectare) values seem too big. Let's look at the per acre rates by field size
 
 
 ```{r}
@@ -347,9 +330,40 @@ print(
 }
 ```
 
-The larger values are definintely coming from the lower end of the field size spectrum. This suggests that the input quantities were always in acres and thus we should multiply the quantity by the field size to get the application rate for the field. However, the codebook says that the question ask for kgs used on the plot. 
+### Cleaning input variables
+```{r}
+d$field_size.adj <- ifelse(d$oaf==1 & d$field_size<0.25, 0.25, d$field_size)
 
-**Kalie/Charles** >>> can you please clarify?
+
+# updated version of the input/acre variables - winsoring values to 100 kg.
+d$dap.acre <- d$inputs.dap_kg/d$field_size.adj
+d$dap.acre <- ifelse(d$dap.acre>100, 100, d$dap.acre)
+
+d$can.acre <- d$inputs.can_kg/d$field_size.adj
+d$can.acre <- ifelse(d$can.acre>100, 100, d$can.acre)
+
+d$npk.acre <- d$inputs.npk_kg/d$field_size.adj
+d$npk.acre <- ifelse(d$npk.acre>100, 100, d$npk.acre)
+
+d$urea.acre <- d$inputs.urea_kg/d$field_size.adj
+d$urea.acre <- ifelse(d$urea.acre>100, 100, d$urea.acre)
+
+d$compost.are <- d$inputs.compost/d$field_size.adj
+```
+
+```{r}
+for(i in 1:length(acreInputs)){
+print(
+    ggplot(d, aes(x = field_size.adj, y=d[, acreInputs[i]])) + 
+    geom_point() + 
+    #facet_wrap(~oaf) +
+    labs(x = "Field Size in Acres", y=acreInputs[i], title = paste("Kenya input quantity by acreage - ", acreInputs[i], sep = ""))
+)
+}
+
+```
+
+**[Kim](kim.siegal@oneacrefund.org) says**: While the values vary far more than we see in typical M&E data, we don't have a good reference point for fertilizer application rates during the short rains, the period about which we asked. It's conceivable that the fertilizer/acre quantity varies this much, even among OAF farmers. I'm going to go with that for now.
 
 ## Baseline balance
 
@@ -359,9 +373,7 @@ Let's see how balanced our farmers are in terms of demographic variables. One Ac
 names(d)[names(d)=="gender"] <- "female"
 
 out.list <- c("female", "age", "cows", "goats", "chickens",
-              "pigs", "sheep", "field_size", "yield", "inputs.dap_kg", 
-              "inputs.can_kg", "inputs.npk_kg", "inputs.urea_kg", "inputs.dap_kg_intercrop", "inputs.can_kg_intercrop", "inputs.npk_kg_intercrop", "inputs.urea_kg_intercrop",
-"chemical_fertilizer_5", "compost_fertilizer_5", "lime_fertilizer_5",
+              "pigs", "sheep", "field_size", "yield", "dap.acre", "can.acre", "npk.acre", "urea.acre", "chemical_fertilizer_5", "compost_fertilizer_5", "lime_fertilizer_5",
 "fertilizer_5", "legum_maincrop_5", "legum_intercrop_5", soilVars, "valley", "hilltop", "hillside", "crop.maize", "alt")
 
 d$seasons_oaf <- ifelse(d$seasons_oaf>8, NA, d$seasons_oaf)
@@ -530,7 +542,7 @@ tenureSum <- aggregate(oafOnly[,out.list], by=list(oafOnly$seasons_oaf), functio
   round(mean(x, na.rm=T),2)
 })
 tenureSum <- as.data.frame(t(tenureSum))
-colnames(tenureSum) <- c(paste(seq(1,5,1), " seas.", sep = ""), "8 seas.")
+colnames(tenureSum) <- c(paste(seq(1,8,1), " seas.", sep=""))
 ```
 
 ```{r, results='asis'}
@@ -668,6 +680,97 @@ stargazer(list3, type="html",
 ### Table 18 - client product use and soil outcomes
 
 First, convert all quantites to kg/acre and kg/ha. Then check for collinearity, set up and execute models
+```{r}
+cor(d[,acreInputs[c(1:2,5)] ], use="complete.obs")
+```
+
+As with the Rwanda baseline soil health study, agricultural input quantity use is highly correlated. 
+
+```{r}
+plm.t16 <- function(x, range){
+  
+  beta = round(summary(x)$coefficients[range,1],3)
+  beta.pval = round(summary(x)$coefficients[range,4],3)
+  beta.conv = ifelse(beta.pval < 0.01, "***", ifelse(
+    beta.pval < 0.05, "**", ifelse(
+      beta.pval < 0.1, "*", "")))
+  #beta.pval = round(beta.pval, 3)
+  outcome = paste(beta, " (", beta.pval, ")", sep = "")
+  outcome = c(outcome, unique(round(summary(x)$coefficients[1,1],3)))
+  res = data.frame(outcome, stringsAsFactors = F)
+  
+  return(res)  
+}
+
+
+previousSeasonfert <- paste("dap.acre", "as.factor(SiteName)", sep=" + ")
+
+list.t18 <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~", previousSeasonfert, sep="")), data=d)
+  return(mod)
+})
+
+table18 <- do.call(cbind, lapply(list.t18, function(x){
+  plm.t16(x, 2)
+}))
+colnames(table18) <- soilVars
+rownames(table18) <- c("DAP (kg/acre)", "constant")
+
+table18 <- table18[,c("pH", "Ca", "Mg", "Exch.Al")]
+write.csv(table18, file=paste(od, "table18_dap.csv", sep = "/"),
+          row.names = T)
+```
+
+```{r}
+previousSeasoncompost <- paste("compost.acre", "as.factor(SiteName)", sep=" + ")
+list.t18b <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~", previousSeasoncompost, sep="")), data=d)
+  return(mod)
+})
+
+table18b <- do.call(cbind, lapply(list.t18b, function(x){
+  plm.t16(x, 2)
+}))
+colnames(table18b) <- soilVars
+rownames(table18b) <- c("Compost (kg/acre)", "constant")
+
+table18b <- table18b[,c("pH", "Ca", "Mg", "Exch.Al")]
+write.csv(table18b, file=paste(od, "table18_compost.csv", sep = "/"),
+          row.names = T)
+```
+
+```{r}
+plm.t18 <- function(x, range){
+  
+  beta = round(summary(x)$coefficients[range,1],4)
+  beta.pval = round(summary(x)$coefficients[range,4],3)
+  beta.conv = ifelse(beta.pval < 0.01, "***", ifelse(
+    beta.pval < 0.05, "**", ifelse(
+      beta.pval < 0.1, "*", "")))
+  #beta.pval = round(beta.pval, 3)
+  outcome = paste(beta, " (", beta.pval, ")", sep = "")
+  outcome = c(outcome, unique(round(summary(x)$coefficients[1,1],3)))
+  res = data.frame(outcome, stringsAsFactors = F)
+  
+  return(res)  
+}
+
+previousSeasonCan <- paste("can.acre", "as.factor(SiteName)", sep=" + ")
+list.t18c <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~", previousSeasonCan, sep="")), data=d)
+  return(mod)
+})
+
+table18c <- do.call(cbind, lapply(list.t18c, function(x){
+  plm.t18(x, 2)
+}))
+colnames(table18c) <- soilVars
+rownames(table18c) <- c("CAN (kg/acre)", "constant")
+
+table18c <- table18c[,c("pH", "Ca", "Mg", "Exch.Al")]
+write.csv(table18c, file=paste(od, "table18_can.csv", sep = "/"),
+          row.names = T)
+```
 
 
 # Propensity Score Matching
@@ -748,7 +851,19 @@ psmList <- list(
   list(tr = "oaf",
        psmVars = paste(coreVars,
                    collapse=" + "),
-       y="logFert")
+       y="logFert"),
+  list(tr = "oaf",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="dap.acre"),
+  list(tr = "oaf",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="can.acre"),
+  list(tr = "oaf",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="compost.acre")
 )
 
 #lime_fertilizer_5 >> so few farmers use it that we get a bad match.
@@ -773,7 +888,7 @@ m <- lapply(psmList, function(listInput){
   mod <- Match(Y = k[,listInput$y], Tr = k[,listInput$tr], X = reg$fitted.values, ties=FALSE, replace=FALSE, caliper=0.25, estimand = "ATE")	
   )
   matchRes <- MatchBalance(k[,listInput$tr] ~ k[,listInput$y], match.out=mod, nboots=500, data=k, print.level = 0)
-  print(listInput$y)
+  #print(listInput$y)
   return(list(mod, matchRes))
   
 })
@@ -802,6 +917,8 @@ print(kable(matchRes))
 ```
 
 So few farmers use lime fertilizer that we don't get a good match. I could make it binary but it's so overwhelmingly the case that none of the farmers use lime that I'm just going to drop it.
+
+We also don't get super great matches on DAP and CAN. I'm going to push forward with this but I'm going to push forward with the results. **We should flag this.**
 
 
 ```{r}
@@ -848,11 +965,11 @@ table8 <- table8[order(match(rownames(table8), t8order)),]
 write.csv(table8, file=paste(od, "table8.csv", sep = "/"), row.names = T)
 
 #table 3
-t3order <- c("fert1.are", "compost.are")
-table3vars <- paste(t3order, collapse = "|")
-table3 <- coefTable[grep(table3vars, rownames(coefTable)), ]
-table3 <- table3[order(match(rownames(table3), t3order)),]
-write.csv(table3, file=paste(od, "psm coefficients table3.csv", sep = "/"))
+t9order <- c("dap.acre", "can.acre", "compost.acre")
+table9vars <- paste(t9order, collapse = "|")
+table9 <- coefTable[grep(table9vars, rownames(coefTable)), ]
+table9 <- table9[order(match(rownames(table9), t9order)),]
+write.csv(table9, file=paste(od, "table9.csv", sep = "/"))
 ```
 
 ```{r}
