@@ -355,11 +355,12 @@ sort(prop.table(table(d$crop_15b, useNA = 'ifany')))
 d$climbing_bean <- ifelse(d$crop_15b=="shy", 1,0)
 d$sorghum <- ifelse(d$crop_15b=="saka", 1,0)
 d$bush_bean <- ifelse(d$crop_15b=="big", 1,0)
+d$maize <- ifelse(d$crop_15b=="gor", 1,0)
 ```
 
 ```{r}
 out.list <- c("female", "age", "hhsize", "own", "field.size",
-              "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow", "n_seasons_leg_1", "n_seasons_leg_2", "slope",  "alt", "valley", "hillside", "hilltop", "cows", "goats", "chickens", "pigs", "sheep", "climbing_bean", "sorghum", "bush_bean", soilVars)
+              "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow", "n_seasons_leg_1", "n_seasons_leg_2", "slope",  "alt", "valley", "hillside", "hilltop", "cows", "goats", "chickens", "pigs", "sheep", "climbing_bean", "sorghum", "bush_bean","maize", soilVars)
 
 output <- do.call(rbind, lapply(out.list, function(x) {
   
@@ -400,7 +401,7 @@ write.csv(rw.table4, file=paste(od, "pre match balance table4.csv", sep="/"),
           row.names = T)
 
 t5order <- c("field.size", "slope", "alt", "hilltop", "hillside", "valley",
-                      "climbing_bean", "sorghum", "bush_bean")
+                      "climbing_bean", "sorghum", "bush_bean", "maize")
 
 table5vars <- paste(t5order,collapse="|")
 
@@ -837,6 +838,22 @@ d[abs(d$lime.are)>40 & !is.na(d$lime.are), c("field_dim1", "field_dim2", "field.
 
 ```{r}
 # this should be kg of fertilizer used in this field. Compost is off the charts. Convert this to compost per sq meter
+plm.t16 <- function(x, range){
+  
+  beta = round(summary(x)$coefficients[range,1],3)
+  beta.pval = round(summary(x)$coefficients[range,4],3)
+  beta.conv = ifelse(beta.pval < 0.01, "***", ifelse(
+    beta.pval < 0.05, "**", ifelse(
+      beta.pval < 0.1, "*", "")))
+  #beta.pval = round(beta.pval, 3)
+  outcome = paste(beta, " (", beta.pval, ")", sep = "")
+  outcome = c(outcome, unique(round(summary(x)$coefficients[1,1],3)))
+  res = data.frame(outcome, stringsAsFactors = F)
+  
+  return(res)  
+}
+
+
 previousSeasonfert <- paste("fert1.are", "as.factor(cell)", sep=" + ")
 
 list5 <- lapply(soilVars, function(x){
@@ -845,12 +862,12 @@ list5 <- lapply(soilVars, function(x){
 })
 
 table16 <- do.call(cbind, lapply(list5, function(x){
-  plm.log(x, 2)
+  plm.t16(x, 2)
 }))
 colnames(table16) <- soilVars
 rownames(table16) <- c("Fertilizer (kg/are)", "constant")
 
-table16 <- table16[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg")]
+table16 <- table16[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl")]
 write.csv(table16, file=paste(od, "rwtable16_fert.csv", sep = "/"),
           row.names = T)
 ```
@@ -867,12 +884,12 @@ list5b <- lapply(soilVars, function(x){
 })
 
 table16b <- do.call(cbind, lapply(list5b, function(x){
-  plm.log(x, 2)
+  plm.t16(x, 2)
 }))
 colnames(table16b) <- soilVars
 rownames(table16b) <- c("Compost (kg/are)", "constant")
 
-table16b <- table16b[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg")]
+table16b <- table16b[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl")]
 write.csv(table16b, file=paste(od, "rwtable16_compost.csv", sep = "/"),
           row.names = T)
 ```
@@ -889,12 +906,12 @@ list5c <- lapply(soilVars, function(x){
 })
 
 table16c <- do.call(cbind, lapply(list5c, function(x){
-  plm.log(x, 2)
+  plm.t16(x, 2)
 }))
 colnames(table16c) <- soilVars
 rownames(table16c) <- c("Lime (kg/are)", "constant")
 
-table16c <- table16c[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg")]
+table16c <- table16c[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl")]
 write.csv(table16c, file=paste(od, "rwtable16_lime.csv", sep = "/"),
           row.names = T)
 ```
@@ -1363,23 +1380,32 @@ write.csv(thresh, file=paste(od, "table1_rw_thresholds.csv", sep = "/"), row.nam
 ### Table 1:3 coefficients
 
 ```{r}
+#
 write.csv(coefTable, file=paste(od, "psm coefficients.csv", sep = "/"),
           row.names = T)
 
 # sort by the order Eric wants
-coefTableES1 <- coefTable[c(3,5,4,1,2),]
+t1order <- c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl")
+table1vars <- paste(t1order, collapse = "|")
+table1 <- coefTable[grep(table1vars, rownames(coefTable)), ]
+table1 <- table1[order(match(rownames(table1), t1order)),]
 
-write.csv(coefTableES1, file=paste(od, "psm coefficients ordered for ES.csv", sep = "/"))
+write.csv(table1, file=paste(od, "psm coefficients ordered for ES.csv", sep = "/"))
 
 # 11/17 added lime
-coefTableES2 <- coefTable[c(6,7,12,9,8,11),]
+t2order <- c("n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow", "n_seasons_leg_1", "n_seasons_leg_2")
+table2vars <- paste(t2order, collapse = "|")
+table2 <- coefTable[grep(table2vars, rownames(coefTable)), ]
+table2 <- table2[order(match(rownames(table2), t2order)),]
 
-write.csv(coefTableES2, file=paste(od, "psm coefficients ordered for ES_agprac.csv", sep = "/"))
+write.csv(table2, file=paste(od, "psm coefficients ordered for ES_agprac.csv", sep = "/"))
 
 #table 3
-coefTable3 <- coefTable[13:14,]
-write.csv(coefTable3, file=paste(od, "psm coefficients table3.csv", sep = "/"))
-
+t3order <- c("fert1.are", "compost.are")
+table3vars <- paste(t3order, collapse = "|")
+table3 <- coefTable[grep(table3vars, rownames(coefTable)), ]
+table3 <- table3[order(match(rownames(table3), t3order)),]
+write.csv(table3, file=paste(od, "psm coefficients table3.csv", sep = "/"))
 ```
 
 **Interpretation**: Propensity score matching gives us a comparable treatment and control group. The table above shows that after matching on those characteristics, there are effectively no differences between One Acre Fund farmer and Tubura farmers on soil attributes. The unadjusted p-values show 1AF farmers to have slow levels of soil nitrogen but this finding disappears if we account for running multiple matching models.
@@ -1486,7 +1512,7 @@ stargazer(tenureTab.add, type="html",
 plm.tenure <- function(x){
   
   intercept = x$coefficients[[1]]
-  beta = x$coefficients[[2]]
+  beta = round(x$coefficients[[2]],3)
   int.pval = summary(x)$coefficients[1,4]
   int.pval = ifelse(int.pval < 0.001, "< 0.001", round(as.numeric(int.pval),3))
   beta.pval = summary(x)$coefficients[2,4]
@@ -1509,7 +1535,7 @@ table6vars <- paste(t6order, collapse = "|")
 rw.table6 <- output[grep(table6vars, rownames(output)), ]
 rw.table6 <- rw.table6[order(match(rownames(rw.table6), t4order)),]
 
-ESorder <- c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "n_season_fert",
+ESorder <- c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl", "n_season_fert",
              "logFert", "n_season_compost", "n_seasons_leg_1", "n_season_fallow")
 ESorder.grep <- paste(ESorder, collapse = "|")
 tenure.reg <- tenure.reg[grep(ESorder.grep,rownames(tenure.reg)),]
