@@ -209,7 +209,7 @@ d$kg_lime_15b <- ifelse(abs(d$kg_lime_15b)==88, NA, d$kg_lime_15b)
 
 # replace the blank gps_pic_guide with info
 d <- cbind(d, str_split_fixed(d$gps_pic_guid, " ", n=4))
-names(d)[107:110] <- c("lat", "lon", "alt", "precision")
+names(d)[names(d)=="1" |names(d)== "2" | names(d)== "3" | names(d)== "4"] <- c("lat", "lon", "alt", "precision")
 d[,c("lat", "lon", "alt", "precision")] <- sapply(d[,c("lat", "lon", "alt", "precision")],
                                                   function(x){as.numeric(as.character(x))})
 
@@ -221,14 +221,14 @@ Cleaning of soil data: Come back, check and clean the soil data before outputtin
 dim(d[is.na(d$m3.Ca),])
 d <- d[-which(is.na(d$m3.Ca)),]
        
-summary(d[,c("m3.Ca", "m3.Mg", "pH", "Total.N", "Total.C")])
+summary(d[,c("m3.Ca", "m3.Mg", "pH", "Total.N", "Total.C", "ExAl")])
 ```
 
 Let's check out the rows for which we don't have soil data and drop them as they won't contribute to the full picture.
 
 ### Graphs of RW baseline soil variables
 ```{r}
-soilVars <- c("m3.Ca", "m3.Mg", "pH", "Total.N", "Total.C")
+soilVars <- c("m3.Ca", "m3.Mg", "pH", "Total.N", "Total.C", "ExAl")
 ```
 
 ```{r}
@@ -242,7 +242,6 @@ print(
 
 
 ```
-
 
 ### Check out soil relationships
 There are biologically predictable relationships between soil chemical characteristics. For instance, we expect Ca and Mg to move in the same direction and be positively correlated with pH. If we had Aluminum as an outcome, we'd expect pH to be negatively correlated with soluable aluminum. Let's look quickly to confirm if those relationships are present:
@@ -259,6 +258,10 @@ ggplot(d, aes(x=pH, y=m3.Ca)) + geom_point() +
 ggplot(d, aes(x=pH, y=m3.Mg)) + geom_point() +
   stat_smooth(method="loess") +
   labs(x = "pH", y="Magnesium (m3)", title = "pH and Magnesium relationship")
+
+ggplot(d, aes(x=pH, y=ExAl)) + geom_point() +
+  stat_smooth(method="loess") +
+  labs(x = "pH", y="Exchangeable Aluminum", title = "pH and Aluminum relationship")
 
 ggplot(d, aes(x=Total.C, y=Total.N)) + geom_point() + 
   stat_smooth(method="loess") +
@@ -356,9 +359,7 @@ d$bush_bean <- ifelse(d$crop_15b=="big", 1,0)
 
 ```{r}
 out.list <- c("female", "age", "hhsize", "own", "field.size",
-              "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow", "n_seasons_leg_1", "n_seasons_leg_2", "m3.Ca", "m3.Mg", "pH", "Total.C", "Total.N",
-              "slope",  "alt", "valley", "hillside", "hilltop", "cows", "goats",
-              "chickens", "pigs", "sheep", "climbing_bean", "sorghum", "bush_bean")
+              "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow", "n_seasons_leg_1", "n_seasons_leg_2", "slope",  "alt", "valley", "hillside", "hilltop", "cows", "goats", "chickens", "pigs", "sheep", "climbing_bean", "sorghum", "bush_bean", soilVars)
 
 output <- do.call(rbind, lapply(out.list, function(x) {
   
@@ -481,7 +482,7 @@ Look at farmers by duration of tenure farming with Tubura. We want to understand
 We will look only at current Tubura farmers and compare first year farmers to farmers with more experience with Tubura.
 
 ```{r}
-oafOnly <- d[which(d$client==0 & d$total.seasons>=1),]
+oafOnly <- d[which(d$client==1 & d$total.seasons>=1),]
 
 nTenure <- oafOnly %>% group_by(total.seasons) %>% 
   dplyr::summarize(
@@ -506,7 +507,7 @@ tenureSum <- aggregate(oafOnly[,out.list], by=list(oafOnly$total.seasons), funct
   round(mean(x, na.rm=T),2)
 })
 tenureSum <- as.data.frame(t(tenureSum))
-colnames(tenureSum) <- c(paste(seq(1,11,1), " seas.", sep = ""), "13 seas.")
+colnames(tenureSum) <- c(paste(seq(1,14,1), " seas.", sep = ""))
 ```
 
 ```{r, results='asis'}
@@ -1085,9 +1086,6 @@ stargazer(list7, type="html",
 )
 ```
 
-### Measured Yields
-We don't have measured yield data for the Rwanda baseline. Skip this for now.
-
 ### Distributions of soil health levels for different sub-groups
 
 ## Propensity Score Matching
@@ -1133,7 +1131,7 @@ We have to indicate a variable for matching. I'm choosing pH as we know it to be
 # PSM prep
 tr <- cbind(d$client)
 x <- d[, unlist(strsplit(psmVars, " + ", fixed=T))]
-y <- c("m3.Ca", "m3.Mg", "pH", "Total.N", "Total.C")
+y <- soilVars
 
 
 # PSM
@@ -1202,6 +1200,10 @@ psmList <- list(
        psmVars = paste(coreVars,
                    collapse=" + "),
        y="Total.C"),
+  list(tr = "client",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="ExAl"),
   list(tr = "client",
        psmVars = paste(coreVars,
                    collapse=" + "),
@@ -1340,6 +1342,7 @@ thresh <- d %>% group_by(client) %>% dplyr::summarize(
   nitrogen = sum(Total.N < 0.1),
   calcium = sum(m3.Ca < 720),
   magnesium = sum(m3.Mg < 100)
+  #aluminum = sum(ExAl)
 ) %>% mutate(
   under.ph = paste(paste(round(ph/count,4)*100, "%", sep=""), " (", ph, ")", sep=""),
   under.carbon = paste(paste(round(carbon/count,4)*100,"%", sep=""), " (", carbon, ")", sep=""),
@@ -1446,14 +1449,14 @@ tenureTab.add <- lapply(1:length(m), function(model){
 
 # add tenured>=3 to d if we want to run this as a binary comparison
 
-tenureTab.binary <- lapply(1:length(m), function(model){
-  
-  dm <- as.data.frame(rbind(d[m[[model]][[1]]$index.treated,], 
-              d[m[[model]][[1]]$index.control,]))
-  dm$client_tenure <- dm$client*dm$total.seasons
-  mod <- lm(as.formula(paste("dm[,psmList[[model]]$y] ~", "tenured + as.factor(cell)", sep ="")), data=dm)
-  return(mod)
-})
+# tenureTab.binary <- lapply(1:length(m), function(model){
+#   
+#   dm <- as.data.frame(rbind(d[m[[model]][[1]]$index.treated,], 
+#               d[m[[model]][[1]]$index.control,]))
+#   dm$client_tenure <- dm$client*dm$total.seasons
+#   mod <- lm(as.formula(paste("dm[,psmList[[model]]$y] ~", "tenured + as.factor(cell)", sep ="")), data=dm)
+#   return(mod)
+# })
 
 
 ```
