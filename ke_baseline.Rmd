@@ -1,5 +1,5 @@
 ---
-title: "Kenya Baseline Demographic and Soil Summary and Analysis"
+title: "Kenya Baseline Soil Health Report"
 author: "Matt Lowes"
 date: '`r format(Sys.Date(), "%B %d, %Y")`'
 output: html_document
@@ -263,10 +263,93 @@ sort(prop.table(table(d$plot_information.maincrop, useNA = 'ifany')))
 d$crop.maize <- ifelse(d$plot_information.maincrop=="maize", 1,0)
 ```
 
-# Kgs of inputs per acre and hectare
+# Kgs of inputs per acre and hectare - Kalie/Charles?
+
+**Scenario 1**: It's already per acre. This is not what the codebook suggests but it's possible?
+
 ```{r}
+ggplot(d, aes(x=field_size, y=inputs.dap_kg)) + geom_point()
+```
+
+This would mean however that if I want to get the actual amount they applied to their field to see that that quantity also makes sense, I would multiply by the size of the field.
+
+```{r}
+d$dap.check <- d$inputs.dap_kg*d$field_size
+ggplot(d, aes(x=dap.check)) + geom_density()
 
 ```
+
+Multiplying certainly keeps us in a more normal range. The scatter plot looks okay as well. The variance in per acre application rate increases with the size of the plot.
+
+```{r}
+ggplot(d, aes(x=field_size, y=dap.check)) + geom_point()
+```
+
+However, if the input quatity variable is already per plot size, as the codebook suggests, I'd want to divide by the size of the plot to get the per acre application rate. 
+
+```{r}
+d$dap.acre <- d$inputs.dap_kg/d$field_size
+d$can.acre <- d$inputs.can_kg/d$field_size
+d$npk.acre <- d$inputs.npk_kg/d$field_size
+d$urea.acre <- d$inputs.urea_kg/d$field_size
+
+acreInputs <- names(d)[grep("acre", names(d))]
+```
+
+Print out the calculation to make certain I'm doing this right:
+
+```{r}
+head(d[, c("inputs.dap_kg", "field_size", "dap.acre")])
+d[which.max(d$dap.acre), c("inputs.dap_kg", "field_size", "dap.acre")]
+
+```
+
+
+```{r}
+for(i in 1:length(acreInputs)){
+  print(
+  ggplot(data=d, aes(x=d[,acreInputs[i]])) +
+    geom_density() +
+    labs(x=acreInputs[i], title = paste("Kenya input quantity per acre - ", acreInputs[i], sep = ""))
+  )  
+}
+```
+
+```{r eval=F}
+d$dap.ha <- (d$inputs.dap_kg/d$field_size)*2.47
+d$can.ha <-(d$inputs.can_kg/d$field_size)*2.47
+d$npk.ha <- (d$inputs.npk_kg/d$field_size)*2.47
+d$urea.ha <- (d$inputs.urea_kg/d$field_size)*2.47
+
+haInputs <- names(d)[grep(".ha", names(d))]
+
+for(i in 1:length(haInputs)){
+  print(
+  ggplot(data=d, aes(x=d[,haInputs[i]])) +
+    geom_density() +
+    labs(x=haInputs[i], title = paste("Kenya input quantity per hectare - ", haInputs[i], sep = ""))
+  )  
+}
+
+```
+
+
+These values are totally unreasonable! These per acre and per hectare values seem too big. Let's look at the per acre rates by field size
+
+
+```{r}
+for(i in 1:length(acreInputs)){
+print(
+    ggplot(d, aes(x = field_size, y=d[, acreInputs[i]])) + 
+    geom_point() + 
+    labs(x = "Field Size in Acres", y=acreInputs[i], title = paste("Kenya input quantity by acreage - ", acreInputs[i], sep = ""))
+)
+}
+```
+
+The larger values are definintely coming from the lower end of the field size spectrum. This suggests that the input quantities were always in acres and thus we should multiply the quantity by the field size to get the application rate for the field. However, the codebook says that the question ask for kgs used on the plot. 
+
+**Kalie/Charles** >>> can you please clarify?
 
 ## Baseline balance
 
@@ -279,7 +362,7 @@ out.list <- c("female", "age", "cows", "goats", "chickens",
               "pigs", "sheep", "field_size", "yield", "inputs.dap_kg", 
               "inputs.can_kg", "inputs.npk_kg", "inputs.urea_kg", "inputs.dap_kg_intercrop", "inputs.can_kg_intercrop", "inputs.npk_kg_intercrop", "inputs.urea_kg_intercrop",
 "chemical_fertilizer_5", "compost_fertilizer_5", "lime_fertilizer_5",
-"fertilizer_5", "legum_maincrop_5", "legum_intercrop_5", soilVars, "valley", "hilltop", "hillside", "crop.maize")
+"fertilizer_5", "legum_maincrop_5", "legum_intercrop_5", soilVars, "valley", "hilltop", "hillside", "crop.maize", "alt")
 
 d$seasons_oaf <- ifelse(d$seasons_oaf>8, NA, d$seasons_oaf)
 
@@ -391,6 +474,40 @@ print(kable(dist.output))
 write.csv(dist.output, file=paste(od, "ke district balance.csv", sep="/"), row.names=T)
 ```
 
+### Agronomic Behaviors
+
+```{r, results='asis', fig.align='center'}
+suppressMessages(library(stargazer))
+
+d[,grep("_5", names(d))] <- sapply(d[,grep("_5", names(d))], function(x){
+  ifelse(x==-99, NA, x)
+})
+
+apply(d[,grep("_5", names(d))],2, table)
+```
+
+Plot the variables as they are. Should we consider a log transform as we used for the Rwanda variables?
+
+```{r}
+for(i in names(d)[grep("_5", names(d))]) {
+  print(
+    ggplot(d, aes(x=d[,i])) + geom_histogram(binwidth=1) +
+      labs(x = paste("Past five seasons of ", i, sep = ""))
+  )
+}
+```
+
+```{r}
+d$logFert <- log(d$chemical_fertilizer_5+1)
+d$logCompost <- log(d$compost_fertilizer_5+1)
+d$logLime <- log(d$lime_fertilizer_5+1)
+d$logLegmain <- log(d$legum_maincrop_5+1)
+#d$logLegint <- log(d$legum_intercrop_5+1)
+
+logVars <- paste(names(d[grep("log", names(d))]), collapse=" + ")
+cor(d[,grep("log", names(d))], use = "complete.obs")
+```
+
 ### Baseline balance by OAF tenure
 Look at farmers by duration of tenure farming with 1AF We want to understand, at least with an initial naive baseline sense, what is the cumulative effect of Tubura practices on soil health outcomes?
 
@@ -455,39 +572,6 @@ print(kable(tenure))
 
 **Soil Variables**:
 
-### Agronomic Behaviors
-
-```{r, results='asis', fig.align='center'}
-suppressMessages(library(stargazer))
-
-d[,grep("_5", names(d))] <- sapply(d[,grep("_5", names(d))], function(x){
-  ifelse(x==-99, NA, x)
-})
-
-apply(d[,grep("_5", names(d))],2, table)
-```
-
-Plot the variables as they are. Should we consider a log transform as we used for the Rwanda variables?
-
-```{r}
-for(i in names(d)[grep("_5", names(d))]) {
-  print(
-    ggplot(d, aes(x=d[,i])) + geom_histogram(binwidth=1) +
-      labs(x = paste("Past five seasons of ", i, sep = ""))
-  )
-}
-```
-
-```{r}
-d$logFert <- log(d$chemical_fertilizer_5+1)
-d$logCompost <- log(d$compost_fertilizer_5+1)
-d$logLime <- log(d$lime_fertilizer_5+1)
-d$logLegmain <- log(d$legum_maincrop_5+1)
-#d$logLegint <- log(d$legum_intercrop_5+1)
-
-logVars <- paste(names(d[grep("log", names(d))]), collapse=" + ")
-cor(d[,grep("log", names(d))], use = "complete.obs")
-```
 
 Keep only soil variables with reliable r2 values for the regressions. 
 **Confirm this list with Emmanuel and confirm when we'll get the C and N estimates**
@@ -501,12 +585,10 @@ soilVars <- c("Mg", "pH", "Ca", "Exch.Al", "C.E.C")
 ```
 
 ```{r}
-# This is currently only for OAF clients!
 list1 <- lapply(soilVars, function(x){
-  mod <- lm(as.formula(paste("oafOnly[,x] ~",  logVars, "+ as.factor(SiteName)", sep="")), data=oafOnly)
+  mod <- lm(as.formula(paste("d[,x] ~",  logVars, "+ as.factor(SiteName)", sep="")), data=d)
   return(mod)
 })
-
 ```
 
 ### Table 17 - years of input use
@@ -539,6 +621,7 @@ write.csv(ke.table17, file=paste(od, "ketable17.csv", sep="/"), row.names=T)
 
 
 ```{r results='asis', eval=F}
+# stargazer for table 17
 stargazer(list1, type="html", 
           title = "2016A Kenya Soil Health Baseline - Agronomic Practice Models (log)",
           covariate.labels = c("Seasons of Fertilizer", "Seasons of Compost", 
@@ -551,23 +634,7 @@ stargazer(list1, type="html",
           omit=c("SiteName"), out=paste(od, "ke_baseline_agprac.htm",sep="/"))
 ```
 
-### OAF tenure model - table 14
-
-```{r}
-list2 <- lapply(soilVars, function(x){
-  mod <- lm(as.formula(paste("d[,x] ~",  "seasons_oaf + as.factor(SiteName)", sep="")), data=d)
-  return(mod)
-})
-```
-
-```{r}
-
-
-ke.table14 <- do.call(cbind, lapply(list2, function(x){
-  plm.log(x, 2)
-}))
-```
-
+### Naive tenure models
 
 ```{r results='asis', eval=F}
 stargazer(list2, type="html", 
@@ -598,14 +665,16 @@ stargazer(list3, type="html",
           omit=c("SiteName"), out=paste(od, "ke_baseline_ag_tenure.htm", sep="/"))
 ```
 
-### Table 18 
+### Table 18 - client product use and soil outcomes
+
+First, convert all quantites to kg/acre and kg/ha. Then check for collinearity, set up and execute models
 
 
 # Propensity Score Matching
 We need to do a more rigorous job of accounting for differences between Tubura farmers and identified control farmers. Execute propensity score matching (PSM) to identify control farmers that overlap with Tubura farmers with regard to their likelihood of being a Tubura farmer.
 
 ```{r}
-psmVars <- paste(out.list <- c("female", "age", "cows", "goats", "chickens","pigs", "sheep"), collapse=" + ")
+psmVars <- paste(out.list <- c("female", "age", "cows", "goats", "chickens","pigs", "sheep", "SiteName"), collapse=" + ")
 
 psmCheck <- unlist(strsplit(gsub("\\+", "", as.vector(psmVars))," ", fixed=TRUE))
 psmCheck <- psmCheck[-which(psmCheck=="")]
@@ -641,117 +710,199 @@ dev.off()
 ```{r}
 d$age2 <- d$age^2
 
-coreVars = c("female", "age", "as.factor(site)", "cows", "goats", "chickens", "pigs", "sheep")
+coreVars = c("female", "age", "SiteName", "cows", "goats", "chickens", "pigs", "sheep")
 
 psmList <- list(
-  list(tr = "client",
+  list(tr = "oaf",
        psmVars = paste(coreVars,
                    collapse=" + "),
        y="Ca"),
-  list(tr = "client",
+  list(tr = "oaf",
        psmVars = paste(coreVars,
                    collapse=" + "),
        y="Mg"),
-  list(tr = "client",
+  list(tr = "oaf",
        psmVars = paste(coreVars,
                    collapse=" + "),
        y="pH"),
-  list(tr = "client",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y=""),
-  list(tr = "client",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y=""),
-  list(tr = "client",
+  list(tr = "oaf",
        psmVars = paste(coreVars,
                    collapse=" + "),
        y="chemical_fertilizer_5"),
-  list(tr = "client",
+    list(tr = "oaf",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="Exch.Al"),
+  list(tr = "oaf",
        psmVars = paste(coreVars,
                    collapse=" + "),
        y="compost_fertilizer_5"),
-  list(tr = "client",
+  list(tr = "oaf",
        psmVars = paste(coreVars,
                    collapse=" + "),
        y="legum_maincrop_5"),
-  list(tr = "client",
+  list(tr = "oaf",
        psmVars = paste(coreVars,
                    collapse=" + "),
        y="legum_intercrop_5"),
-  list(tr = "client",
+  list(tr = "oaf",
        psmVars = paste(coreVars,
                    collapse=" + "),
-       y="logFert"),
-  list(tr = "client",
-       psmVars = paste(c(coreVars, "age2",
-                   "hhsize2"),
-                   collapse=" + "),
-       y=""),
-  list(tr = "client",
-       psmVars = paste(c(coreVars, "age2",
-                   "hhsize2"),
-                   collapse=" + "),
-       y="lime_fertilizer_5"),
-  list(tr = "client",
-       psmVars = paste(c("female", "age", "hhsize", "own",
-                         "cows", "goats", "chickens", "pigs", "sheep",
-                         "as.factor(district)", "age2", "hhsize2",
-                         "hhsize_age"),
-                   collapse=" + "),
-       y="fert1.are"),
-  # list(tr = "client",
-  #      psmVars = paste(c("female", "age", "hhsize","as.factor(district)",
-  #                  "cows", "goats", "chickens", "pigs", "sheep","age2", "hhsize2",
-  #                        "hhsize_age"),
-  #                  collapse=" + "),
-  #      y="fert2.are"),
-  list(tr = "client",
-       psmVars = paste(c("female", "age", "hhsize","as.factor(district)",
-                   "cows", "goats", "chickens", "pigs", "sheep","age2", "hhsize2",
-                         "hhsize_age"),
-                   collapse=" + "),
-       y="compost.are")
-  
+       y="logFert")
 )
 
-# fertilizer application in 15B has missing values at the cell level so i include
-# a district level control instead. We don't get a good fit with the current model.
-# adjust!
-# aggregate(d$fert1.are, by=list(d$client, d$cell), FUN=mean, na.rm=T)
-# lime.are is also being finicky
-
+#lime_fertilizer_5 >> so few farmers use it that we get a bad match.
 
 
 # PSM
 set.seed(20161102)
 m <- lapply(psmList, function(listInput){
 
+  naCheck <- unlist(strsplit(gsub("\\+", "", as.vector(listInput$psmVars))," ", fixed=TRUE))
+  naCheck <- naCheck[-which(naCheck=="")]
+  
+  
   # keep complete cases of outcome variable
-  k <- d[complete.cases(d[,listInput$y]),]
+  k <- d[complete.cases(d[,naCheck]),]
+  k <- k[complete.cases(k[,listInput$y]),]
   
   # run glm regression:
   reg <- glm(as.formula(paste(listInput$tr, "~", listInput$psmVars, sep="")),  family= binomial(link="logit"), data=k)
   
   suppressWarnings(
-  mod <- Match(Y = k[,listInput$y], Tr = k[,listInput$tr], X = reg$fitted, ties=FALSE, replace=FALSE, caliper=0.25, estimand = "ATE")	
+  mod <- Match(Y = k[,listInput$y], Tr = k[,listInput$tr], X = reg$fitted.values, ties=FALSE, replace=FALSE, caliper=0.25, estimand = "ATE")	
   )
   matchRes <- MatchBalance(k[,listInput$tr] ~ k[,listInput$y], match.out=mod, nboots=500, data=k, print.level = 0)
-  #print(listInput$y)
+  print(listInput$y)
   return(list(mod, matchRes))
   
 })
 ```
 
+The models can now vary by outcome. Let's see if we can improve our results.
 
+```{r}
+matchRes <- do.call(rbind, lapply(1:length(m), function(model){
+  val <- as.data.frame(cbind(
+    standard.diff=m[[model]][[2]]$AfterMatching[[1]]$sdiff, 
+    var.ratio = m[[model]][[2]]$AfterMatching[[1]]$var.ratio,
+    sdiff.adj = m[[model]][[2]]$AfterMatching[[1]]$sdiff/100))
+  return(val)
+}))
+
+namesInput <- NULL
+for(i in 1:length(psmList)){
+  namesInput[i] <- psmList[[i]]$y
+}
+rownames(matchRes) <- namesInput
+```
+
+```{r results='asis'}
+print(kable(matchRes))
+```
+
+So few farmers use lime fertilizer that we don't get a good match. I could make it binary but it's so overwhelmingly the case that none of the farmers use lime that I'm just going to drop it.
+
+
+```{r}
+coefTable <- do.call(rbind, lapply(1:length(m), function(model){
+  beta = round(m[[model]][[1]]$est.noadj,3)
+  mean.Tr = round(m[[model]][[2]]$AfterMatching[[1]][[3]], 2)
+  mean.Co = round(m[[model]][[2]]$AfterMatching[[1]][[4]], 2)
+  pval = m[[model]][[2]]$AfterMatching[[1]][[10]][[3]] # p.value
+  #pval = (1 - pnorm(abs(m[[model]][[1]]$est/m[[model]][[1]]$se.standard))) * 2
+  pval = ifelse(pval < 0.001, "0.001", round(pval, 3))
+  
+  res = data.frame(beta, mean.Tr, mean.Co, pval, stringsAsFactors = F)
+  return(res)
+}))
+row.names(coefTable) <- namesInput
+coefTable$pval.adj <- round(p.adjust(coefTable$pval, method="fdr"),3)
+```
+
+```{r results='asis'}
+print(kable(coefTable))
+```
+
+
+```{r}
+#
+write.csv(coefTable, file=paste(od, "ke psm coefficients.csv", sep = "/"),
+          row.names = T)
+
+# sort by the order Eric wants
+t7order <- c("pH", "Total.C", "Total.N", "Ca", "Mg", "Exch.Al")
+table7vars <- paste(t7order, collapse = "|")
+table7 <- coefTable[grep(table7vars, rownames(coefTable)), ]
+table7 <- table7[order(match(rownames(table7), t7order)),]
+
+write.csv(table7, file=paste(od, "table7.csv", sep = "/"), row.names = T)
+
+# 11/17 added lime
+t8order <- c("chemical_fertilizer_5", "compost_fertilizer_5", "legum_maincrop_5",
+             "legum_intercrop_5")
+table8vars <- paste(t8order, collapse = "|")
+table8 <- coefTable[grep(table8vars, rownames(coefTable)), ]
+table8 <- table8[order(match(rownames(table8), t8order)),]
+
+write.csv(table8, file=paste(od, "table8.csv", sep = "/"), row.names = T)
+
+#table 3
+t3order <- c("fert1.are", "compost.are")
+table3vars <- paste(t3order, collapse = "|")
+table3 <- coefTable[grep(table3vars, rownames(coefTable)), ]
+table3 <- table3[order(match(rownames(table3), t3order)),]
+write.csv(table3, file=paste(od, "psm coefficients table3.csv", sep = "/"))
+```
+
+```{r}
+thresh <- d %>% group_by(oaf) %>% dplyr::summarize(
+  count = n(),
+  ph = sum(pH<5.8),
+  #carbon = sum(Total.C < 2),
+  #nitrogen = sum(Total.N < 0.1),
+  calcium = sum(Ca < 720),
+  magnesium = sum(Mg < 100)
+  #aluminum = sum(ExAl)
+) %>% mutate(
+  under.ph = paste(paste(round(ph/count,4)*100, "%", sep=""), " (", ph, ")", sep=""),
+  #under.carbon = paste(paste(round(carbon/count,4)*100,"%", sep=""), " (", carbon, ")", sep=""),
+  #under.nitrogen = paste(paste(round(nitrogen/count,4)*100, "%", sep=""), " (", nitrogen, ")", sep=""),
+  under.calcium = paste(paste(round(calcium/count,4)*100, "%", sep=""), " (", calcium, ")", sep=""),
+  under.mag = paste(paste(round(magnesium/count,4)*100,"%", sep=""), " (", magnesium, ")", sep="")
+) %>% as.data.frame() 
+
+thresh <- thresh[, c("oaf", names(thresh)[grep("under", names(thresh))])]
+thresh <- t(thresh)
+colnames(thresh) = thresh[1, ] # the first row will be the header
+colnames(thresh) = c("non-client", "client")
+thresh = thresh[-1, ]
+
+write.csv(thresh, file=paste(od, "table1_rw_thresholds.csv", sep = "/"), row.names = T)
+```
+
+
+### OAF tenure model - table 14 with PSM
+
+```{r eval=F}
+list2 <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~",  "seasons_oaf + as.factor(SiteName)", sep="")), data=d)
+  return(mod)
+})
+```
+
+```{r eval=F}
+ke.table14 <- do.call(cbind, lapply(list2, function(x){
+  plm.log(x, 2)
+}))
+```
 
 # Mapping
 
 ### Map of baseline observations
 Produce a simple map of where our observations are
 
-```{r get_map, include=F}
+```{r get_map}
 if (!(exists("kenya"))){
   # Only need to geocode once per session library(dismo)
   kenya <- try(geocode("Kenya"))
