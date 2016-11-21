@@ -884,18 +884,53 @@ write.csv(thresh, file=paste(od, "table1_rw_thresholds.csv", sep = "/"), row.nam
 
 ### OAF tenure model - table 14 with PSM
 
-```{r eval=F}
-list2 <- lapply(soilVars, function(x){
-  mod <- lm(as.formula(paste("d[,x] ~",  "seasons_oaf + as.factor(SiteName)", sep="")), data=d)
+```{r}
+tenureTab.add <- lapply(1:length(m), function(model){
+  
+  dm <- as.data.frame(rbind(d[m[[model]][[1]]$index.treated,], 
+              d[m[[model]][[1]]$index.control,]))
+  dm$client_tenure <- dm$oaf*dm$seasons_oaf
+  mod <- lm(as.formula(paste("dm[,psmList[[model]]$y] ~", "seasons_oaf + as.factor(SiteName)", sep ="")), data=dm)
   return(mod)
 })
+
+modNames <- unlist(lapply(psmList, function(x){
+  return(x$y)
+}))
+
 ```
 
-```{r eval=F}
-ke.table14 <- do.call(cbind, lapply(list2, function(x){
-  plm.log(x, 2)
+```{r}
+plm.tenure <- function(x){
+  
+  intercept = x$coefficients[[1]]
+  beta = round(x$coefficients[[2]],3)
+  int.pval = summary(x)$coefficients[1,4]
+  int.pval = ifelse(int.pval < 0.001, "< 0.001", round(as.numeric(int.pval),3))
+  beta.pval = summary(x)$coefficients[2,4]
+  beta.pval = ifelse(beta.pval < 0.001, "< 0.001", round(as.numeric(beta.pval),3))
+  res = data.frame(intercept, int.pval, beta, beta.pval, stringsAsFactors = F)
+  
+  return(res)  
+}
+
+tenure.reg <- do.call(rbind, lapply(tenureTab.add, function(x){
+  plm.tenure(x)
 }))
+
+rownames(tenure.reg) <- modNames
 ```
+
+```{r}
+t14order <- c("pH", "Total.C", "Total.N", "Ca", "Mg", "Exch.Al", "chemical_fertilizer_5",
+             "logFert", "compost_fertilizer_5", "legum_maincrop_5", "n_season_fallow")
+t14vars <- paste(t14order, collapse = "|")
+tenure.reg <- tenure.reg[grep(t14vars,rownames(tenure.reg)),]
+tenure.reg <- tenure.reg[order(match(row.names(tenure.reg), t14order)),]
+
+write.csv(tenure.reg, file=paste(od, "table14.csv", sep = "/"), row.names=T)
+```
+
 
 # Mapping
 
