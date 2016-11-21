@@ -720,10 +720,10 @@ rownames(rw.table15) <- c(names(d)[grep("log", names(d))], "constant")
 ### Table 15 outcomes
 
 ```{r}
-rw.table15 <- rw.table15[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg")]
+rw.table15 <- rw.table15[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl")]
 
 write.csv(rw.table15, file=paste(od, "rwtable15_reg.csv", sep = "/"),
-          row.names = F)
+          row.names = T)
 ```
 
 
@@ -1285,8 +1285,12 @@ psmList <- list(
 set.seed(20161102)
 m <- lapply(psmList, function(listInput){
 
+  naCheck <- unlist(strsplit(gsub("\\+", "", as.vector(listInput$psmVars))," ", fixed=TRUE))
+  naCheck <- naCheck[-which(naCheck=="")]
+  
   # keep complete cases of outcome variable
   k <- d[complete.cases(d[,listInput$y]),]
+  k <- k[complete.cases(k[,listInput$y]),]
   
   # run glm regression:
   reg <- glm(as.formula(paste(listInput$tr, "~", listInput$psmVars, sep="")),  family= binomial(link="logit"), data=k)
