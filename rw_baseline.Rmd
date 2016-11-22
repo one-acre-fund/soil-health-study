@@ -343,6 +343,14 @@ names(d)[names(d)=="general_field_infograde_hill"] <- "slope"
 ```{r}
 cor(d[, grep("betail_", names(d))], use='complete.obs')
 names(d)[grep("betail_", names(d))] <- c("cows", "goats", "chickens", "pigs", "sheep")
+
+d$own.cows <- ifelse(d$cows>0 & !is.na(d$cows), 1,0)
+d$own.goats <- ifelse(d$goats>0 & !is.na(d$goats), 1,0)
+d$own.chickens <- ifelse(d$chickens>0 & !is.na(d$chickens), 1,0)
+d$own.pigs <- ifelse(d$pigs>0 & !is.na(d$pigs), 1,0)
+d$own.sheep <- ifelse(d$sheep>0 & !is.na(d$sheep), 1,0)
+
+
 ```
 
 ### Crop selection in 15B
@@ -360,7 +368,7 @@ d$maize <- ifelse(d$crop_15b=="gor", 1,0)
 
 ```{r}
 out.list <- c("female", "age", "hhsize", "own", "field.size",
-              "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow", "n_seasons_leg_1", "n_seasons_leg_2", "slope",  "alt", "valley", "hillside", "hilltop", "cows", "goats", "chickens", "pigs", "sheep", "climbing_bean", "sorghum", "bush_bean","maize", soilVars)
+              "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow", "n_seasons_leg_1", "n_seasons_leg_2", "slope",  "alt", "valley", "hillside", "hilltop", "cows", "goats", "chickens", "pigs", "sheep", "climbing_bean", "sorghum", "bush_bean","maize", soilVars, "own.cows", "own.goats", "own.chickens", "own.pigs", "own.sheep")
 
 output <- do.call(rbind, lapply(out.list, function(x) {
   
@@ -410,10 +418,10 @@ rw.table5 <- rw.table5[order(match(rownames(rw.table5), t5order)),]
 write.csv(rw.table5, file=paste(od, "pre match balance table5.csv", sep = "/"),
           row.names = T)
 
-t6order <- c("cows", "pigs", "sheep", "goats", "chickens")
+t6order <- c("own.cows", "cows", "own.pigs", "pigs", "own.sheep", "sheep", "own.goats", "goats","own.chickens", "chickens")
 table6vars <- paste(t6order, collapse = "|")
 rw.table6 <- output[grep(table6vars, rownames(output)), ]
-rw.table6 <- rw.table6[order(match(rownames(rw.table6), t4order)),]
+rw.table6 <- rw.table6[order(match(rownames(rw.table6), t6order)),]
 write.csv(rw.table6, file=paste(od, "pre match balance table6.csv", sep = "/"), 
           row.names=T)
 ```
@@ -800,6 +808,12 @@ Thus far we have looked at aggregated historical plot level practices and their 
 d$ares <- d$field.size/100
 d$fert1.are <- d$field_kg_fert1_15b/d$ares
 d$fert2.are <- d$field_kg_fert2_15b/d$ares
+d$fert.total.are <- apply(d[,c("fert1.are", "fert2.are")], 1, function(x){
+  sum(x, na.rm=T)
+})
+
+d$fert.total.are <- ifelse(is.na(d$fert1.are) & is.na(d$fert2.are), NA, d$fert.total.are)
+
 d$compost.are <- d$field_kg_compost_15b/d$ares
 d$lime.are <- d$kg_lime_15b/d$ares
 
@@ -808,6 +822,37 @@ intensityVars <- c("fert1.are", "fert2.are",
 
 cor(d[,intensityVars], use="complete.obs")
 ```
+
+
+```{r}
+#table(d$field_15b_fert_t, useNA = 'ifany')
+d$field_15b_fert_t <- tolower(d$field_15b_fert_t)
+names(d)[names(d)=="v69"] <- "field_15b_fert_t2"
+#table(d$field_15b_fert_t2)
+d$field_15b_fert_t2 <- tolower(d$field_15b_fert_t2)
+```
+
+```{r}
+d$dap1 <- ifelse(d$field_15b_fert_t=="dap", d$field_kg_fert1_15b, NA)
+d$dap1.are <- d$dap1/d$ares
+d$npk1 <- ifelse(grepl("npk", d$field_15b_fert_t), d$field_kg_fert1_15b, NA)
+d$npk1.are <- d$npk1/d$ares
+d$urea1 <- ifelse(d$field_15b_fert_t=="urea", d$field_kg_fert1_15b, NA)
+d$urea1.are <- d$urea1/d$ares
+```
+
+```{r}
+d$urea2 <- ifelse(d$field_15b_fert_t2=="urea", d$field_kg_fert2_15b, NA)
+d$urea2.are <- d$urea2/d$ares
+```
+
+```{r}
+d$total.urea.are <- apply(d[,c("urea1.are", "urea2.are")], 1, function(x){
+  sum(x, na.rm=T)
+})
+d$total.urea.are <- ifelse(is.na(d$urea1.are) & is.na(d$urea2.are), NA, d$total.urea.are)
+```
+
 ### Graph the application/are variables
 
 ```{r}
@@ -872,6 +917,28 @@ write.csv(table16, file=paste(od, "rwtable16_fert.csv", sep = "/"),
           row.names = T)
 ```
 
+### Table 16 - all fertilizer used 
+
+```{r}
+previousSeasonfertAll <- paste("fert.total.are", "as.factor(cell)", sep=" + ")
+
+list5a <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~", previousSeasonfertAll, sep="")), data=d)
+  return(mod)
+})
+
+table16a <- do.call(cbind, lapply(list5a, function(x){
+  plm.t16(x, 2)
+}))
+colnames(table16a) <- soilVars
+rownames(table16a) <- c("Fertilizer (all) (kg/are)", "constant")
+
+table16a <- table16a[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl")]
+write.csv(table16a, file=paste(od, "rwtable16_fert_all.csv", sep = "/"),
+          row.names = T)
+```
+
+
 ### Table 16 - Kgs of soil ammendments - compost (kg)
 
 ```{r}
@@ -913,6 +980,63 @@ rownames(table16c) <- c("Lime (kg/are)", "constant")
 
 table16c <- table16c[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl")]
 write.csv(table16c, file=paste(od, "rwtable16_lime.csv", sep = "/"),
+          row.names = T)
+```
+
+### Table 16 - types of fertilizer - DAP (kg)
+```{r}
+previousSeasonDAP <- paste("dap1.are", "as.factor(cell)", sep=" + ")
+list5d <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~", previousSeasonDAP, sep="")), data=d)
+  return(mod)
+})
+
+table16d <- do.call(cbind, lapply(list5d, function(x){
+  plm.t16(x, 2)
+}))
+colnames(table16d) <- soilVars
+rownames(table16d) <- c("DAP (kg/are)", "constant")
+
+table16d <- table16d[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl")]
+write.csv(table16d, file=paste(od, "rwtable16_dap.csv", sep = "/"),
+          row.names = T)
+```
+
+### Table 16 - types of fertilizer - NPK (kg)
+```{r}
+previousSeasonNPK <- paste("npk1.are", "as.factor(cell)", sep=" + ")
+list5e <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~", previousSeasonNPK, sep="")), data=d)
+  return(mod)
+})
+
+table16e <- do.call(cbind, lapply(list5e, function(x){
+  plm.t16(x, 2)
+}))
+colnames(table16e) <- soilVars
+rownames(table16e) <- c("NPK (kg/are)", "constant")
+
+table16e <- table16e[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl")]
+write.csv(table16e, file=paste(od, "rwtable16_npk.csv", sep = "/"),
+          row.names = T)
+```
+
+### Table 16 - types of fertilizer - Urea (kg)
+```{r}
+previousSeasonUrea <- paste("total.urea.are", "as.factor(cell)", sep=" + ")
+list5f <- lapply(soilVars, function(x){
+  mod <- lm(as.formula(paste("d[,x] ~", previousSeasonUrea, sep="")), data=d)
+  return(mod)
+})
+
+table16f <- do.call(cbind, lapply(list5f, function(x){
+  plm.t16(x, 2)
+}))
+colnames(table16f) <- soilVars
+rownames(table16f) <- c("Urea (kg/are)", "constant")
+
+table16f <- table16f[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl")]
+write.csv(table16f, file=paste(od, "rwtable16_urea.csv", sep = "/"),
           row.names = T)
 ```
 
