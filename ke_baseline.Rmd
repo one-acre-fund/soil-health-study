@@ -302,7 +302,6 @@ Print out the calculation to make certain I'm doing this right:
 ```{r}
 #head(d[, c("inputs.dap_kg", "field_size", "dap.acre")])
 d[which.max(d$dap.acre), c("inputs.dap_kg", "field_size", "dap.acre", "oaf")]
-
 ```
 
 
@@ -326,13 +325,16 @@ print(
     ggplot(d, aes(x = field_size, y=d[, acreInputs[i]])) + 
     geom_point() + 
     labs(x = "Field Size in Acres", y=acreInputs[i], title = paste("Kenya input quantity by acreage - ", acreInputs[i], sep = ""))
-)
+  )
 }
 ```
 
 ### Cleaning input variables
 ```{r}
 d$field_size.adj <- ifelse(d$oaf==1 & d$field_size<0.25, 0.25, d$field_size)
+
+# drop really small field sizes >> they're inflating the application rates
+d$field_size.adj <- ifelse(d$field_size<0.125, 0.125, d$field_size.adj)
 
 
 # updated version of the input/acre variables - winsoring values to 100 kg.
@@ -354,7 +356,7 @@ d$compost.are <- d$inputs.compost/d$field_size.adj
 ```{r}
 for(i in 1:length(acreInputs)){
 print(
-    ggplot(d, aes(x = field_size.adj, y=d[, acreInputs[i]])) + 
+    ggplot(d, aes(x = field_size.adj, y=d[, acreInputs[i]], color=as.factor(oaf))) + 
     geom_point() + 
     #facet_wrap(~oaf) +
     labs(x = "Field Size in Acres", y=acreInputs[i], title = paste("Kenya input quantity by acreage - ", acreInputs[i], sep = ""))
@@ -367,6 +369,15 @@ print(
 
 ## Baseline balance
 
+```{r}
+d$own.cows <- ifelse(d$cows>0 & !is.na(d$cows), 1,0)
+d$own.goats <- ifelse(d$goats>0 & !is.na(d$goats), 1,0)
+d$own.chickens <- ifelse(d$chickens>0 & !is.na(d$chickens), 1,0)
+d$own.pigs <- ifelse(d$pigs>0 & !is.na(d$pigs), 1,0)
+d$own.sheep <- ifelse(d$sheep>0 & !is.na(d$sheep), 1,0)
+
+```
+
 Let's see how balanced our farmers are in terms of demographic variables. One Acre Fund farmers were selected based on *(list criteria)* and control farmers in the same area tha fit the same criteria were also selected. No matching process has been performed to identify the control farmers that most closely resemble the One Acre Fund farmers in the sample.
 
 ```{r}
@@ -374,7 +385,7 @@ names(d)[names(d)=="gender"] <- "female"
 
 out.list <- c("female", "age", "cows", "goats", "chickens",
               "pigs", "sheep", "field_size", "yield", "dap.acre", "can.acre", "npk.acre", "urea.acre", "chemical_fertilizer_5", "compost_fertilizer_5", "lime_fertilizer_5",
-"fertilizer_5", "legum_maincrop_5", "legum_intercrop_5", soilVars, "valley", "hilltop", "hillside", "crop.maize", "alt")
+"fertilizer_5", "legum_maincrop_5", "legum_intercrop_5", soilVars, "valley", "hilltop", "hillside", "crop.maize", "alt", "own.cows", "own.goats", "own.chickens", "own.pigs", "own.sheep")
 
 d$seasons_oaf <- ifelse(d$seasons_oaf>8, NA, d$seasons_oaf)
 
@@ -422,7 +433,7 @@ ke.table11 <- ke.table11[order(match(rownames(ke.table11), t11order)),]
 write.csv(ke.table11, file=paste(od, "pre match balance table 11.csv", sep = "/"),
           row.names=T)
 
-t12order <- c("cows", "pigs", "sheep", "goats", "chickens")
+t12order <- c("own.cows",  "cows", "own.pigs", "pigs", "own.sheep", "sheep", "own.goats", "goats", "own.chickens", "chickens")
 table12vars <- paste(t12order, collapse="|")
 ke.table12 <- output[grepl(table12vars, rownames(output)),]
 ke.table12 <- ke.table12[order(match(rownames(ke.table12), t12order)),]
@@ -943,7 +954,6 @@ print(kable(coefTable))
 
 
 ```{r}
-#
 write.csv(coefTable, file=paste(od, "ke psm coefficients.csv", sep = "/"),
           row.names = T)
 
