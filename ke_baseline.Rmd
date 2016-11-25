@@ -864,6 +864,40 @@ site.sum.tr <- aggregate(d[d$SiteName %in% largerSite,out.list], by=list(d[d$Sit
 write.csv(site.sum.tr, file=paste(od, "site truncated covariate summary.csv", sep = "/"))
 ```
 
+### Female farmers farming poorer soils?
+```{r}
+toRemove <- "female"
+genderBalance <- out.list[!out.list %in% toRemove]
+
+equal <- do.call(rbind, lapply(genderBalance, function(x){
+    
+    out <- t.test(d[,x] ~ d[,"female"], data=d)
+    tab <- data.frame(out[[5]][[2]],out[[5]][[1]], out[3])
+    tab[,1:2] <- round(tab[,1:2],3)
+    names(tab) <- c(names(out[[5]]), "pvalue")
+    #tab[,3] <- p.adjust(tab[,3], method="holm")
+    #tab[,3] <- ifelse(tab[,3] < 0.001, "< 0.001", round(tab[,3],3))
+    #print(tab)
+    return(tab)
+  
+}))
+
+rownames(equal) <- NULL
+
+# order variables 
+equal$pvalue <- p.adjust(equal$pvalue, method="fdr")
+rownames(equal) <- genderBalance
+equal <- equal[order(equal$pvalue),]
+
+equal$pvalue <- ifelse(equal$pvalue < 0.001, "< 0.001", round(equal$pvalue,3))
+colnames(equal) <- c("Male Farmers","Female Farmers", "p-value")	
+```
+
+```{r}
+write.csv(equal, file=paste(od, "female farmer status.csv", sep = "/"), row.names=T)
+```
+
+
 
 # Propensity Score Matching
 We need to do a more rigorous job of accounting for differences between Tubura farmers and identified control farmers. Execute propensity score matching (PSM) to identify control farmers that overlap with Tubura farmers with regard to their likelihood of being a Tubura farmer.
