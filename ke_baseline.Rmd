@@ -191,6 +191,14 @@ d <- d[-which(is.na(d$Ca)),]
 summary(d[,soilVars])
 ```
 
+Check SiteName variable
+```{r}
+#table(d$SiteName) many misspellings
+d$SiteName <- tolower(d$SiteName)
+```
+
+
+
 ### Graphs of Kenya baseline soil variables
 
 ```{r}
@@ -803,6 +811,57 @@ rownames(table18c) <- c("CAN (kg/acre)", "constant")
 table18c <- table18c[,c("pH", "Total.C", "Total.N", "Ca", "Mg", "Exch.Al")]
 write.csv(table18c, file=paste(od, "table18_can.csv", sep = "/"),
           row.names = T)
+```
+
+### District and site level summaries of soil and managment practices
+```{r eval=F}
+dist.sum <- aggregate(d[,out.list], by=list(d$DistrictName), function(x){
+  return(c(
+    paste(
+      round(mean(x, na.rm=T),3), " (", round(median(x, na.rm=T),3), ")", 
+      " (", round(sd(x, na.rm=T),2), ")", sep = ""
+    )
+    ))
+})
+```
+
+```{r}
+write.csv(dist.sum, file=paste(od, "district covariate summary.csv", sep = "/"))
+```
+
+```{r}
+site.sum <- aggregate(d[,out.list], by=list(d$SiteName), function(x){
+  return(c(
+    paste(
+      round(mean(x, na.rm=T),3), " (", round(median(x, na.rm=T),3), ")", 
+      " (", round(sd(x, na.rm=T),2), ")", sep = ""
+    )
+    ))
+})
+```
+
+```{r}
+write.csv(site.sum, file=paste(od, "site covariate summary.csv", sep = "/"))
+```
+
+
+### Truncated site level summary (site count > 10 = 25)
+```{r}
+largerSite <- table(d$SiteName)>10
+largerSite <- rownames(as.matrix(largerSite[largerSite==T]))
+
+site.sum.tr <- aggregate(d[d$SiteName %in% largerSite,out.list], by=list(d[d$SiteName %in% largerSite, "SiteName"]), function(x){
+  return(c(
+    paste(
+      round(mean(x, na.rm=T),3), " (", round(median(x, na.rm=T),3), ")", 
+      " (", round(sd(x, na.rm=T),2), ")", sep = ""
+    )
+    ))
+})
+```
+
+```{r}
+write.csv(site.sum.tr, file=paste(od, "site truncated covariate summary.csv", sep = "/"))
 ```
 
 
