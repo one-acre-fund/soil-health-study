@@ -1227,7 +1227,70 @@ stargazer(list7, type="html",
 )
 ```
 
-### Distributions of soil health levels for different sub-groups
+### District and cell level summaries of soil and managment practices
+```{r eval=F}
+dist.sum <- aggregate(d[,out.list], by=list(d$district), function(x){
+  return(c(
+    paste(
+      round(mean(x, na.rm=T),3), " (", round(median(x, na.rm=T),3), ")", 
+      " (", round(sd(x, na.rm=T),2), ")", sep = ""
+    )
+    ))
+})
+```
+
+```{r}
+write.csv(dist.sum, file=paste(od, "district covariate summary.csv", sep = "/"))
+```
+
+```{r}
+cell.sum <- aggregate(d[,out.list], by=list(d$cell), function(x){
+  return(c(
+    paste(
+      round(mean(x, na.rm=T),3), " (", round(median(x, na.rm=T),3), ")", 
+      " (", round(sd(x, na.rm=T),2), ")", sep = ""
+    )
+    ))
+})
+```
+
+```{r}
+write.csv(cell.sum, file=paste(od, "cell covariate summary.csv", sep = "/"))
+```
+
+### Female farmers farming poorer soils?
+```{r}
+remove <- "female"
+genderBalance <- out.list[!out.list %in% remove]
+
+equal <- do.call(rbind, lapply(genderBalance, function(x){
+    
+    out <- t.test(d[,x] ~ d[,"female"], data=d)
+    tab <- data.frame(out[[5]][[2]],out[[5]][[1]], out[3])
+    tab[,1:2] <- round(tab[,1:2],3)
+    names(tab) <- c(names(out[[5]]), "pvalue")
+    #tab[,3] <- p.adjust(tab[,3], method="holm")
+    #tab[,3] <- ifelse(tab[,3] < 0.001, "< 0.001", round(tab[,3],3))
+    #print(tab)
+    return(tab)
+  
+}))
+
+rownames(equal) <- NULL
+
+# order variables 
+equal$pvalue <- p.adjust(equal$pvalue, method="fdr")
+rownames(equal) <- genderBalance
+equal <- equal[order(equal$pvalue),]
+
+equal$pvalue <- ifelse(equal$pvalue < 0.001, "< 0.001", round(equal$pvalue,3))
+colnames(equal) <- c("Male Farmers","Female Farmers", "p-value")	
+```
+
+```{r}
+write.csv(equal, file=paste(od, "female farmer status.csv", sep = "/"), row.names=T)
+```
+
 
 ## Propensity Score Matching
 We need to do a more rigorous job of accounting for differences between Tubura farmers and identified control farmers. Execute propensity score matching (PSM) to identify control farmers that overlap with Tubura farmers with regard to their likelihood of being a Tubura farmer.
@@ -1673,6 +1736,118 @@ write.csv(tenure.reg, file=paste(od, "table13_reg.csv", sep = "/"), row.names=T)
 ```
 
 **Interpretation**: Using a PSM matched sample, the models above assess the effects of additional years of farming with Tubura. Numerous control farmers have also been Tubura farmers in previous seasons. Thus, I'm keeping the model simple instead of adding a client*tenure interaction. We can easily test that as well though.
+
+# Soil Clusters
+
+### Heirarchical Clustering
+I draw from [Robert's](robert.on@oneacrefund.org) example in the BGMS soil response notebook.
+
+Scale soil variables to remove units as an issue.
+
+```{r}
+scaledSoil <- scale(d[,soilVars])
+```
+
+```{r}
+clustMethods <- c("ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid")
+invisible(sapply(clustMethods, FUN=function(method) {
+    plot(hclust(dist(scaledSoil), method=method), main=method, ylab="", label=FALSE)
+}))
+```
+
+**Note**: I'm honestly not certain what we're looking for in these outputs. Look for a balanced tree? Ward looks pretty balanced.
+
+```{r}
+hc <- hclust(dist(scaledSoil), method="ward.D2")
+```
+
+```{r}
+d$hc4 <- cutree(hc, k=4)
+hcCentroids <- aggregate(list(d[,soilVars]), by=list(cluster=d$hc4), FUN=mean)
+hcTable <- rbind(t(table(d$hc4)),
+      t(round(hcCentroids, 2)))
+```
+
+```{r results='asis'}
+print(kable(hcTable))
+```
+
+### K-means clustering
+
+K-means clustering is a typical unsupervised learning algorithm. We start by identifying the number of clusters we should tell the formula to look for.
+
+```{r}
+numClusters <- 2:10
+plot(numClusters,
+     sapply(numClusters, FUN=function(k) { sum(kmeans(scaledSoil, centers=k, nstart=20, iter.max=20)$withinss) }),
+     type="b", ylab="average within cluster sum of squared error")
+```
+
+We're looking for the bend in the graph. It seems to come at 3 but we can try both 3 and 4 and see how they match with our understanding of AEZ and environmental conditions.
+
+```{r}
+set.seed(20161125)
+clusters <- 4
+d$km4 <- kmeans(scaledSoil, centers=clusters, nstart=20, iter.max=20)$cluster
+kmCentroids <- aggregate(list(d[,soilVars]), by=list(cluster=d$km4), FUN=mean)
+kmTable <- rbind(t(table(d$km4)),
+      t(round(kmCentroids, 2)))
+```
+
+```{r results='asis'}
+print(kable(kmTable))
+```
+
+These clusters are roughly equally sized. Robert used another method, partitioning around Mediods, to better account for outliers that were causing the algorithm to create a small additional cluster. 
+
+Give the clusters brief descriptions
+```{r}
+d$km4 <- factor(d$km4, labels=c("pH=5.9, C=1.7", 
+                                "pH=6.1,C=2.4", 
+                                "pH=5.1, C=2",
+                                "pH=4.8, C=2.6"))
+```
+
+
+### Mappaing the location of the clusters
+```{r}
+suppressMessages(library(ggmap))
+qmplot(lon, lat, data=d, color=d$km4)
+#qmplot(lon, lat, data=d, color=as.factor(hc4))
+```
+
+```{r}
+crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
+e <- d[!is.na(d$lon),]
+ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e, proj4string = crdref)
+
+pal <- colorFactor("RdYlBu", domain=unique(ss$km4))
+
+leaflet() %>% addTiles() %>%
+  setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=8) %>%
+  addCircleMarkers(lng=ss$lon, lat=ss$lat, 
+                   #radius= ifelse(ss$km4==1, 10,6),
+                   color = pal(ss$km4), clusterOptions = markerClusterOptions(disableClusteringAtZoom=11, spiderfyOnMaxZoom=FALSE)) %>% 
+  addLegend(pal = pal, values=unique(ss$km4), title = "Clusters ")
+  
+```
+
+### Soil clusters by altitude and AEZ
+```{r}
+ggplot(d, aes(x=km4, y=alt)) + geom_boxplot()
+```
+
+### Soil clusters by altitude and rainfall
+Try this when we have aWhere data
+
+### Compare clusters to AEZ
+```{r results='asis'}
+print(kable(table(d$km4, d$aez)))
+```
+
+We're not seeing close alignment between clusters and AEZ. This is probably because AEZ are a mix of altitude, rainfall, temperature and soil. When we have weather data we can try to cluster again and see if we're more closely aligned.
+
+Alternatively, this could be initial evidence that the AEZ designations are not capturing and separating variation very well. I think we need to start with more data though.
 
 # Mapping
 
