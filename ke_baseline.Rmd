@@ -814,7 +814,7 @@ write.csv(table18c, file=paste(od, "table18_can.csv", sep = "/"),
 ```
 
 ### District and site level summaries of soil and managment practices
-```{r eval=F}
+```{r}
 dist.sum <- aggregate(d[,out.list], by=list(d$DistrictName), function(x){
   return(c(
     paste(
@@ -845,7 +845,7 @@ write.csv(site.sum, file=paste(od, "site covariate summary.csv", sep = "/"))
 ```
 
 
-### Truncated site level summary (site count > 10 = 25)
+### Truncated site level summary (site count > 10 = 25 sites)
 ```{r}
 largerSite <- table(d$SiteName)>10
 largerSite <- rownames(as.matrix(largerSite[largerSite==T]))
