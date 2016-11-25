@@ -1228,7 +1228,7 @@ stargazer(list7, type="html",
 ```
 
 ### District and cell level summaries of soil and managment practices
-```{r eval=F}
+```{r}
 dist.sum <- aggregate(d[,out.list], by=list(d$district), function(x){
   return(c(
     paste(
@@ -1854,13 +1854,13 @@ Alternatively, this could be initial evidence that the AEZ designations are not 
 ### Soil health maps for soil health study areas
 
 
-```{r cache=TRUE}
+```{r}
 #crdref <- CRS('+proj=longlat +datum=WGS84')
 crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
 e <- d[!is.na(d$lon),]
 ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e, proj4string = crdref)
 
-rw <- getData("GADM", country='RW', level=3, path = "/Users/mlowes/drive/soil health study/data") # the higher the number, the higher the resolution
+rw <- getData("GADM", country='RW', level=3, path = "/Users/mlowes/drive/optimized_agronomy/soil/soil_health_study/data") # the higher the number, the higher the resolution
 
 #ext.rw.ss matches points with spatial polygons in rw
 ext.rw.ss <- extract(rw[, "NAME_3"], ss)
@@ -2002,7 +2002,7 @@ output <- lapply(soilVars, function(x){
 
 ### Interpolated soil maps
 
-```{r message=FALSE, cache=TRUE}
+```{r message=FALSE}
 r <- raster(res=1/12)
 r <- crop(r, floor(extent(rw)))
 
@@ -2011,7 +2011,7 @@ maps <- lapply(soilVars, function(x){
   # make raster layer with model, raster is rwanda empty raster, model is m
   tps <- interpolate(r, m)
   tps <- crop(tps, rw)
-  tps <- mask(tps, rw) # cuts the tps raster down to the rw boundaries
+  tps <- raster::mask(tps, rw) # cuts the tps raster down to the rw boundaries
   x <- gsub("m3.", "", x)
   
   palColors <- leaflet::colorNumeric(palette = "Reds", values(tps), na.color = "transparent")
@@ -2031,14 +2031,14 @@ tagList(maps)
 
 Print out the interpolated values for inclusion in the report. 
 
-```{r echo=FALSE, cache=TRUE}
+```{r}
 pdf(file=paste(md, "rw_shs_bl_interpolation_soil_vars.pdf", sep = '/'), width=11, height=8.5)
 lapply(soilVars, function(x) {
   m <- Tps(coordinates(ss), ss@data[,x])
   # make raster layer with model, raster is rwanda empty raster, model is m
   tps <- interpolate(r, m)
   tps <- crop(tps, rw)
-  tps <- mask(tps, rw) # cuts the tps raster down to the rw boundaries
+  tps <- raster::mask(tps, rw) # cuts the tps raster down to the rw boundaries
   x <- gsub("m3.", "", x)
   
 suppressMessages(
