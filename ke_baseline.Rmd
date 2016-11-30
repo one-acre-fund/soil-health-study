@@ -394,6 +394,47 @@ print(
 
 **[Kim](kim.siegal@oneacrefund.org) says**: While the values vary far more than we see in typical M&E data, we don't have a good reference point for fertilizer application rates during the short rains, the period about which we asked. It's conceivable that the fertilizer/acre quantity varies this much, even among OAF farmers. I'm going to go with that for now.
 
+### Cleaning management practices in past 5 years
+
+```{r}
+pastYears <- names(d)[grep("_5",  names(d))]
+summary(d[,pastYears])
+
+# replace -99 with NA
+d[,pastYears] <- sapply(d[,pastYears], function(x){
+  ifelse(x==-99, NA, x)
+})
+```
+
+
+### Tenure Scatter plots
+Generate tenure vs. pH and tenure vs. fertilizer seasons scatter plots:
+```{r}
+d$seasons_oaf <- ifelse(d$seasons_oaf>8, NA, d$seasons_oaf)
+
+tenure.ph <- ggplot(d, aes(x= jitter(seasons_oaf), y=pH)) + geom_point() +
+  geom_smooth(method='loess') + 
+  labs(x = "OAF Tenure", y = "Soil pH", title = "OAF Tenure vs. soil pH")
+
+tenure.ph
+
+pdf(paste(od, "tenure vs ph.pdf", sep = "/"), width=11, height=8.5)
+print(tenure.ph)
+dev.off()
+```
+
+```{r}
+tenure.fertilizer <- ggplot(d, aes(x= jitter(seasons_oaf), y=jitter(chemical_fertilizer_5))) + geom_point() +
+  geom_smooth(method='loess') + 
+  labs(x = "OAF Tenure", y = "Years of Fertilizer in past 5 years", title = "OAF Tenure vs. soil pH")
+
+tenure.fertilizer
+
+pdf(paste(od, "tenure vs fertilizer.pdf", sep = "/"), width=11, height=8.5)
+print(tenure.fertilizer)
+dev.off()
+```
+
 ## Baseline balance
 
 ```{r}
@@ -414,7 +455,7 @@ out.list <- c("female", "age", "cows", "goats", "chickens",
               "pigs", "sheep", "field_size", "yield", "dap.acre", "can.acre", "npk.acre", "urea.acre", "chemical_fertilizer_5", "compost_fertilizer_5", "lime_fertilizer_5",
 "fertilizer_5", "legum_maincrop_5", "legum_intercrop_5", soilVars, "valley", "hilltop", "hillside", "crop.maize", "alt", "own.cows", "own.goats", "own.chickens", "own.pigs", "own.sheep")
 
-d$seasons_oaf <- ifelse(d$seasons_oaf>8, NA, d$seasons_oaf)
+
 
               
 output <- do.call(rbind, lapply(out.list, function(x) {
@@ -643,6 +684,8 @@ list1 <- lapply(soilVars, function(x){
 
 ### Table 17 - years of input use
 
+[Guide to interpreting Linear-Log Models](http://www-stat.wharton.upenn.edu/~stine/stat621/handouts/LogsInRegression.pdf)
+
 ```{r}
 plm.log <- function(x, range){
   
@@ -668,6 +711,8 @@ ke.table17 <- ke.table17[,c("pH","Total.C", "Total.N", "Ca", "Mg", "Exch.Al", "C
 
 write.csv(ke.table17, file=paste(od, "ketable17.csv", sep="/"), row.names=T)
 ```
+
+
 
 
 ```{r results='asis', eval=F}
@@ -1222,5 +1267,60 @@ map
 ```
 
 **Notes**: We have a lot of GPS points piled on the Bungoma office. We need to address the GPS collection practices that lead to incorrectly logged GPS.
+
+### Static map of sampling density
+```{r}
+crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
+e <- d[!is.na(d$lon),]
+ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e, proj4string = crdref)
+
+ke <- raster::getData("GADM", country='KE', level=2, path = "/Users/mlowes/drive/optimized_agronomy/soil/soil_health_study/data") # the higher the number, the higher the resolution
+
+
+#ext.rw.ss matches points with spatial polygons in ke
+ext.ke.ss <- extract(ke[, "NAME_2"], ss)
+ss$spatialname <- ext.ke.ss$NAME_2
+
+fke <- fortify(ke, region="NAME_2")
+ss.count <- ss@data %>% group_by(spatialname) %>% dplyr::summarize(
+  count = n()
+) %>% as.data.frame()
+
+table(ss.count$spatialname %in% fke$id)
+
+plotReady <- dplyr::left_join(fke, ss.count, by=c("id"="spatialname"))
+```
+
+**Tip**: [Zoom in on subset of full map](http://stackoverflow.com/questions/18323832/plot-small-region-of-a-large-polygon-map-in-ggplot2) and [filling polygons with base R plot](https://rpubs.com/lmullen/46313)
+
+```{r}
+library(RColorBrewer)
+mapRes <-  ggplot(plotReady, aes(x=long, y=lat, group=group)) + geom_path() + 
+  geom_polygon(aes(fill=plotReady$count)) + 
+  coord_map(xlim = c(33.5, 36),ylim = c(-2, 1.75)) +
+  scale_fill_gradientn(colours = brewer.pal(9,"Reds"), # define colors
+        name = "Sampling Density",
+        guide = guide_colorbar(legend.direction = "vertical")) + 
+  theme_bw() + 
+  labs(title="Kenya soil health study sampling density", x = "Longitude", y="Latitude")
+print(mapRes)
+```
+
+Without ggplot
+
+```{r}
+plotCount <- merge(ke, ss.count, by.x="NAME_2", by.y="spatialname")
+#colfunc <- colorRampPalette("red")
+#plot(plotCount, col=plotCount@data$count, xlim = c(35, 36),ylim = c(-2, 1.75))
+```
+
+
+
+```{r}
+pdf(paste(od, "kenya sampling density.pdf", sep = "/"), width=11, height=8)
+print(mapRes)
+dev.off()
+```
+
 
 --end
