@@ -314,13 +314,23 @@ ggplot(d, aes(x=field_size, y=dap.check)) + geom_point()
 
 However, if the input quatity variable is already per plot size, as the codebook suggests, I'd want to divide by the size of the plot to get the per acre application rate. **This is what [Kalie](kalie.gold@oneacrefund.org) suggests**
 
+
+
+
 ```{r}
 d$dap.acre <- d$inputs.dap_kg/d$field_size
 d$can.acre <- d$inputs.can_kg/d$field_size
 d$npk.acre <- d$inputs.npk_kg/d$field_size
 d$urea.acre <- d$inputs.urea_kg/d$field_size
-d$compost.acre <- d$inputs.compost/d$field_size
 
+d$inputs.compost <- ifelse(d$inputs.compost==-99, NA, d$inputs.compost)
+d$compost.acre <- d$inputs.compost/d$field_size
+```
+
+
+
+
+```{r}
 acreInputs <- names(d)[grep("acre", names(d))]
 ```
 
@@ -377,8 +387,15 @@ d$npk.acre <- ifelse(d$npk.acre>100, 100, d$npk.acre)
 d$urea.acre <- d$inputs.urea_kg/d$field_size.adj
 d$urea.acre <- ifelse(d$urea.acre>100, 100, d$urea.acre)
 
-d$compost.are <- d$inputs.compost/d$field_size.adj
+d$compost.acre <- d$inputs.compost/d$field_size.adj
 ```
+
+Clean all per acre variables
+```{r}
+summary(d[,acreInputs])
+```
+
+
 
 ```{r}
 for(i in 1:length(acreInputs)){
@@ -414,7 +431,9 @@ d$seasons_oaf <- ifelse(d$seasons_oaf>8, NA, d$seasons_oaf)
 
 tenure.ph <- ggplot(d, aes(x= jitter(seasons_oaf), y=pH)) + geom_point() +
   geom_smooth(method='loess') + 
-  labs(x = "OAF Tenure", y = "Soil pH", title = "OAF Tenure vs. soil pH")
+  #geom_smooth(method='lm', color="red") + 
+  #scale_x_discrete(=seq(0,8,1)) + 
+  labs(x = "OAF Tenure", y = "Soil pH", title = "Kenya OAF Tenure vs. soil pH")
 
 tenure.ph
 
@@ -424,9 +443,24 @@ dev.off()
 ```
 
 ```{r}
+d$seasons_breaks <- ifelse(d$seasons_oaf<2, 1, ifelse(d$seasons_oaf>=2 & d$seasons_oaf<5,2,3))
+
+tenure.breaks <- ggplot(data=subset(d, !is.na(d$seasons_breaks)), aes(x=jitter(seasons_oaf), y=pH)) + 
+  stat_smooth(method = "lm", se=FALSE, color="blue") +
+  geom_point() +
+  labs(title = "Kenya OAF Tenure vs. soil pH",
+       x = "Seasons with OAF", y = "Soil pH") + 
+  facet_wrap(~ seasons_breaks, scales="free_y")
+
+tenure.breaks
+```
+
+
+
+```{r}
 tenure.fertilizer <- ggplot(d, aes(x= jitter(seasons_oaf), y=jitter(chemical_fertilizer_5))) + geom_point() +
   geom_smooth(method='loess') + 
-  labs(x = "OAF Tenure", y = "Years of Fertilizer in past 5 years", title = "OAF Tenure vs. soil pH")
+  labs(x = "OAF Tenure", y = "Years of Fertilizer in past 5 years", title = "Kenya OAF Tenure vs. soil pH")
 
 tenure.fertilizer
 
@@ -824,6 +858,16 @@ table18b <- table18b[,c("pH", "Total.C", "Total.N", "Ca", "Mg", "Exch.Al")]
 write.csv(table18b, file=paste(od, "table18_compost.csv", sep = "/"),
           row.names = T)
 ```
+
+The compost regression results are suprising. Look at Carbon and compost scatter plot
+
+```{r}
+ggplot(d, aes(x = compost.acre, y=Total.C)) + geom_point() + 
+  scale_x_continuous(limits=c(0,50)) + # remove larger values from the graph.
+  geom_smooth(method='lm')
+```
+
+
 
 ```{r}
 plm.t18 <- function(x, range){
