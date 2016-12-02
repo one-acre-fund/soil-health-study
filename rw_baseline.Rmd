@@ -6,6 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+rm(list=ls())
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -224,6 +225,18 @@ d <- d[-which(is.na(d$m3.Ca)),]
 summary(d[,c("m3.Ca", "m3.Mg", "pH", "Total.N", "Total.C", "ExAl")])
 ```
 
+### Soil Type
+
+```{r}
+names(d)[names(d)=="general_field_infosoil_type"] <- "soil_type"
+names(d)[names(d)=="general_field_infotexture_soil"] <- "soil_texture"
+
+d$black_soil <- ifelse(d$soil_type=="black", 1,0)
+d$red_soil <- ifelse(d$soil_type=="red", 1,0)
+d$sandy_soil <-ifelse(d$soil_type=="sandy", 1,0)
+```
+
+
 Let's check out the rows for which we don't have soil data and drop them as they won't contribute to the full picture.
 
 ### Graphs of RW baseline soil variables
@@ -368,7 +381,7 @@ d$maize <- ifelse(d$crop_15b=="gor", 1,0)
 
 ```{r}
 out.list <- c("female", "age", "hhsize", "own", "field.size",
-              "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow", "n_seasons_leg_1", "n_seasons_leg_2", "slope",  "alt", "valley", "hillside", "hilltop", "cows", "goats", "chickens", "pigs", "sheep", "climbing_bean", "sorghum", "bush_bean","maize", soilVars, "own.cows", "own.goats", "own.chickens", "own.pigs", "own.sheep")
+              "n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow", "n_seasons_leg_1", "n_seasons_leg_2", "slope",  "alt", "valley", "hillside", "hilltop", "cows", "goats", "chickens", "pigs", "sheep", "climbing_bean", "sorghum", "bush_bean","maize", soilVars, "own.cows", "own.goats", "own.chickens", "own.pigs", "own.sheep", "black_soil", "red_soil", "sandy_soil")
 
 output <- do.call(rbind, lapply(out.list, function(x) {
   
@@ -976,8 +989,9 @@ write.csv(table16a, file=paste(od, "rwtable16_fert_all.csv", sep = "/"),
 # these objects have the same name as the fertilizer objects for simplicity. Run
 # from the top to avoid overwriting issues.
 previousSeasoncompost <- paste("compost.are", "as.factor(cell)", sep=" + ")
+temp <- subset(d, d$compost.are>0)
 list5b <- lapply(soilVars, function(x){
-  mod <- lm(as.formula(paste("d[,x] ~", previousSeasoncompost, sep="")), data=d)
+  mod <- lm(as.formula(paste("temp[,x] ~", previousSeasoncompost, sep="")), data=temp)
   return(mod)
 })
 
@@ -995,12 +1009,20 @@ write.csv(table16b, file=paste(od, "rwtable16_compost.csv", sep = "/"),
 The compost regression results are suprising. Look at Carbon and compost scatter plot. If we include 0 compost, we see no relationship. If we exclude 0 compost, we 
 
 ```{r}
-ggplot(d, aes(x = compost.are, y=Total.C)) + geom_point() + 
+soilC.compost <- ggplot(temp, aes(x = compost.are, y=Total.C)) + geom_point() + 
   scale_x_continuous(limits=c(0,50)) + # remove larger values from the graph.
-  geom_smooth(method='lm')
+  geom_smooth(method='lm') +
+  labs(title = "Compost and Soil Carbon in Rwanda", x = "Compost (kg/acre)", y = "Total Carbon")
+
+soilC.compost
+
+pdf(paste(od, "compost vs soil c.pdf", sep = "/"), width=11, height=8.5)
+print(soilC.compost)
+dev.off()
+
 ```
 
-There are too many zero or near zero values. We can conclude that perhaps we're not asking this question well.
+There are too many zero or near zero values. We can conclude that perhaps we're not asking this question well. Even when we remove non-zero values, there's little discernable relationship.
 
 ### Table 16 - Kgs of soil ammendments - lime (kg)
 
@@ -1133,6 +1155,17 @@ stargazer(list6, type="html",
 names(wetChem)[2:21] <- paste("wet.", names(wetChem)[2:21], sep = "")
 d <- left_join(d, wetChem, by="SSN")
 ```
+
+### For Eric, CEC summary for new Ca and Mg thresholds
+
+```{r}
+ggplot(d, aes(x=wet.C.E.C)) + geom_density() + 
+  geom_vline(xintercept = median(d$wet.C.E.C, na.rm=T), color="red") + 
+  geom_vline(xintercept = mean(d$wet.C.E.C, na.rm=T), color="blue")
+
+summary(d$wet.C.E.C)[3:4]
+```
+
 
 ```{r}
 wetVars <- names(d)[grep("wet.", names(d))]
@@ -1332,6 +1365,11 @@ colnames(equal) <- c("Male Farmers","Female Farmers", "p-value")
 write.csv(equal, file=paste(od, "female farmer status.csv", sep = "/"), row.names=T)
 ```
 
+### Export the data for Eric  
+  
+```{r}
+write.csv(d, file=paste(od, "rwanda_shs_merged_clean.csv",sep = "/"), row.names = F)
+```
 
 ## Propensity Score Matching
 We need to do a more rigorous job of accounting for differences between Tubura farmers and identified control farmers. Execute propensity score matching (PSM) to identify control farmers that overlap with Tubura farmers with regard to their likelihood of being a Tubura farmer.
@@ -1422,7 +1460,7 @@ d$age2 <- d$age^2
 d$hhsize_age <- d$hhsize*d$age
 d$hhsize2 <- d$hhsize^2
 
-coreVars = c("female", "age", "hhsize", "own", "as.factor(cell)", "cows", "goats", "chickens", "pigs", "sheep")
+coreVars = c("female", "age", "hhsize", "own", "as.factor(cell)", "cows", "goats", "chickens", "pigs", "sheep", "black_soil", "red_soil", "sandy_soil")
 
 psmList <- list(
   list(tr = "client",
@@ -1589,8 +1627,8 @@ thresh <- d %>% group_by(client) %>% dplyr::summarize(
   ph = sum(pH<5.8),
   carbon = sum(Total.C < 2),
   nitrogen = sum(Total.N < 0.1),
-  calcium = sum(m3.Ca < 720),
-  magnesium = sum(m3.Mg < 100)
+  calcium = sum(m3.Ca < 1056),
+  magnesium = sum(m3.Mg < 148)
   #aluminum = sum(ExAl)
 ) %>% mutate(
   under.ph = paste(paste(round(ph/count,4)*100, "%", sep=""), " (", ph, ")", sep=""),
@@ -1804,6 +1842,7 @@ coefTable.append <- do.call(rbind, lapply(1:length(mappend), function(model){
 }))
 row.names(coefTable.append) <- namesInput
 coefTable.append$pval.adj <- round(p.adjust(coefTable.append$pval, method="fdr"),3)
+names(coefTable.append) <- c("beta", "Old Clients", "New Clients", "pval", "pval.adj")
 ```
 
 
@@ -2113,9 +2152,29 @@ countPlot <- dplyr::left_join(frw, ss.count, by=c("id"="spatialname"))
 
 ```
 
+Generate district density summaries for Nathaniel to pair with the map
+
+```{r}
+districtDensity <- d %>% group_by(district) %>% dplyr::summarize(
+  count = n()
+) %>% as.data.frame()
+
+cellDensity <- d %>% group_by(district, cell) %>% dplyr::summarize(
+  count = n()
+) %>% as.data.frame()
+
+write.csv(districtDensity, file=paste(od, "rw district density table.csv", sep = "/"),
+          row.names=T)
+write.csv(cellDensity, file=paste(od, "rw cell density table.csv", sep = "/"),
+          row.names=T)
+
+```
+
+
 ### Static map of sampling density
 
 ```{r}
+library(RColorBrewer)
 mapRes <-  ggplot(countPlot, aes(x=long, y=lat, group=group)) + geom_path() + 
   geom_polygon(aes(fill=countPlot$count)) + 
   #coord_map(xlim = c(33.5, 36),ylim = c(-2, 1.75)) +
