@@ -6,6 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+rm(list=ls())
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -195,6 +196,7 @@ Check SiteName variable
 ```{r}
 #table(d$SiteName) many misspellings
 d$SiteName <- tolower(d$SiteName)
+d$SiteName <- gsub("\\'", "", d$SiteName)
 ```
 
 
@@ -480,6 +482,28 @@ d$own.sheep <- ifelse(d$sheep>0 & !is.na(d$sheep), 1,0)
 
 ```
 
+### Soil type
+
+```{r}
+d$clay_soil <- ifelse(d$soil_type=="clay", 1,0)
+d$loam_soil <- ifelse(d$soil_type=="loam", 1,0)
+d$sandy_soil <- ifelse(d$soil_type=="sandy", 1,0)
+```
+
+### Import wet chem for CEC summary
+I pulled the wet chem data from Emmanuel's Project soil data folder/Final soil datasets/Kenya/Kenya_SHS/Kenya_SHS_RF/Wetchem
+
+```{r}
+wetChem <- read.csv(paste(dd, "Kenya_SHS_wetchem.csv", sep = "/"), stringsAsFactors = F)
+ggplot(wetChem, aes(x=C.E.C)) + geom_density() + 
+  geom_vline(xintercept = median(wetChem$C.E.C, na.rm=T), color="red") + 
+  geom_vline(xintercept = mean(wetChem$C.E.C, na.rm=T), color="blue")
+
+summary(wetChem$C.E.C)[3:4]
+```
+
+
+
 Let's see how balanced our farmers are in terms of demographic variables. One Acre Fund farmers were selected based on *(list criteria)* and control farmers in the same area tha fit the same criteria were also selected. No matching process has been performed to identify the control farmers that most closely resemble the One Acre Fund farmers in the sample.
 
 ```{r}
@@ -487,7 +511,7 @@ names(d)[names(d)=="gender"] <- "female"
 
 out.list <- c("female", "age", "cows", "goats", "chickens",
               "pigs", "sheep", "field_size", "yield", "dap.acre", "can.acre", "npk.acre", "urea.acre", "chemical_fertilizer_5", "compost_fertilizer_5", "lime_fertilizer_5",
-"fertilizer_5", "legum_maincrop_5", "legum_intercrop_5", soilVars, "valley", "hilltop", "hillside", "crop.maize", "alt", "own.cows", "own.goats", "own.chickens", "own.pigs", "own.sheep")
+"fertilizer_5", "legum_maincrop_5", "legum_intercrop_5", soilVars, "valley", "hilltop", "hillside", "crop.maize", "alt", "own.cows", "own.goats", "own.chickens", "own.pigs", "own.sheep", "clay_soil", "loam_soil", "sandy_soil")
 
 
 
@@ -987,6 +1011,10 @@ write.csv(equal, file=paste(od, "female farmer status.csv", sep = "/"), row.name
 ```
 
 
+### Export the data for Eric
+```{r}
+write.csv(d, file=paste(od, "kenya_shs_merged_clean.csv",sep = "/"), row.names=F)
+```
 
 # Propensity Score Matching
 We need to do a more rigorous job of accounting for differences between Tubura farmers and identified control farmers. Execute propensity score matching (PSM) to identify control farmers that overlap with Tubura farmers with regard to their likelihood of being a Tubura farmer.
@@ -1028,7 +1056,8 @@ dev.off()
 ```{r}
 d$age2 <- d$age^2
 
-coreVars = c("female", "age", "SiteName", "cows", "goats", "chickens", "pigs", "sheep")
+coreVars = c("female", "age", "SiteName", "cows", "goats", "chickens", "pigs", "sheep",
+             "sandy_soil", "loam_soil")
 
 psmList <- list(
   list(tr = "oaf",
@@ -1198,14 +1227,204 @@ table9 <- table9[order(match(rownames(table9), t9order)),]
 write.csv(table9, file=paste(od, "table9.csv", sep = "/"))
 ```
 
+## Break out first season clients from more tenured - for appendix?
+
+This requires us to re-run the PSM matching process, confirm that our models are sound and then output the results ala table 2 again. 
+
+I'm comparing season 1 clients to clients with more tenure in the PSM matching.
+
+
+```{r}
+d$tenure.tiers <- ifelse(d$oaf==1 & d$seasons_oaf==1, 0,
+                         ifelse(d$oaf==1 & d$seasons_oaf>1, 1, NA))
+
+
+coreVars = c("female", "age", "SiteName", "cows", "goats", "chickens", "pigs", "sheep")
+
+psmList <- list(
+  list(tr = "tenure.tiers",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="Ca"),
+  list(tr = "tenure.tiers",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="Mg"),
+  list(tr = "tenure.tiers",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="pH"),
+  list(tr = "tenure.tiers",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="Total.C"),
+  list(tr = "tenure.tiers",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="Total.N"),
+  list(tr = "tenure.tiers",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="chemical_fertilizer_5"),
+    list(tr = "tenure.tiers",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="Exch.Al"),
+  list(tr = "tenure.tiers",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="compost_fertilizer_5"),
+  list(tr = "tenure.tiers",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="legum_maincrop_5"),
+  list(tr = "tenure.tiers",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="legum_intercrop_5"),
+  list(tr = "tenure.tiers",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="logFert"),
+  list(tr = "tenure.tiers",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="dap.acre"),
+  list(tr = "tenure.tiers",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="can.acre"),
+  list(tr = "tenure.tiers",
+       psmVars = paste(coreVars,
+                   collapse=" + "),
+       y="compost.acre")
+)
+
+#lime_fertilizer_5 >> so few farmers use it that we get a bad match.
+
+
+# PSM
+set.seed(20161102)
+mappend <- lapply(psmList, function(listInput){
+
+  naCheck <- unlist(strsplit(gsub("\\+", "", as.vector(listInput$psmVars))," ", fixed=TRUE))
+  naCheck <- naCheck[-which(naCheck=="")]
+  
+  
+  # keep complete cases of outcome variable
+  k <- d[complete.cases(d[,naCheck]),]
+  k <- k[complete.cases(k[,listInput$y]),]
+  k <- k[complete.cases(k[,listInput$tr]),]
+  
+  # run glm regression:
+  reg <- glm(as.formula(paste(listInput$tr, "~", listInput$psmVars, sep="")),  family= binomial(link="logit"), data=k)
+  
+  suppressWarnings(
+  mod <- Match(Y = k[,listInput$y], Tr = k[,listInput$tr], X = reg$fitted.values, ties=FALSE, replace=FALSE, caliper=0.25, estimand = "ATE")	
+  )
+  matchRes <- MatchBalance(k[,listInput$tr] ~ k[,listInput$y], match.out=mod, nboots=500, data=k, print.level = 0)
+  #print(listInput$y)
+  return(list(mod, matchRes))
+  
+})
+```
+
+The models can now vary by outcome. Let's see if we can improve our results. (appendix)
+
+```{r}
+matchRes <- do.call(rbind, lapply(1:length(mappend), function(model){
+  val <- as.data.frame(cbind(
+    standard.diff=mappend[[model]][[2]]$AfterMatching[[1]]$sdiff, 
+    var.ratio = mappend[[model]][[2]]$AfterMatching[[1]]$var.ratio,
+    sdiff.adj = mappend[[model]][[2]]$AfterMatching[[1]]$sdiff/100))
+  return(val)
+}))
+
+namesInput <- NULL
+for(i in 1:length(psmList)){
+  namesInput[i] <- psmList[[i]]$y
+}
+rownames(matchRes) <- namesInput
+```
+
+```{r results='asis'}
+print(kable(matchRes))
+```
+
+```{r}
+write.csv(matchRes, file=paste(od, "ke psm performance-appendix.csv", sep = "/"), row.names=T)
+```
+
+So few farmers use lime fertilizer that we don't get a good match. I could make it binary but it's so overwhelmingly the case that none of the farmers use lime that I'm just going to drop it.
+
+We also don't get super great matches on DAP and CAN. I'm going to push forward with this but I'm going to push forward with the results. **We should flag this.**
+
+
+```{r}
+coefTable.append <- do.call(rbind, lapply(1:length(mappend), function(model){
+  beta = round(mappend[[model]][[1]]$est.noadj,3)
+  mean.Tr = round(mappend[[model]][[2]]$AfterMatching[[1]][[3]], 2)
+  mean.Co = round(mappend[[model]][[2]]$AfterMatching[[1]][[4]], 2)
+  pval = mappend[[model]][[2]]$AfterMatching[[1]][[10]][[3]] # p.value
+  #pval = (1 - pnorm(abs(m[[model]][[1]]$est/m[[model]][[1]]$se.standard))) * 2
+  pval = ifelse(pval < 0.001, "0.001", round(pval, 3))
+  
+  res = data.frame(beta, mean.Tr, mean.Co, pval, stringsAsFactors = F)
+  return(res)
+}))
+row.names(coefTable.append) <- namesInput
+coefTable.append$pval.adj <- round(p.adjust(coefTable.append$pval, method="fdr"),3)
+names(coefTable.append) <- c("beta", "Old Clients", "New Clients", "pval", "pval.adj")
+```
+
+```{r results='asis'}
+print(kable(coefTable.append))
+```
+
+
+```{r}
+write.csv(coefTable.append, file=paste(od, "ke psm coefficients - appendix.csv", sep = "/"),row.names = T)
+```
+
+```{r}
+# Change colnames of MeanT and MeanC to Client and New Client
+
+# sort by the order Eric wants
+t7order.a <- c("pH", "Total.C", "Total.N", "Ca", "Mg", "Exch.Al")
+table7vars.a <- paste(t7order.a, collapse = "|")
+table7.a <- coefTable.append[grep(table7vars.a, rownames(coefTable.append)), ]
+table7.a <- table7.a[order(match(rownames(table7.a), t7order.a)),]
+
+write.csv(table7.a, file=paste(od, "table7-appendix.csv", sep = "/"), row.names = T)
+
+# 11/17 added lime
+t8order.a <- c("chemical_fertilizer_5", "compost_fertilizer_5", "legum_maincrop_5",
+             "legum_intercrop_5")
+table8vars.a <- paste(t8order.a, collapse = "|")
+table8.a <- coefTable.append[grep(table8vars.a, rownames(coefTable.append)), ]
+table8.a <- table8.a[order(match(rownames(table8.a), t8order.a)),]
+
+write.csv(table8.a, file=paste(od, "table8-appendix.csv", sep = "/"), row.names = T)
+
+#table 3
+t9order.a <- c("dap.acre", "can.acre", "compost.acre")
+table9vars.a <- paste(t9order.a, collapse = "|")
+table9.a <- coefTable.append[grep(table9vars.a, rownames(coefTable.append)), ]
+table9.a <- table9.a[order(match(rownames(table9.a), t9order.a)),]
+write.csv(table9.a, file=paste(od, "table9-appendix.csv", sep = "/"))
+```
+
+
+
+
 ```{r}
 thresh <- d %>% group_by(oaf) %>% dplyr::summarize(
   count = n(),
   ph = sum(pH<5.8),
   carbon = sum(Total.C < 2),
   nitrogen = sum(Total.N < 0.1),
-  calcium = sum(Ca < 720),
-  magnesium = sum(Mg < 100)
+  calcium = sum(Ca < 1284),
+  magnesium = sum(Mg < 180)
   #aluminum = sum(ExAl)
 ) %>% mutate(
   under.ph = paste(paste(round(ph/count,4)*100, "%", sep=""), " (", ph, ")", sep=""),
@@ -1221,7 +1440,7 @@ colnames(thresh) = thresh[1, ] # the first row will be the header
 colnames(thresh) = c("non-client", "client")
 thresh = thresh[-1, ]
 
-write.csv(thresh, file=paste(od, "table1_rw_thresholds.csv", sep = "/"), row.names = T)
+write.csv(thresh, file=paste(od, "table1_ke_thresholds.csv", sep = "/"), row.names = T)
 ```
 
 
@@ -1337,6 +1556,74 @@ plotReady <- dplyr::left_join(fke, ss.count, by=c("id"="spatialname"))
 
 **Tip**: [Zoom in on subset of full map](http://stackoverflow.com/questions/18323832/plot-small-region-of-a-large-polygon-map-in-ggplot2) and [filling polygons with base R plot](https://rpubs.com/lmullen/46313)
 
+I made the the map but there are so many observations in that one polygon. Figure out why and update the map!
+
+```{r}
+plotCount <- merge(ke, ss.count, by.x="NAME_2", by.y="spatialname")
+#colfunc <- colorRampPalette("red")
+#plot(plotCount, col=plotCount@data$count, xlim = c(35, 36),ylim = c(-2, 1.75))
+```
+
+Look at all polygons with a positive survey count as well as the one with the most, Kanduyi.
+
+```{r}
+unique(plotCount@data[!is.na(plotCount@data$count),]$NAME_2)
+
+plotCount@data[which.max(plotCount@data$count),]
+```
+
+Now work out which GPS points are assocated with that polygon and look at how many districts and sites it actually represents. Keep only the ones that should be in Kanduyi and drop the rest from this map. I suspect that GPS were incorrectly assigned to the office and thus show as being in Kanduyi when in fact they should be elsewhere!
+
+```{r}
+office <- subset(ss, ss$spatialname=="Kanduyi")
+table(office$DistrictName)
+table(office$SiteName)
+```
+
+Based on the districts and sites associated with the Kanduyi polygon, are there any we would reassign? I don't know the district boundaries well enough. One option is to map only Kanduyi and see how many points are concentrated in a particular spot as opposed to on the boarders.
+
+```{r}
+plot(office)
+```
+
+This is a simple map but we see that some of points are correctly assigned while most are concentrated in a single spot. Let's look at the distribution of lat and lon and pull out the outliers
+
+```{r}
+ggplot(office@data, aes(x=lon, y=lat)) + geom_point()
+```
+
+Keep the points between  34.55 lon and less than 34.6 lon
+
+```{r}
+office <- subset(office, subset=office$lon >34.55 & office$lon<34.6)
+```
+
+And now see where these points are supposed to be:
+```{r}
+table(office$DistrictName)
+length(office)
+```
+
+At least 159 samples should be redistributed to other sites. 
+
+### Re-assigning GPS centered at the office
+
+**Note**: I don't have a good way to find these points again in the object ke, reassign the values and generate new values. Instead, I can subtract values from Kanduyi and try to assign them elsewhere manually. See if this is possible.
+
+```{r}
+ss.count[ss.count$spatialname=="Butere", "count"] <- ss.count$count[ss.count$spatialname=="Butere"] + 12
+
+ss.count[ss.count$spatialname=="Lugari", "count"] <- ss.count$count[ss.count$spatialname=="Lugari"] + 57
+
+# and subtract from kanduyi
+ss.count[ss.count$spatialname=="Kanduyi", "count"] <- ss.count$count[ss.count$spatialname=="Kanduyi"] - 159
+```
+
+```{r}
+plotReady <- dplyr::left_join(fke, ss.count, by=c("id"="spatialname"))
+```
+
+
 ```{r}
 library(RColorBrewer)
 mapRes <-  ggplot(plotReady, aes(x=long, y=lat, group=group)) + geom_path() + 
@@ -1350,13 +1637,7 @@ mapRes <-  ggplot(plotReady, aes(x=long, y=lat, group=group)) + geom_path() +
 print(mapRes)
 ```
 
-Without ggplot
-
-```{r}
-plotCount <- merge(ke, ss.count, by.x="NAME_2", by.y="spatialname")
-#colfunc <- colorRampPalette("red")
-#plot(plotCount, col=plotCount@data$count, xlim = c(35, 36),ylim = c(-2, 1.75))
-```
+Come back and reassign GPS to site level values: **This still needs to happen**
 
 
 
