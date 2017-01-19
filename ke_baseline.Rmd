@@ -107,7 +107,7 @@ Identifiers$sample_id[!Identifiers$sample_id %in%  d$id.Soil_Sample_Id]
 ```{r}
 d <- merge(d, Identifiers[,c("SSN", "sample_id")], by.x="id.Soil_Sample_Id", by.y="sample_id", all.x=TRUE)
 
-d <- d[!is.na(d$SSN),]
+
 ```
 
 ### Merge in the soil data
@@ -130,6 +130,9 @@ names(d)[names(d)=="OC_PLS1" | names(d)== "TN_PLS1"] <- c("Total.C", "Total.N")
 
 ## Cleaning baseline variables
 ```{r}
+# drop obs without SSN
+d <- d[!is.na(d$SSN),]
+
 # take out weird CommCare stuff
 d[d=="---"] <- NA
 
@@ -537,11 +540,18 @@ colnames(output) <- c("1AF Client","Control", "p-value")
 print(kable(output))
 ```
 
-**Demographic variables**:
+Table 7 
 
-**Agricultural practice variables**: 
+```{r}
+table7vars <- c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg")
+table7 <- output[rownames(output) %in% table7vars, ]
 
-**Soil Variables**:
+write.csv(table7, file=paste(od, "ke table7.csv", sep = "/"), row.names=T)
+
+
+
+```
+
 
 ```{r}
 t10order <- c("age", "female")
@@ -865,10 +875,14 @@ write.csv(table18, file=paste(od, "table18_dap.csv", sep = "/"),
           row.names = T)
 ```
 
+Only keep non-zero compost farmers for the regression
+
 ```{r}
 previousSeasoncompost <- paste("compost.acre", "as.factor(SiteName)", sep=" + ")
+temp <- subset(d, d$compost.acre>0)
 list.t18b <- lapply(soilVars, function(x){
-  mod <- lm(as.formula(paste("d[,x] ~", previousSeasoncompost, sep="")), data=d)
+  mod <- lm(as.formula(paste("temp[, x] ~", previousSeasoncompost, sep="")),
+            data=temp)
   return(mod)
 })
 
@@ -886,9 +900,16 @@ write.csv(table18b, file=paste(od, "table18_compost.csv", sep = "/"),
 The compost regression results are suprising. Look at Carbon and compost scatter plot
 
 ```{r}
-ggplot(d, aes(x = compost.acre, y=Total.C)) + geom_point() + 
+soilC.compost <- ggplot(temp, aes(x = compost.acre, y=Total.C)) + geom_point() + 
   scale_x_continuous(limits=c(0,50)) + # remove larger values from the graph.
-  geom_smooth(method='lm')
+  geom_smooth(method='lm') + 
+  labs(title = "Compost and Soil Carbon in Kenya", x = "Compost (kg/acre)", y = "Total Carbon")
+
+soilC.compost
+
+pdf(paste(od, "compost vs soil c.pdf", sep = "/"), width=11, height=8.5)
+print(soilC.compost)
+dev.off()
 ```
 
 
@@ -1007,7 +1028,7 @@ colnames(equal) <- c("Male Farmers","Female Farmers", "p-value")
 ```
 
 ```{r}
-write.csv(equal, file=paste(od, "female farmer status.csv", sep = "/"), row.names=T)
+write.csv(equal, file=paste(od, "ke female farmer status.csv", sep = "/"), row.names=T)
 ```
 
 
@@ -1415,8 +1436,6 @@ write.csv(table9.a, file=paste(od, "table9-appendix.csv", sep = "/"))
 ```
 
 
-
-
 ```{r}
 thresh <- d %>% group_by(oaf) %>% dplyr::summarize(
   count = n(),
@@ -1441,6 +1460,56 @@ colnames(thresh) = c("non-client", "client")
 thresh = thresh[-1, ]
 
 write.csv(thresh, file=paste(od, "table1_ke_thresholds.csv", sep = "/"), row.names = T)
+```
+
+Clients vs. Non-clients summary table
+
+```{r}
+newOld <- d %>% filter(!is.na(tenure.tiers)) %>% group_by(tenure.tiers) %>% 
+  summarise(
+  ph = round(mean(pH, na.rm=T),3),
+  carbon = round(mean(Total.C, na.rm=T),3),
+  nitrogen = round(mean(Total.N, na.rm=T),3),
+  calcium = round(mean(Ca, na.rm=T),3),
+  magnesium = round(mean(Mg, na.rm=T),3)
+) %>% ungroup() 
+
+newOld <- as.data.frame(t(newOld))
+colnames(newOld) = newOld[1, ] # the first row will be the header
+colnames(newOld) = c("New Client", "Returning Client")
+newOld = newOld[-1, ]
+
+```
+
+New Clients vs. Returning Non-clients threshold table
+
+```{r}
+thresh.t <- d %>% filter(!is.na(tenure.tiers)) %>%
+  group_by(tenure.tiers) %>% dplyr::summarize(
+  count = n(),
+  ph = sum(pH<5.8),
+  carbon = sum(Total.C < 2),
+  nitrogen = sum(Total.N < 0.1),
+  calcium = sum(Ca < 1284),
+  magnesium = sum(Mg < 180)
+  #aluminum = sum(ExAl)
+) %>% mutate(
+  under.ph = paste(paste(round(ph/count,4)*100, "%", sep=""), " (", ph, ")", sep=""),
+  under.carbon = paste(paste(round(carbon/count,4)*100,"%", sep=""), " (", carbon, ")", sep=""),
+  under.nitrogen = paste(paste(round(nitrogen/count,4)*100, "%", sep=""), " (", nitrogen, ")", sep=""),
+  under.calcium = paste(paste(round(calcium/count,4)*100, "%", sep=""), " (", calcium, ")", sep=""),
+  under.mag = paste(paste(round(magnesium/count,4)*100,"%", sep=""), " (", magnesium, ")", sep="")
+) %>% as.data.frame() 
+
+thresh.t <- thresh.t[, c("tenure.tiers", names(thresh.t)[grep("under", names(thresh.t))])]
+thresh.t <- t(thresh.t)
+colnames(thresh.t) = thresh.t[1, ] # the first row will be the header
+colnames(thresh.t) = c("new client", "returning client")
+thresh.t = thresh.t[-1, ]
+
+thresh.t <- cbind(newOld, thresh.t)
+
+write.csv(thresh.t, file=paste(od, "table1_ke_thresholds_tenure.csv", sep = "/"), row.names = T)
 ```
 
 
