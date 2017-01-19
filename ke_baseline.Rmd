@@ -128,6 +128,17 @@ d <- merge(d, cnP, by="SSN", all.x=TRUE)
 names(d)[names(d)=="OC_PLS1" | names(d)== "TN_PLS1"] <- c("Total.C", "Total.N")
 ```
 
+### Export `d` for R1 follow up
+```{r}
+export <- d[,c("oaf", "id.RegionName", "id.DistrictName", "id.SiteName", "id.Last_Name", "id.First_Name","id.OAFID", "id.ClientPhone", "field_location", "SSN")]
+
+names(export) <- c("group", "Province", "District", "Site", "Farmer last name", "Farmer first name", "oafid", "Client Phone", "Field Location", "hidden.ssn")
+
+export[,grep("name", names(export))] <- sapply(export[,grep("name", names(export))], tolower)
+write.csv(export, file=paste(od, "r1 client list export.csv", sep = "/"), row.names=F)
+```
+
+
 ## Cleaning baseline variables
 ```{r}
 # drop obs without SSN
