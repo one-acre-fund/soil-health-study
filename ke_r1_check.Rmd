@@ -1,0 +1,326 @@
+---
+title: "Kenya SHS Round 1 Data Check"
+author: '[First Last](mailto:email@address)'
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  html_notebook:
+    number_sections: yes
+    code_folding: show
+    theme: paper
+    toc: yes
+    toc_depth: 6
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Objective
+
+The objective of this analysis is to identify potential data quality issues with in coming Kenya soil health round 1 study data so that the enumeration team can address issues in the field and improve overall quality. This file will also serve as (1) an initial cleaning file and (2) an attrition and balance check to inform when to wrap up enumeration.
+
+# Key Takeaways
+
+> *Forthcoming*
+
+```{r, message=F}
+source("../../../../../oaflib/commcareExport.R")
+library(ggplot2)
+library(readxl)
+library(dplyr)
+library(stringr)
+library(reshape2)
+library(readxl)
+library(sp)
+library(dismo)
+library(XML)
+library(leaflet)
+library(ggmap)
+```
+
+# Data
+
+## Import Data
+
+I'm going to use the CommCare API created by [Robert On](robert.on@oneacrefund.org) to access the data directly from CommCare. This ensures that there are no changes to the data between the point of access and the point of cleaning and analysis
+
+```{r}
+d <- getFormData("harvest", "Soil Sampling", "Soil Sampling 2017")
+d <- as.data.frame(d)
+```
+
+# Analysis
+
+The aim of the analysis is to: 
+
+1. Check variables of interest and check for odd values that we might want to investigate further
+2. Look at matches with the baseline and check GPS points
+3. Look at matches with baseline and check for attrition and balance.
+
+## Initial Cleaning 
+
+The variable names are out of control. In order to make the variable names more user friendly, I went to [CommCare](www.commcarehq.com) and downloaded the form contents that includes the variable name. I then wrote in a more user friendly variable name in the file. I import and overwrite the variable names here. Perhaps there's a better way to do this but it's easier to log the changes in excel than to write out all the code. The reference files will be on hand in case I accidentally mislabel a variable. The variable names in the excel file start with variable 11 from CommCare. The first 10 CommCare variables are meta data which we will keep.
+
+```{r, messages=F}
+newName <- read_excel("var_names.xlsx", sheet=1)
+```
+
+```{r}
+qTypes <- c("Multiple Choice", "Phone Number or Numeric ID", "Checkbox", "Text", "Decimal", "Image Capture", "Barcode Scan", "GPS", "Integer")
+
+newName <- newName %>% dplyr::select(1:4
+) %>% dplyr::filter(newName$Type %in% qTypes) %>% as.data.frame()
+```
+
+Keep the participation variable in `d` so we understand who agreed to participate. Make additional changes to `d` to prepare it to be combined with the meta information from CommCare.
+
+```{r}
+names(d)[23] <- "participation"
+names(d)[names(d)=="X.form.id_base.Soil_Sample_Id"] <- "Soil_Sample_Id"
+names(d)[names(d)=="X.form.id_2017new.Soil_Sample_Id"] <- "New_soil_sample_id"
+
+# remove unnecessary vars from d
+d <- d[,-which(grepl("^X", names(d)))]
+length(names(d)[11:length(names(d))])
+length(newName$new.var.name)
+
+# subtract two because the soil_sample_id are out of order
+length(names(d)[11:(length(names(d))-2)]) == length(newName$new.var.name)
+```
+Merge in variable names to check that they match and then replace `names()`. I'm subtracting two because the `Soil_Sample_Id` variables appear out of order.
+
+```{r}
+names(d)[11:(length(d)-2)] <- newName$new.var.name
+
+# drop vars with drop
+d <- d[,-which(grepl("drop.", names(d)))]
+```
+
+Remove strange extra characters from the `d` data.
+
+```{r}
+charClean <- function(df){
+  
+  df <- as.data.frame(lapply(df, function(x){
+  x = gsub("'", '', x)
+  x = gsub("^b", '', x)
+  x = ifelse(grepl("map object", x)==T, NA, x)
+  return(x)
+  }))
+return(df)
+}
+
+d <- charClean(d)
+```
+
+Convert variables that are supposed to be numbers to numbers in `d`
+
+```{r}
+qNum <- c("Phone Number or Numeric ID", "Decimal", "Integer")
+nums <- newName[newName$Type %in% qNum, "new.var.name"]
+nums <- nums[-which(grepl("drop.", nums))]
+
+d[, nums] <- as.data.frame(lapply(d[,nums], function(x){
+  as.numeric(as.character(x))
+}))
+```
+
+Replace factors as characaters in `d`.
+
+```{r}
+isFactor <- names(d)[sapply(d, is.factor)]
+d[,isFactor] <- sapply(d[,isFactor], as.character)
+```
+
+## Outlier check
+
+Check all numeric variables for outliers. First, it's probably safe to replace all -99s with NA
+
+```{r}
+d[d==-99] <- NA
+```
+
+```{r}
+iqr.check <- function(x) { 
+  q1 = summary(d[,x])[[2]]
+  q3 = summary(d[,x])[[5]] 
+  iqr = q3-q1
+  mark  = ifelse(d[,x] < (q1 - (1.5*iqr)) | d[,x] > (q3 + (1.5*iqr)), 1,0)
+  tab = rbind(
+    summary(d[,x]),
+    summary(d[mark==0, x])
+  )
+  return(tab)
+}
+
+
+iqrTab <- do.call(plyr::rbind.fill, lapply(nums, function(y){
+  #print(y)
+  res = iqr.check(y)
+  #print(dim(res))
+  out = data.frame(var=rbind(y, paste(y, ".iqr", sep="")), res)
+  return(out)
+}))
+```
+
+### Outlier table
+
+The outlier table summarizes the numeric variables with and without IQR outliers to show how the data changes based on this filter.
+
+```{r, results='asis'}
+knitr::kable(iqrTab, row.names = F)
+```
+
+### Graphs
+```{r}
+for(i in 1:length(nums)){
+  print(
+    ggplot(d, aes(x=d[,nums[i]])) + geom_density() +
+      labs(x = nums[i])
+  )
+}
+```
+
+### Print IQR outliers
+
+**TODO**: add way to filter by date so we're only seeing the most recent outliers. This is useful for providing only the most up to date feedback for the enumeration team.
+
+```{r}
+iqrOut <- function(x) { 
+  q1 = summary(d[,x])[[2]]
+  q3 = summary(d[,x])[[5]] 
+  iqr = q3-q1
+  mark  = ifelse(d[,x] < (q1 - (1.5*iqr)) | d[,x] > (q3 + (1.5*iqr)), 1,0)
+  # tab = rbind(
+  #   summary(d[,x]),
+  #   summary(d[mark==0, x])
+  # )
+  out = d[mark==1, c("district", "site", "metadata.username", "oafid", x)]
+  out = melt(out, measure.vars = x)
+  out = out[!is.na(out$district),]
+  
+  return(out)
+}
+
+numsNotOaf <- nums[-grep("oafid", nums)]
+
+printIQR <- do.call(rbind, lapply(numsNotOaf, function(y){
+  return(iqrOut(y))
+}))
+
+printIQR <- printIQR[order(printIQR$metadata.username),]
+
+write.csv(printIQR, "ke_shs_r1 vars to check.csv", row.names = F)
+```
+
+## GPS check
+
+*Import baseline data, merge and compare GPS*
+
+A couple notes:
+* Generate 2017 sample GPS
+* I'm bringing the data from the `ke_baseline.Rmd` file where the data was cleaned. 
+
+```{r}
+d <- cbind(d, str_split_fixed(d$gps, " ", n=4))
+names(d)[names(d)=="1" |names(d)== "2" | names(d)== "3" | names(d)== "4"] <- c("lat", "lon", "alt", "precision")
+d[,c("lat", "lon", "alt", "precision")] <- sapply(
+  d[,c("lat", "lon", "alt", "precision")],                                          function(x){as.numeric(as.character(x))})
+
+# make round 1 soil_sample_id lowercase
+d$Soil_Sample_Id <- tolower(d$Soil_Sample_Id)
+trim <- function (x) {
+  gsub("^\\s+|\\s+$", "", x)
+  }
+d$Soil_Sample_Id <- trim(d$Soil_Sample_Id)
+d$Soil_Sample_Id <- gsub(" ", "", d$Soil_Sample_Id)
+```
+
+```{r}
+ba <- read.csv(file="../ke baseline/data/shs ke baseline.csv", stringsAsFactors = F)
+gpsCol <- c("lat", "lon", "alt", "precision")
+for(i in 1:length(gpsCol)){
+  names(ba)[names(ba)==gpsCol[i]] <- paste(gpsCol[i], ".ba", sep = "")
+}
+```
+
+Merge the baseline and round 1 data using `Soil_Sample_Id`.
+
+```{r}
+table(ba$Soil_Sample_Id %in% d$Soil_Sample_Id)
+```
+
+We're getting `r table(ba$Soil_Sample_Id %in% d$Soil_Sample_Id)[[2]]` out of `r dim(d)[1]` matches. Let's look at the observations in round 1 that are currently not matching the baseline.
+
+```{r}
+d$Soil_Sample_Id[!d$Soil_Sample_Id %in% ba$Soil_Sample_Id]
+```
+
+**Question for Charles**: Why would we have NA or empty `Soil_Sample_Id` in `d`?
+
+### Merge data
+
+This merge will bring the baseline GPS into `d` and compare the values.
+
+```{r}
+gpsCheck <- inner_join(d, ba[,c("Soil_Sample_Id", "lat.ba", "lon.ba", "alt.ba", "precision.ba")], by="Soil_Sample_Id")
+```
+
+### Compare GPS points
+
+The graph below is an example of what I'm trying to account for. All new GPS points should match the baseline GPS points within a certain margin of error. Most points align well however there are clearly identifiable points that do not match.
+
+```{r}
+ggplot(gpsCheck, aes(x=lat.ba, y=lat)) + geom_point()
+```
+
+### Calculate distance
+
+I'm calculating the distance between the baseline GPS points and the round 1 GPS points to see how far off we were. See [here](http://stackoverflow.com/questions/31668163/geographic-distance-between-2-lists-of-lat-lon-coordinates) for reference.
+
+```{r}
+library(sp)
+gpsCheck$dist.km <- sapply(1:nrow(gpsCheck),function(i)
+                spDistsN1(as.matrix(gpsCheck[i,c("lon", "lat")]),as.matrix(gpsCheck[i,c("lon.ba", "lat.ba")]),longlat=T))
+
+gpsCheck$dist.m <- gpsCheck$dist.km*1000
+```
+
+```{r}
+gpsTab <- gpsCheck[gpsCheck$dist.m>100, c("metadata.username", "district", "site", "dist.m")]
+gpsTab <- gpsTab[order(gpsTab$dist.m, decreasing = T),]
+```
+
+We have `r dim(gpsTab)[1]` round 1 GPS points that are 100m from the baseline point. 
+
+### Distance Map
+
+```{r}
+# lineMap <- melt(gpsCheck, id.vars = "Soil_Sample_Id", measure.vars = c("lat", "lat.ba", "lon", "lon.ba"))
+```
+
+
+```{r, fig.width=9, fig.height=8}
+# City = "Kakamega, Kenya"
+# baseMap = get_map(location = City, zoom = 11, maptype = "terrain")
+# map <- ggmap(baseMap) +
+#   geom_path(aes(x=LONGITUDE, y=LATITUDE, group=INDEX), data=df, alpha=0.2)
+# map
+```
+
+```{r, results='asis'}
+knitr::kable(gpsTab)
+```
+
+**Action Point**: I'm outputting these rows for Charles and team to follow up. We shouldn't be 70km off. Let me know if other information would be helpful for following up with these enumerators
+
+```{r}
+gpsOut <- gpsCheck[gpsCheck$dist.m>100,c("metadata.username", "district", "site", "dist.m", "Soil_Sample_Id")]
+write.csv(gpsOut, file="gps_to_check.csv")
+```
+
+
+## Attrition and Balance
+
+*Use merged data to understand who we haven't found yet and check for balance*
