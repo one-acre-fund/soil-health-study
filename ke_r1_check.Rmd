@@ -22,7 +22,8 @@ The objective of this analysis is to identify potential data quality issues with
 
 # Key Takeaways
 
-> *Forthcoming*
+> 1) We have likely outliers in the numeric data. Follow up with enumerators about these values.
+> 2) Many round 1 GPS points are not close to the baseline value. Follow up about plot continuity and GPS quality.
 
 ```{r, message=F}
 source("../../../../../oaflib/commcareExport.R")
@@ -173,6 +174,9 @@ knitr::kable(iqrTab, row.names = F)
 ```
 
 ### Graphs
+
+Here I graph all numeric values in the data to visually identify potential outliers. Future versions of this code can compare recently collected data against the full data distribution to better assess potentially suspect values.
+
 ```{r}
 for(i in 1:length(nums)){
   print(
@@ -216,9 +220,8 @@ write.csv(printIQR, "ke_shs_r1 vars to check.csv", row.names = F)
 
 ## GPS check
 
-*Import baseline data, merge and compare GPS*
-
 A couple notes:
+
 * Generate 2017 sample GPS
 * I'm bringing the data from the `ke_baseline.Rmd` file where the data was cleaned. 
 
