@@ -1,12 +1,12 @@
 ---
 title: "Kenya SHS Round 1 Data Check"
-author: '[First Last](mailto:email@address)'
+author: '[Matt Lowes](mailto:matt.lowes@oneacrefund.org)'
 date: '`r format(Sys.time(), "%d %B, %Y")`'
 output:
   html_notebook:
     number_sections: yes
     code_folding: show
-    theme: paper
+    theme: flatly
     toc: yes
     toc_depth: 6
     toc_float: yes
@@ -47,7 +47,8 @@ library(ggmap)
 I'm going to use the CommCare API created by [Robert On](robert.on@oneacrefund.org) to access the data directly from CommCare. This ensures that there are no changes to the data between the point of access and the point of cleaning and analysis
 
 ```{r}
-d <- getFormData("harvest", "Soil Sampling", "Soil Sampling 2017")
+d <- getFormData("harvest", "Soil Sampling", "Soil Sampling 2017", forceUpdate=T)
+# add in force update to get latest report
 d <- as.data.frame(d)
 ```
 
@@ -122,6 +123,9 @@ qNum <- c("Phone Number or Numeric ID", "Decimal", "Integer")
 nums <- newName[newName$Type %in% qNum, "new.var.name"]
 nums <- nums[-which(grepl("drop.", nums))]
 
+toRemove <- c("phone", "oafid")
+nums <- nums[!nums %in% toRemove]
+
 d[, nums] <- as.data.frame(lapply(d[,nums], function(x){
   as.numeric(as.character(x))
 }))
@@ -163,6 +167,8 @@ iqrTab <- do.call(plyr::rbind.fill, lapply(nums, function(y){
   out = data.frame(var=rbind(y, paste(y, ".iqr", sep="")), res)
   return(out)
 }))
+
+iqrTab[,2:8] <- sapply(iqrTab[,2:8], function(x){round(x,1)})
 ```
 
 ### Outlier table
@@ -170,7 +176,7 @@ iqrTab <- do.call(plyr::rbind.fill, lapply(nums, function(y){
 The outlier table summarizes the numeric variables with and without IQR outliers to show how the data changes based on this filter.
 
 ```{r, results='asis'}
-knitr::kable(iqrTab, row.names = F)
+knitr::kable(iqrTab, row.names = F, digits = 0)
 ```
 
 ### Graphs
@@ -200,23 +206,57 @@ iqrOut <- function(x) {
   #   summary(d[,x]),
   #   summary(d[mark==0, x])
   # )
-  out = d[mark==1, c("district", "site", "metadata.username", "oafid", x)]
+  out = d[mark==1, c("district", "site", "metadata.username", "Soil_Sample_Id", "phone", x)]
   out = melt(out, measure.vars = x)
   out = out[!is.na(out$district),]
   
   return(out)
 }
 
-numsNotOaf <- nums[-grep("oafid", nums)]
+#numsNotOaf <- nums[-grep("oafid", nums)]
 
-printIQR <- do.call(rbind, lapply(numsNotOaf, function(y){
+printIQR <- do.call(rbind, lapply(nums, function(y){
   return(iqrOut(y))
 }))
 
-printIQR <- printIQR[order(printIQR$metadata.username),]
+printIQR <- printIQR[order(printIQR$metadata.username,printIQR$site, printIQR$Soil_Sample_Id),]
 
 write.csv(printIQR, "ke_shs_r1 vars to check.csv", row.names = F)
 ```
+
+### Print IQR outliers by enumerator
+
+```{r}
+for(i in 1:length(unique(printIQR$metadata.username))){
+  outSheet <- printIQR[printIQR$metadata.username==unique(printIQR$metadata.username)[i], ]
+  write.csv(outSheet, file=paste(getwd(), "enum_summaries",
+          paste("ke_shs_r1 vars to check ", unique(printIQR$metadata.username)[i], ".csv", sep = ""), sep = "/"))
+  
+}
+```
+
+### Import feedback
+
+Here I take the follow up responses from enumerators and update the values in the the full data
+```{r}
+updateDir <- paste(getwd(), "enum_summaries", sep = "/")
+
+# files <- list.files(updateDir, pattern = ".csv")
+# for(i in 1:length(files)){
+#   temp <- read.csv(file=paste(updateDir, files[i], sep = "/"))
+#   temp <- temp[!temp$update=="same", ]
+#   temp$update <- as.numeric(as.character(temp$update))
+#   temp$variable <- as.character(temp$variable)
+#   
+#   for(j in 1:nrow(temp)){
+#     d[,temp[j,"variable"]][ d[,"oafid"]==temp[j,"oafid"] & d[,temp[j, "variable"]]==temp[j,"value"]] <- temp[j, "update"]
+#   }
+#   
+# }
+
+```
+
+
 
 ## GPS check
 
@@ -274,8 +314,16 @@ gpsCheck <- inner_join(d, ba[,c("Soil_Sample_Id", "lat.ba", "lon.ba", "alt.ba", 
 
 The graph below is an example of what I'm trying to account for. All new GPS points should match the baseline GPS points within a certain margin of error. Most points align well however there are clearly identifiable points that do not match.
 
+#### Latitute Comparison
+
 ```{r}
 ggplot(gpsCheck, aes(x=lat.ba, y=lat)) + geom_point()
+```
+
+#### Longitude Comparison
+
+```{r}
+ggplot(gpsCheck, aes(x=lon.ba, y=lon)) + geom_point()
 ```
 
 ### Calculate distance
@@ -300,20 +348,37 @@ We have `r dim(gpsTab)[1]` round 1 GPS points that are 100m from the baseline po
 ### Distance Map
 
 ```{r}
-# lineMap <- melt(gpsCheck, id.vars = "Soil_Sample_Id", measure.vars = c("lat", "lat.ba", "lon", "lon.ba"))
-```
+mapPrep <- gpsCheck %>% top_n(n=20, wt=dist.m) 
 
+#mapPrep[,c("Soil_Sample_Id","lat.ba", "lat", "lon.ba", "lon", "dist.m")]
+
+distDat <- data.frame(id = mapPrep$Soil_Sample_Id,
+                      lat = c(mapPrep$lat.ba, mapPrep$lat),
+                      lon = c(mapPrep$lon.ba, mapPrep$lon))
+distDat <- distDat[order(distDat$id),]
+distDat$baseline <- c(1,0)
+```
 
 ```{r, fig.width=9, fig.height=8}
-# City = "Kakamega, Kenya"
-# baseMap = get_map(location = City, zoom = 11, maptype = "terrain")
-# map <- ggmap(baseMap) +
-#   geom_path(aes(x=LONGITUDE, y=LATITUDE, group=INDEX), data=df, alpha=0.2)
-# map
+e <- distDat[!is.na(distDat$lat),]
+ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e)
+
+ke <- try(dismo::geocode("Kenya"))
+pal <- colorNumeric(c("navy", "green"), domain=unique(ss$baseline))
+map <- leaflet() %>% addTiles() %>%
+setView(lng=ke$longitude, lat=ke$latitude, zoom=6) %>%
+  addPolylines(data = ss, lng = ~lon, lat = ~lat, group = ~id) %>%
+  addCircleMarkers(lng=ss$lon, lat=ss$lat, 
+                   radius= ifelse(ss$baseline==1, 10,6),
+                   color = pal(ss$baseline))
+
+map
 ```
 
+> Green circles are baseline values, navy circles are from the follow up. We can see that both at the baseline and at the follow up GPS were logged at the office.
+
 ```{r, results='asis'}
-knitr::kable(gpsTab)
+knitr::kable(gpsTab, col.names = c("Enumerator", "District", "Site", "Distance (m)"))
 ```
 
 **Action Point**: I'm outputting these rows for Charles and team to follow up. We shouldn't be 70km off. Let me know if other information would be helpful for following up with these enumerators
