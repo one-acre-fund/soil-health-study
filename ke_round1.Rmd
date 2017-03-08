@@ -38,6 +38,7 @@ library(dismo)
 library(XML)
 library(leaflet)
 library(ggmap)
+suppressMessages(library(MASS))
 ```
 
 # Data
@@ -47,7 +48,7 @@ library(ggmap)
 I'm going to use the CommCare API created by [Robert On](robert.on@oneacrefund.org) to access the data directly from CommCare. This ensures that there are no changes to the data between the point of access and the point of cleaning and analysis
 
 ```{r}
-d <- getFormData("harvest", "Soil Sampling", "Soil Sampling 2017", forceUpdate=T)
+d <- getFormData("harvest", "Soil Sampling", "Soil Sampling 2017", forceUpdate = T)
 # add in force update to get latest report
 d <- as.data.frame(d)
 ```
@@ -192,16 +193,78 @@ for(i in 1:length(nums)){
 }
 ```
 
+Quick test
+
+```{r}
+d$can.main.test <- ifelse(d$can.main>100, NA, d$can.main)
+```
+
+
 ### Print IQR outliers
 
 **TODO**: add way to filter by date so we're only seeing the most recent outliers. This is useful for providing only the most up to date feedback for the enumeration team.
 
 ```{r}
-iqrOut <- function(x) { 
-  q1 = summary(d[,x])[[2]]
-  q3 = summary(d[,x])[[5]] 
+# iqrOut <- function(x) { 
+#   q1 = summary(d[,x])[[2]]
+#   q3 = summary(d[,x])[[5]] 
+#   iqr = q3-q1
+#   mark  = ifelse(d[,x] < (q1 - (1.5*iqr)) | d[,x] > (q3 + (1.5*iqr)), 1,0)
+#   # tab = rbind(
+#   #   summary(d[,x]),
+#   #   summary(d[mark==0, x])
+#   # )
+#   out = d[mark==1, c("district", "site", "metadata.username", "Soil_Sample_Id", "phone", x)]
+#   out = melt(out, measure.vars = x)
+#   out = out[!is.na(out$district),]
+#   
+#   return(out)
+# }
+# 
+# #numsNotOaf <- nums[-grep("oafid", nums)]
+# printIQR <- do.call(rbind, lapply(nums, function(y){
+#   return(iqrOut(y))
+# }))
+# 
+# printIQR <- printIQR[order(printIQR$metadata.username,printIQR$site, printIQR$Soil_Sample_Id),]
+# 
+# write.csv(printIQR, "ke_shs_r1 vars to check.csv", row.names = F)
+```
+
+### Outlier hypothesis testing
+
+It will be the case that not all variables are normally distributed. If that's the case then IQR is not going to be helpful in flagging only outlying values. 
+
+* Detect the type of dis  tribution
+* Feed this to a chi-squared test and have it check if each value is outside the assumed distribution
+* Or transform the data according to the detection and use wilcox.test to test each value against the distribution
+
+See [here](http://stackoverflow.com/questions/22433256/which-distribution-fits-data-better)
+
+```{r}
+detectOutlier <- function(dat, x){
+
+# function checks distribution and if lognormal, coverts and outputs
+# outliers from log normal distribution. have to remove 0s to check
+  fits <- list(
+ no = fitdistr(dat[,x][complete.cases(dat[,x])],"normal"),
+ lo = fitdistr((dat[,x])[complete.cases(dat[,x]) & dat[,x]!=0],"log-normal")
+ #ca = fitdistr(dat[,x][complete.cases(dat[,x])],"cauchy"),
+ #we = fitdistr(dat[,x][complete.cases(dat[,x])], "weibull")
+ )
+# get the logliks for each model...
+fitCheck <- sapply(fits, function(i) i$loglik)
+bestFit <-names(which.max(fitCheck))
+
+trans <- sapply(d[,x], function(y){
+  ifelse(bestFit=="lo", log10(y+1), y)
+})
+  
+  
+  q1 = summary(trans)[[2]]
+  q3 = summary(trans)[[5]] 
   iqr = q3-q1
-  mark  = ifelse(d[,x] < (q1 - (1.5*iqr)) | d[,x] > (q3 + (1.5*iqr)), 1,0)
+  mark  = ifelse(trans < (q1 - (1.5*iqr)) | trans > (q3 + (1.5*iqr)), 1,0)
   # tab = rbind(
   #   summary(d[,x]),
   #   summary(d[mark==0, x])
@@ -211,17 +274,35 @@ iqrOut <- function(x) {
   out = out[!is.na(out$district),]
   
   return(out)
+
 }
 
-#numsNotOaf <- nums[-grep("oafid", nums)]
-
 printIQR <- do.call(rbind, lapply(nums, function(y){
-  return(iqrOut(y))
+  #print(y)
+  return(detectOutlier(d, y))
 }))
 
 printIQR <- printIQR[order(printIQR$metadata.username,printIQR$site, printIQR$Soil_Sample_Id),]
+```
 
-write.csv(printIQR, "ke_shs_r1 vars to check.csv", row.names = F)
+The initial output might still be showing values that the M&E team feels are reasonable values in reality despite being flagged as statistical outliers. I'm adding a function for [Charles](mailto:charles.ogechi@oneacrefund.org) and [Kalie](kalie.gold@oneacrefund.org) to say which values they don't want appearing in the summary.
+
+I've included a couple examples of how we can filter the data through the code to arrive at a well documented list of values to investigate.
+
+```{r}
+modifyOutlierOutput <- function(dat, varname, val){
+  dat = dplyr::filter(dat, variable!=varname & value!=val)
+  return(dat)
+}
+
+printIQR <- modifyOutlierOutput(printIQR, "goats", 0)
+printIQR <- modifyOutlierOutput(printIQR, "pigs", 1)
+printIQR <- modifyOutlierOutput(printIQR, "slope", 0)
+
+```
+
+```{r}
+write.csv(printIQR, "ke_shs_r1 vars to check update.csv", row.names = F)
 ```
 
 ### Print IQR outliers by enumerator
@@ -234,6 +315,7 @@ for(i in 1:length(unique(printIQR$metadata.username))){
   
 }
 ```
+
 
 ### Import feedback
 
@@ -316,13 +398,13 @@ The graph below is an example of what I'm trying to account for. All new GPS poi
 
 #### Latitute Comparison
 
-```{r}
+```{r, fig.height=6, fig.width=8}
 ggplot(gpsCheck, aes(x=lat.ba, y=lat)) + geom_point()
 ```
 
 #### Longitude Comparison
 
-```{r}
+```{r,fig.height=6, fig.width=8}
 ggplot(gpsCheck, aes(x=lon.ba, y=lon)) + geom_point()
 ```
 
@@ -359,7 +441,7 @@ distDat <- distDat[order(distDat$id),]
 distDat$baseline <- c(1,0)
 ```
 
-```{r, fig.width=9, fig.height=8}
+```{r, fig.height=6, fig.width=8}
 e <- distDat[!is.na(distDat$lat),]
 ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e)
 
