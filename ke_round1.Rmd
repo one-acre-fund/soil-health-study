@@ -26,7 +26,7 @@ The objective of this analysis is to identify potential data quality issues with
 > 2) Many round 1 GPS points are not close to the baseline value. Follow up about plot continuity and GPS quality.
 
 ```{r, message=F}
-source("../../../../../oaflib/commcareExport.R")
+source("../../../../../analyses/oaflib/commcareExport.R")
 library(ggplot2)
 library(readxl)
 library(dplyr)
@@ -48,7 +48,8 @@ suppressMessages(library(MASS))
 I'm going to use the CommCare API created by [Robert On](robert.on@oneacrefund.org) to access the data directly from CommCare. This ensures that there are no changes to the data between the point of access and the point of cleaning and analysis
 
 ```{r}
-d <- getFormData("harvest", "Soil Sampling", "Soil Sampling 2017", forceUpdate = T)
+forceUpdate = T
+d <- getFormData("harvest", "Soil Sampling", "Soil Sampling 2017", forceUpdate)
 # add in force update to get latest report
 d <- as.data.frame(d)
 ```
@@ -85,11 +86,11 @@ names(d)[names(d)=="X.form.id_2017new.Soil_Sample_Id"] <- "New_soil_sample_id"
 
 # remove unnecessary vars from d
 d <- d[,-which(grepl("^X", names(d)))]
-length(names(d)[11:length(names(d))])
-length(newName$new.var.name)
+#length(names(d)[11:length(names(d))])
+#length(newName$new.var.name)
 
 # subtract two because the soil_sample_id are out of order
-length(names(d)[11:(length(names(d))-2)]) == length(newName$new.var.name)
+#length(names(d)[11:(length(names(d))-2)]) == length(newName$new.var.name)
 ```
 Merge in variable names to check that they match and then replace `names()`. I'm subtracting two because the `Soil_Sample_Id` variables appear out of order.
 
@@ -127,6 +128,9 @@ nums <- nums[-which(grepl("drop.", nums))]
 toRemove <- c("phone", "oafid")
 nums <- nums[!nums %in% toRemove]
 
+# add in plot.size
+nums <- c(nums, "plot.size")
+
 d[, nums] <- as.data.frame(lapply(d[,nums], function(x){
   as.numeric(as.character(x))
 }))
@@ -138,6 +142,54 @@ Replace factors as characaters in `d`.
 isFactor <- names(d)[sapply(d, is.factor)]
 d[,isFactor] <- sapply(d[,isFactor], as.character)
 ```
+
+Make new variables
+
+```{r}
+#convert acreage to m2 and then calculate fertilizer per acre
+d$plot.m2 <- d$plot.size*4046
+
+m2ToAcres <- function(input, meters) {
+  res <- (input/meters)*4046
+  return(res)
+}
+
+d$can.acre <- m2ToAcres(d$can.main, d$plot.m2)
+d$dap.acre <- m2ToAcres(d$dap.main,d$plot.m2)
+d$npk.acre <- m2ToAcres(d$npk.main,d$plot.m2)
+d$urea.acre <- m2ToAcres(d$urea.main,d$plot.m2)
+d$compost.acre <- m2ToAcres(d$compost.kgs,d$plot.m2)
+d$seed.acre <- m2ToAcres(d$seed.kgs,d$plot.m2)
+
+d$intercrop.seed.acre <- m2ToAcres(d$intercrop.seed.kgs, d$plot.m2)
+d$intercrop.dap.acre <- m2ToAcres(d$dap.intercrop, d$plot.m2)
+d$intercrop.can.acre <- m2ToAcres(d$can.intercrop, d$plot.m2)
+d$intercrop.npk.acre <- m2ToAcres(d$npk.intercrop, d$plot.m2)
+d$intercrop.urea.acre <- m2ToAcres(d$urea.intercrop, d$plot.m2)
+
+
+nums <- c(nums, "can.acre", "dap.acre", "npk.acre", "urea.acre", "compost.acre", "seed.acre", "intercrop.seed.acre", "intercrop.dap.acre", 
+"intercrop.can.acre", "intercrop.npk.acre", "intercrop.urea.acre")
+
+
+```
+
+Yield calculation - first let's confirm that when the `yield.unit` is NA that there isn't a yield value.
+
+```{r}
+table(d$yield[is.na(d$yield.unit)], useNA = 'ifany')
+```
+
+**Charles**: I assume a 0 yield is a true value. Or should it be NA? The code below converts all yield values associated with an NA unit to NA when in fact there should be some 0s.
+
+```{r}
+d$yield.kg <- ifelse(d$yield.unit=="100kg", d$yield*100, 
+              ifelse(d$yield.unit=="50kg", d$yield*50,
+              ifelse(d$yield.unit=="90kg", d$yield*90,
+              ifelse(d$yield.unit=="GG", d$yield*2, NA))))
+nums <- c(nums, "yield.kg")
+```
+
 
 ## Outlier check
 
@@ -177,7 +229,7 @@ iqrTab[,2:8] <- sapply(iqrTab[,2:8], function(x){round(x,1)})
 The outlier table summarizes the numeric variables with and without IQR outliers to show how the data changes based on this filter.
 
 ```{r, results='asis'}
-knitr::kable(iqrTab, row.names = F, digits = 0)
+knitr::kable(iqrTab, row.names = F, digits = 0, format = 'html')
 ```
 
 ### Graphs
@@ -196,7 +248,7 @@ for(i in 1:length(nums)){
 Quick test
 
 ```{r}
-d$can.main.test <- ifelse(d$can.main>100, NA, d$can.main)
+#d$can.main.test <- ifelse(d$can.main>100, NA, d$can.main)
 ```
 
 
@@ -235,7 +287,7 @@ d$can.main.test <- ifelse(d$can.main>100, NA, d$can.main)
 
 It will be the case that not all variables are normally distributed. If that's the case then IQR is not going to be helpful in flagging only outlying values. 
 
-* Detect the type of dis  tribution
+* Detect the type of distribution
 * Feed this to a chi-squared test and have it check if each value is outside the assumed distribution
 * Or transform the data according to the detection and use wilcox.test to test each value against the distribution
 
@@ -248,7 +300,7 @@ detectOutlier <- function(dat, x){
 # outliers from log normal distribution. have to remove 0s to check
   fits <- list(
  no = fitdistr(dat[,x][complete.cases(dat[,x])],"normal"),
- lo = fitdistr((dat[,x])[complete.cases(dat[,x]) & dat[,x]!=0],"log-normal")
+ lo = fitdistr((dat[,x])[complete.cases(dat[,x]) & dat[,x]!=0 & dat[,x]>0],"log-normal")
  #ca = fitdistr(dat[,x][complete.cases(dat[,x])],"cauchy"),
  #we = fitdistr(dat[,x][complete.cases(dat[,x])], "weibull")
  )
@@ -316,7 +368,6 @@ for(i in 1:length(unique(printIQR$metadata.username))){
 }
 ```
 
-
 ### Import feedback
 
 Here I take the follow up responses from enumerators and update the values in the the full data
@@ -337,8 +388,6 @@ updateDir <- paste(getwd(), "enum_summaries", sep = "/")
 # }
 
 ```
-
-
 
 ## GPS check
 
@@ -473,4 +522,4 @@ write.csv(gpsOut, file="gps_to_check.csv")
 
 ## Attrition and Balance
 
-*Use merged data to understand who we haven't found yet and check for balance*
+*Use merged data to understand who we haven't found yet and check for balance* We're currenly missing `r dim(ba)[1]-dim(d)[1]` observations
