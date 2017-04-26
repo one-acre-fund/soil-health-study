@@ -26,7 +26,7 @@ The objective of this analysis is to identify potential data quality issues with
 > 2) Many round 1 GPS points are not close to the baseline value. Follow up about plot continuity and GPS quality.
 
 ```{r, message=F}
-source("../../../../../analyses/oaflib/commcareExport.R")
+source("../oaflib/commcareExport.R")
 library(ggplot2)
 library(readxl)
 library(dplyr)
@@ -48,7 +48,7 @@ suppressMessages(library(MASS))
 I'm going to use the CommCare API created by [Robert On](robert.on@oneacrefund.org) to access the data directly from CommCare. This ensures that there are no changes to the data between the point of access and the point of cleaning and analysis
 
 ```{r}
-forceUpdate = T
+forceUpdate = F
 d <- getFormData("harvest", "Soil Sampling", "Soil Sampling 2017", forceUpdate)
 # add in force update to get latest report
 d <- as.data.frame(d)
@@ -75,6 +75,7 @@ qTypes <- c("Multiple Choice", "Phone Number or Numeric ID", "Checkbox", "Text",
 
 newName <- newName %>% dplyr::select(1:4
 ) %>% dplyr::filter(newName$Type %in% qTypes) %>% as.data.frame()
+newName <- newName %>% filter(new.var.name!="general.comment")
 ```
 
 Keep the participation variable in `d` so we understand who agreed to participate. Make additional changes to `d` to prepare it to be combined with the meta information from CommCare.
@@ -197,6 +198,79 @@ Check all numeric variables for outliers. First, it's probably safe to replace a
 
 ```{r}
 d[d==-99] <- NA
+```
+
+### Import feedback
+
+Here I take the follow up responses from enumerators and update the values in the the full data. I only want the outlier checks to show values that we haven't already addressed through soliciting additional feedback from enumerators and farmers. This code assumes the data comes in with rows as farmers and columns as the questions that needed to be addressed. I've reshaped it to include 
+
+```{r}
+#updateDir <- paste(getwd(), "enum_summaries", sep = "/")
+updates <- read.csv("Phone calls survey.csv", header=T, stringsAsFactors = F) %>% rename(
+  Soil_Sample_Id = soil_sample_id,
+  age = Age.of.respondent,
+  can.intercrop = How.many.KGs.of.CAN.did.you.apply.to.the..intercrop.,
+  can.main = How.many.KGs.of.CAN.did.you.apply.to.the.main.crop.,
+  chickens = Number.of.chickens.How.many.chickens.do.you.own..chickens,
+  dap.intercrop = How.many.KGs.of.DAP.did.you.apply.to.the.intercrop.,
+  dap.main = How.many.KGs.of.DAP.did.you.apply.to.the.main.crop.,
+  hhsize = Number.of.people.in.this.Household.Include.respondent..,
+  intercrop.seed.kgs = How.many.kgs.of.seed.did.you.use.in.your.intercrop.,
+  lime.kgs = How.many.KGs.of.lime.did.you.use.on.this.plot.,
+  npk.main = How.many.KGs.of.NPK.did.you.apply.to.the.maincrop.,
+  plot.size = What.is.your.aproximate.plotsize,
+  seed.kgs = How.many.kgs.of.seed.did.you.use.in.the.Maincrop.,
+  sheep = How.many.sheep.do.you.own.,
+  urea.main = How.many.KGs.of.urea.did.you.apply.to.the.maincrop.,
+  yield = What.was.the.yield.for.this.plot.main.crop.
+) %>% mutate(
+  yield = ifelse(yield=="N/A", NA,  ifelse(grepl("Not", yield), NA, yield)),
+  yield = ifelse(yield=="32 bags of 90 kgs", "32 bags", yield)
+)
+
+updates$yield.unit <- sapply(updates$yield, function(x){ # separate out the unit
+  strsplit(x, " ")[[1]][2]})
+
+updates$yield.kg <- sapply(updates$yield, function(x){ # keep only the number
+  strsplit(x, " ")[[1]][1]})
+
+updates$yield.kg <- ifelse(grepl("bag",  updates$yield.unit), as.numeric(updates$yield)*90, ifelse(grepl("goro", updates$yield.unit),  as.numeric(updates$yield)*2.45, updates$yield))
+
+
+updates <- melt(updates, id.vars = c("Soil_Sample_Id", "Comments"), measure.vars = names(updates)[6:19])
+updates <- updates %>% filter(!is.na(value) | value!= " ")
+
+# check that this works:
+#print(updates[1,])
+```
+
+```{r}
+for(i in 1:nrow(updates)){
+  d[,as.character(updates$variable[i])][d$Soil_Sample_Id==updates$Soil_Sample_Id[i] & !is.na(d$Soil_Sample_Id)] = updates$value[i][d$Soil_Sample_Id==updates$Soil_Sample_Id[i] & !is.na(d$Soil_Sample_Id)]
+  #print(i)
+}
+
+#put everything back to numeric
+d[, nums] <- as.data.frame(lapply(d[,nums], function(x){
+  as.numeric(as.character(x))
+}))
+```
+
+```{r}
+# This code could be used if enumerators recorded their feedback separately. The code above works if all the responses have been centralized into a single dataset.
+# files <- list.files(updateDir, pattern = ".csv")
+# for(i in 1:length(files)){
+#   temp <- read.csv(file=paste(updateDir, files[i], sep = "/"))
+#   temp <- temp[!temp$update=="same", ]
+#   temp$update <- as.numeric(as.character(temp$update))
+#   temp$variable <- as.character(temp$variable)
+#   
+#   for(j in 1:nrow(temp)){
+#     d[,temp[j,"variable"]][ d[,"oafid"]==temp[j,"oafid"] & d[,temp[j, "variable"]]==temp[j,"value"]] <- temp[j, "update"]
+#   }
+#   
+# }
+
 ```
 
 ```{r}
@@ -368,26 +442,6 @@ for(i in 1:length(unique(printIQR$metadata.username))){
 }
 ```
 
-### Import feedback
-
-Here I take the follow up responses from enumerators and update the values in the the full data
-```{r}
-updateDir <- paste(getwd(), "enum_summaries", sep = "/")
-
-# files <- list.files(updateDir, pattern = ".csv")
-# for(i in 1:length(files)){
-#   temp <- read.csv(file=paste(updateDir, files[i], sep = "/"))
-#   temp <- temp[!temp$update=="same", ]
-#   temp$update <- as.numeric(as.character(temp$update))
-#   temp$variable <- as.character(temp$variable)
-#   
-#   for(j in 1:nrow(temp)){
-#     d[,temp[j,"variable"]][ d[,"oafid"]==temp[j,"oafid"] & d[,temp[j, "variable"]]==temp[j,"value"]] <- temp[j, "update"]
-#   }
-#   
-# }
-
-```
 
 ## GPS check
 
@@ -412,7 +466,7 @@ d$Soil_Sample_Id <- gsub(" ", "", d$Soil_Sample_Id)
 ```
 
 ```{r}
-ba <- read.csv(file="../ke baseline/data/shs ke baseline.csv", stringsAsFactors = F)
+ba <- read.csv(file="../ke_baseline/data/shs ke baseline.csv", stringsAsFactors = F)
 gpsCol <- c("lat", "lon", "alt", "precision")
 for(i in 1:length(gpsCol)){
   names(ba)[names(ba)==gpsCol[i]] <- paste(gpsCol[i], ".ba", sep = "")
