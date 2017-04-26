@@ -302,7 +302,7 @@ iqrTab[,2:8] <- sapply(iqrTab[,2:8], function(x){round(x,1)})
 
 The outlier table summarizes the numeric variables with and without IQR outliers to show how the data changes based on this filter.
 
-```{r, results='asis'}
+```{r}
 knitr::kable(iqrTab, row.names = F, digits = 0, format = 'html')
 ```
 
@@ -562,7 +562,7 @@ map
 
 > Green circles are baseline values, navy circles are from the follow up. We can see that both at the baseline and at the follow up GPS were logged at the office.
 
-```{r, results='asis'}
+```{r}
 knitr::kable(gpsTab, col.names = c("Enumerator", "District", "Site", "Distance (m)"))
 ```
 
