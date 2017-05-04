@@ -1,0 +1,105 @@
+---
+title: "Rwanda Soil Health Study - Round 1"
+author: '[Matt Lowes](mailto:matt.lowes@oneacrefund.org)'
+date: '`r format(Sys.time(), "%B %d, %Y")`'
+output:
+  html_notebook:
+    number_sections: yes
+    code_folding: hide
+    theme: flatly
+    toc: yes
+    toc_depth: 6
+    toc_float: yes
+subtitle: "subtitle"
+---
+
+```{r setup, include=FALSE}
+#### set up
+## clear environment and console
+rm(list = ls())
+cat("\014")
+
+## set up some global options
+# always set stringsAsFactors = F when loading data
+options(stringsAsFactors=FALSE)
+
+# show the code
+knitr::opts_chunk$set(echo = TRUE)
+
+# define all knitr tables to be html format
+options(knitr.table.format = 'html')
+
+# change code chunk default to not show warnings or messages
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+## load libraries
+# dplyr and tibble are for working with tables
+# reshape is for easy table transformation
+# knitr is to make pretty tables at the end
+# ggplot2 is for making graphs
+# readxl is for reading in Excel files
+# MASS is for running boxcox tests
+# gridExtra is for arranging plots
+# cowplot is for adding subtitles to plots
+# robustbase is to run robust regressions to compensate for outliers
+# car is for performing logit transformations
+libs <- c("dplyr", "reshape2", "knitr", "ggplot2", "tibble", "readxl", 
+    "MASS", "gridExtra", "cowplot", "robustbase", "car")
+lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F)
+
+#### define helpful functions
+# define function to adjust table widths
+html_table_width <- function(kable_output, width) {
+  width_html <- paste0(paste0('<col width="', width, '">'), collapse = "\n")
+  sub("<table>", paste0("<table>\n", width_html), kable_output)
+}
+```
+
+```{r}
+dataDir <- normalizePath(file.path("..", "..", "data"))
+forceUpdateAll <- FALSE
+```
+
+# Objectives
+
+The objectives of this notebook are to analyze the results from the first follow up round of the Rwanda long term soil health study.
+
+# Key Takeaways
+
+> Coming soon!
+
+# Data Prep
+
+I'm going to load the baseline data from the baseline analysis. The report and data can be found here. I'll load the new data directly from CommCare. The original baseline data object was `d` but I'm going to make it `b`. Each subsequent round will be `r1`, `r2` and so on.
+
+Overall I want to bring in 3 data sources:
+
+* Basline survey data and soil data
+* Round 1 survey and and soil data
+* Round 1 yield and soil data - these data come from paired climbing bean harvest measurements and soil samples
+
+```{r}
+baselineDir <- normalizePath(file.path("..", "rw_baseline", "data"))
+
+load(file=paste0(baselineDir, "/shs rw baseline.Rdata")) # obj d
+b <- d
+```
+
+```{r}
+source("../oaflib/commcareExport.R")
+
+r1 <- getFormData("oafrwanda", "M&E",
+                          "16B Ubutaka (Soil)")
+#yp <- getFormData()
+
+```
+
+
+
+# Analysis
+
+# Summary 
+
+# Appendix
+
+
