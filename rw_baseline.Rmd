@@ -55,6 +55,8 @@ The working directory objects are from the original baseline analysis. I've upda
 # od <- paste(wd, "output", sep="/")
 # md <- paste(wd, "maps", sep="/")
 drive <- "~/drive/r_help/4_output/statistical_test_outputs"
+od <- "output" # come back and update this later. I got about half way through?
+md <- "maps"
 
 #load data:
 # This data is being drawn from the Soil lab repository. It has the baseline data with it
@@ -85,10 +87,29 @@ wetChem <- read.csv(paste("/Users/mlowes/drive/jupyter/Rwanda Acidity", "Origina
 d <- left_join(d, Identifiers, by="sample_id")
 
 # now import the soil results and merge with survey data
-soilRF <- read.csv("data/rwshs_rfresults.csv", stringsAsFactors = F)
-names(soilRF)[names(soilRF)=="X"] <- "SSN"
+soilDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_baseline", "4_predicted", "other_summaries"))
 
-d <- left_join(d, soilRF, by="SSN")
+soilRF <- read.csv(file=paste(soilDir, "combined-predictions-including-bad-ones.csv", sep="/"))
+
+orgSoilNames <- read.csv("data/rwshs_rfresults.csv", stringsAsFactors = F) #old from original variable work
+names(orgSoilNames)[names(orgSoilNames)=="X"] <- "SSN"
+```
+
+Match new soil model outputs to variable names from original analysis in 2016 and join soil variables with survey data
+
+```{r}
+soil <- soilRF %>% dplyr::select(SSN, Calcium, Magnesium, pH, Total.Nitrogen, Organic.Carbon, Exchangeable.Aluminium) %>%
+  rename(
+    m3.Ca = Calcium,
+    m3.Mg = Magnesium,
+    Total.N = Total.Nitrogen,
+    Total.C = Organic.Carbon,
+    ExAl = Exchangeable.Aluminium
+  ) %>% mutate(
+    SSN = as.character(SSN)
+  )
+
+d <- left_join(d, soil, by="SSN")
 ```
 
 
@@ -834,7 +855,7 @@ stargazer(list4, type="html",
           dep.var.labels = "",
           column.labels = c(gsub("m3.","", soilVars)),
           notes = "Includes FE for cell",
-          omit=c("cell"), out=paste(od, "rw_baseline_ag_tenure.htm", sep="/"))
+          omit=c("cell"), out=paste("output", "rw_baseline_ag_tenure.htm", sep="/"))
 
 ```
 
@@ -929,7 +950,7 @@ tenure.ph <- ggplot(d, aes(x=jitter(total.seasons), y=pH)) + geom_point() +
 
 tenure.ph
 
-pdf(paste(od, "rw tenure vs ph.pdf", sep = "/"), width=11, height=8.5)
+pdf(paste("output", "rw tenure vs ph.pdf", sep = "/"), width=11, height=8.5)
 print(tenure.ph)
 dev.off()
 
@@ -942,7 +963,7 @@ tenure.fertilizer <- ggplot(d, aes(x= jitter(total.seasons), y=jitter(n_season_f
 
 tenure.fertilizer
 
-pdf(paste(od, "rw tenure vs fertilizer.pdf", sep = "/"), width=11, height=8.5)
+pdf(paste("output", "rw tenure vs fertilizer.pdf", sep = "/"), width=11, height=8.5)
 print(tenure.fertilizer)
 dev.off()
 ```
@@ -982,7 +1003,7 @@ colnames(table16) <- soilVars
 rownames(table16) <- c("Fertilizer (kg/are)", "constant")
 
 table16 <- table16[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl")]
-write.csv(table16, file=paste(od, "rwtable16_fert.csv", sep = "/"),
+write.csv(table16, file=paste("output", "rwtable16_fert.csv", sep = "/"),
           row.names = T)
 ```
 
@@ -1003,7 +1024,7 @@ colnames(table16a) <- soilVars
 rownames(table16a) <- c("Fertilizer (all) (kg/are)", "constant")
 
 table16a <- table16a[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl")]
-write.csv(table16a, file=paste(od, "rwtable16_fert_all.csv", sep = "/"),
+write.csv(table16a, file=paste("output", "rwtable16_fert_all.csv", sep = "/"),
           row.names = T)
 ```
 
@@ -1026,7 +1047,7 @@ colnames(table16b) <- soilVars
 rownames(table16b) <- c("Compost (kg/are)", "constant")
 
 table16b <- table16b[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl")]
-write.csv(table16b, file=paste(od, "rwtable16_compost.csv", sep = "/"),
+write.csv(table16b, file=paste("output", "rwtable16_compost.csv", sep = "/"),
           row.names = T)
 ```
 
@@ -1040,7 +1061,7 @@ soilC.compost <- ggplot(temp, aes(x = compost.are, y=Total.C)) + geom_point() +
 
 soilC.compost
 
-pdf(paste(od, "compost vs soil c.pdf", sep = "/"), width=11, height=8.5)
+pdf(paste("output", "compost vs soil c.pdf", sep = "/"), width=11, height=8.5)
 print(soilC.compost)
 dev.off()
 
@@ -1066,7 +1087,7 @@ colnames(table16c) <- soilVars
 rownames(table16c) <- c("Lime (kg/are)", "constant")
 
 table16c <- table16c[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl")]
-write.csv(table16c, file=paste(od, "rwtable16_lime.csv", sep = "/"),
+write.csv(table16c, file=paste("output", "rwtable16_lime.csv", sep = "/"),
           row.names = T)
 ```
 
@@ -1085,7 +1106,7 @@ colnames(table16d) <- soilVars
 rownames(table16d) <- c("DAP (kg/are)", "constant")
 
 table16d <- table16d[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl")]
-write.csv(table16d, file=paste(od, "rwtable16_dap.csv", sep = "/"),
+write.csv(table16d, file=paste("output", "rwtable16_dap.csv", sep = "/"),
           row.names = T)
 ```
 
@@ -1104,7 +1125,7 @@ colnames(table16e) <- soilVars
 rownames(table16e) <- c("NPK (kg/are)", "constant")
 
 table16e <- table16e[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl")]
-write.csv(table16e, file=paste(od, "rwtable16_npk.csv", sep = "/"),
+write.csv(table16e, file=paste("output", "rwtable16_npk.csv", sep = "/"),
           row.names = T)
 ```
 
@@ -1123,7 +1144,7 @@ colnames(table16f) <- soilVars
 rownames(table16f) <- c("Urea (kg/are)", "constant")
 
 table16f <- table16f[,c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg", "ExAl")]
-write.csv(table16f, file=paste(od, "rwtable16_urea.csv", sep = "/"),
+write.csv(table16f, file=paste("output", "rwtable16_urea.csv", sep = "/"),
           row.names = T)
 ```
 
@@ -1136,7 +1157,7 @@ stargazer(list5, type="html",
           dep.var.labels = "",
           column.labels = c(gsub("m3.","", soilVars)),
           notes = "Includes FE for cell",
-          omit=c("cell"), out=paste(od, "rw_baseline_15b_ag.htm", sep="/"))
+          omit=c("cell"), out=paste("output", "rw_baseline_15b_ag.htm", sep="/"))
 ```
 
 
@@ -1161,7 +1182,7 @@ stargazer(list6, type="html",
           column.labels = c(gsub("m3.","", soilVars)),
           notes = "Reference category is same fertility as other fields. Includes FE for cell",
           notes.align = "l",
-          omit=c("cell"), out=paste(od, "rw_baseline_fertility_qual.htm", sep="/"))
+          omit=c("cell"), out=paste("output", "rw_baseline_fertility_qual.htm", sep="/"))
 
 ```
 
@@ -1219,7 +1240,7 @@ stargazer(list7, type="html",
           column.labels = c(gsub("wet.","", wetVars)),
           notes = "Reference category is same fertility as other fields. Includes FE for cell",
           notes.align = "l",
-          omit=c("cell"), out=paste(od, "rw_baseline_fertility_qual_wet.htm", sep="/"))
+          omit=c("cell"), out=paste("output", "rw_baseline_fertility_qual_wet.htm", sep="/"))
 )
 ```
 
@@ -1321,7 +1342,7 @@ stargazer(list7, type="html",
           column.labels = c(gsub("wet.","", wetVars)),
           notes = "Reference category is same fertility as other fields. Includes FE for cell",
           notes.align = "l",
-          omit=c("cell"), out=paste(od, "rw_baseline_fertility_qual_wet.htm", sep="/"))
+          omit=c("cell"), out=paste("output", "rw_baseline_fertility_qual_wet.htm", sep="/"))
 )
 ```
 
@@ -1338,7 +1359,7 @@ dist.sum <- aggregate(d[,out.list], by=list(d$district), function(x){
 ```
 
 ```{r}
-write.csv(dist.sum, file=paste(od, "district covariate summary.csv", sep = "/"))
+write.csv(dist.sum, file=paste("output", "district covariate summary.csv", sep = "/"))
 ```
 
 ```{r}
@@ -1353,7 +1374,7 @@ cell.sum <- aggregate(d[,out.list], by=list(d$cell), function(x){
 ```
 
 ```{r}
-write.csv(cell.sum, file=paste(od, "cell covariate summary.csv", sep = "/"))
+write.csv(cell.sum, file=paste("output", "cell covariate summary.csv", sep = "/"))
 ```
 
 ## Female farmers farming poorer soils?
@@ -1386,13 +1407,13 @@ colnames(equal) <- c("Male Farmers","Female Farmers", "p-value")
 ```
 
 ```{r}
-write.csv(equal, file=paste(od, "rw female farmer status.csv", sep = "/"), row.names=T)
+write.csv(equal, file=paste("output", "rw female farmer status.csv", sep = "/"), row.names=T)
 ```
 
 ## Export the data for Eric  
   
 ```{r}
-write.csv(d, file=paste(od, "rwanda_shs_merged_clean.csv",sep = "/"), row.names = F)
+write.csv(d, file=paste("output", "rwanda_shs_merged_clean.csv",sep = "/"), row.names = F)
 ```
 
 # Propensity Score Matching
@@ -1419,7 +1440,7 @@ psmGraph <- ggplot() + geom_histogram(data=subset(pr, pr$treat==1), aes(x = pr_s
 
 print(psmGraph)
 
-pdf(file=paste(od, "rw_baseline_psm_overlap.pdf", sep="/"), height=8.5, width=11)
+pdf(file=paste("output", "rw_baseline_psm_overlap.pdf", sep="/"), height=8.5, width=11)
 print(psmGraph)
 dev.off()
 ```
@@ -1675,7 +1696,7 @@ colnames(thresh) = thresh[1, ] # the first row will be the header
 colnames(thresh) = c("non-client", "client")
 thresh = thresh[-1, ]
 
-write.csv(thresh, file=paste(od, "table1_rw_thresholds.csv", sep = "/"), row.names = T)
+write.csv(thresh, file=paste("output", "table1_rw_thresholds.csv", sep = "/"), row.names = T)
 ```
 
 New clients vs. returning clients summaries:
@@ -1728,14 +1749,14 @@ thresh.t = thresh.t[-1, ]
 # combine newOld summaries and percents below percentiles
 thresh.t <- cbind(newOld, thresh.t)
 
-write.csv(thresh.t, file=paste(od, "table1_rw_thresholds_tenure.csv", sep = "/"), row.names = T)
+write.csv(thresh.t, file=paste("output", "table1_rw_thresholds_tenure.csv", sep = "/"), row.names = T)
 ```
 
 ## Table 1:3 coefficients
 
 ```{r}
 #
-write.csv(coefTable, file=paste(od, "psm coefficients.csv", sep = "/"),
+write.csv(coefTable, file=paste("output", "psm coefficients.csv", sep = "/"),
           row.names = T)
 
 # sort by the order Eric wants
@@ -1744,7 +1765,7 @@ table1vars <- paste(t1order, collapse = "|")
 table1 <- coefTable[grep(table1vars, rownames(coefTable)), ]
 table1 <- table1[order(match(rownames(table1), t1order)),]
 
-write.csv(table1, file=paste(od, "psm coefficients ordered for ES.csv", sep = "/"))
+write.csv(table1, file=paste("output", "psm coefficients ordered for ES.csv", sep = "/"))
 
 # 11/17 added lime
 t2order <- c("n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow", "n_seasons_leg_1", "n_seasons_leg_2")
@@ -1752,14 +1773,14 @@ table2vars <- paste(t2order, collapse = "|")
 table2 <- coefTable[grep(table2vars, rownames(coefTable)), ]
 table2 <- table2[order(match(rownames(table2), t2order)),]
 
-write.csv(table2, file=paste(od, "psm coefficients ordered for ES_agprac.csv", sep = "/"))
+write.csv(table2, file=paste("output", "psm coefficients ordered for ES_agprac.csv", sep = "/"))
 
 #table 3
 t3order <- c("fert1.are", "compost.are")
 table3vars <- paste(t3order, collapse = "|")
 table3 <- coefTable[grep(table3vars, rownames(coefTable)), ]
 table3 <- table3[order(match(rownames(table3), t3order)),]
-write.csv(table3, file=paste(od, "psm coefficients table3.csv", sep = "/"))
+write.csv(table3, file=paste("output", "psm coefficients table3.csv", sep = "/"))
 ```
 
 **Interpretation**: Propensity score matching gives us a comparable treatment and control group. The table above shows that after matching on those characteristics, there are effectively no differences between One Acre Fund farmer and Tubura farmers on soil attributes. The unadjusted p-values show 1AF farmers to have slow levels of soil nitrogen but this finding disappears if we account for running multiple matching models.
@@ -1935,7 +1956,7 @@ table1vars.a <- paste(t1order.a, collapse = "|")
 table1.a <- coefTable.append[grep(table1vars.a, rownames(coefTable.append)), ]
 table1.a <- table1.a[order(match(rownames(table1.a), t1order.a)),]
 
-write.csv(table1.a, file=paste(od, "psm coefficients ordered for ES-appendix.csv", sep = "/"))
+write.csv(table1.a, file=paste("output", "psm coefficients ordered for ES-appendix.csv", sep = "/"))
 
 # 11/17 added lime
 t2order.a <- c("n_season_fert", "n_season_compost", "n_season_lime", "n_season_fallow", "n_seasons_leg_1", "n_seasons_leg_2")
@@ -1943,14 +1964,14 @@ table2vars.a <- paste(t2order.a, collapse = "|")
 table2.a <- coefTable.append[grep(table2vars.a, rownames(coefTable.append)), ]
 table2.a <- table2.a[order(match(rownames(table2.a), t2order.a)),]
 
-write.csv(table2.a, file=paste(od, "psm coefficients ordered for ES_agprac-appendix.csv", sep = "/"))
+write.csv(table2.a, file=paste("output", "psm coefficients ordered for ES_agprac-appendix.csv", sep = "/"))
 
 #table 3
 t3order.a <- c("fert1.are", "compost.are")
 table3vars.a <- paste(t3order.a, collapse = "|")
 table3.a <- coefTable.append[grep(table3vars.a, rownames(coefTable.append)), ]
 table3.a <- table3.a[order(match(rownames(table3.a), t3order.a)),]
-write.csv(table3.a, file=paste(od, "psm coefficients table3-appendix.csv", sep = "/"))
+write.csv(table3.a, file=paste("output", "psm coefficients table3-appendix.csv", sep = "/"))
 ```
 
 ## Study group balance post-match
@@ -1991,7 +2012,7 @@ postMatch <- do.call(rbind, lapply(1:length(m), function(model){
 ```
 
 ```{r}
-write.csv(postMatch, file=paste(od, "rw post match covars.csv", sep = "/"),
+write.csv(postMatch, file=paste("output", "rw post match covars.csv", sep = "/"),
           row.names = F)
 ```
 
