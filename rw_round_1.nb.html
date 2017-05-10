@@ -11,7 +11,7 @@
 
 <meta name="author" content="Matt Lowes" />
 
-<meta name="date" content="2017-05-04" />
+<meta name="date" content="2017-05-09" />
 
 <title>Rwanda Soil Health Study - Round 1</title>
 
@@ -269,7 +269,7 @@ div.tocify {
 <h1 class="title toc-ignore">Rwanda Soil Health Study - Round 1</h1>
 <h3 class="subtitle"><em>subtitle</em></h3>
 <h4 class="author"><em><a href="mailto:matt.lowes@oneacrefund.org">Matt Lowes</a></em></h4>
-<h4 class="date"><em>May 04, 2017</em></h4>
+<h4 class="date"><em>May 09, 2017</em></h4>
 
 </div>
 
@@ -301,42 +301,165 @@ forceUpdateAll &lt;- FALSE</code></pre>
 <p>Overall I want to bring in 3 data sources:</p>
 <ul>
 <li>Basline survey data and soil data</li>
-<li>Round 1 survey and and soil data</li>
-<li>Round 1 yield and soil data - these data come from paired climbing bean harvest measurements and soil samples</li>
+<li>Round 1 survey and and soil data from 16B</li>
+<li>Round 1 yield and soil data - these data come from paired climbing bean harvest measurements and soil samples from 16B</li>
+<li>We can also look at maize paired yield and soil samples from 17A.</li>
 </ul>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuYmFzZWxpbmVEaXIgPC0gbm9ybWFsaXplUGF0aChmaWxlLnBhdGgoXCIuLlwiLCBcInJ3X2Jhc2VsaW5lXCIsIFwiZGF0YVwiKSlcbmxvYWQoZmlsZT1wYXN0ZTAoYmFzZWxpbmVEaXIsIFwiL3NocyBydyBiYXNlbGluZS5SZGF0YVwiKSkgIyBvYmogZFxuYGBgIn0= -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuYmFzZWxpbmVEaXIgPC0gbm9ybWFsaXplUGF0aChmaWxlLnBhdGgoXCIuLlwiLCBcInJ3X2Jhc2VsaW5lXCIsIFwiZGF0YVwiKSlcbmxvYWQoZmlsZT1wYXN0ZTAoYmFzZWxpbmVEaXIsIFwiL3NocyBydyBiYXNlbGluZSBmdWxsIHNvaWwuUmRhdGFcIikpICMgb2JqIGRcbmIgPC0gYmFzZVZhcnNcbmBgYCJ9 -->
 <pre class="r"><code>baselineDir &lt;- normalizePath(file.path(&quot;..&quot;, &quot;rw_baseline&quot;, &quot;data&quot;))
-load(file=paste0(baselineDir, &quot;/shs rw baseline.Rdata&quot;)) # obj d</code></pre>
+load(file=paste0(baselineDir, &quot;/shs rw baseline full soil.Rdata&quot;)) # obj d
+b &lt;- baseVars</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<p><strong>Context point</strong>: The baseline data has 2439 rows. This is 9 fewer rows than we expected in the baseline. This is because of some farmers not being surveyed as expected. See the baseline report for more details. Also, these baesline values have te</p>
+<p><a href="matilto:alex.villec@oneacrefund.org">Alex Villec</a> wrote a cleaning script to deal with the first round of Rwanda SHS follow up data and make key adjustments to the data. To utilize that do file here, I’m going to download the data from Commcare, save it, and have the dofile access that file to execute. However, the original file Alex was using had different variable names than the file pulled by the API. The options from here are to just go with the file from Alex or to align the variable names between his version and the CC version. It’s valuable to have the data directly from CC but it’ll involve more work up front</p>
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuc291cmNlKFwiLi4vb2FmbGliL2NvbW1jYXJlRXhwb3J0LlJcIilcbnIgPC0gZ2V0Rm9ybURhdGEoXCJvYWZyd2FuZGFcIiwgXCJNJkVcIiwgXCIxNkIgVWJ1dGFrYSAoU29pbClcIiwgZm9yY2VVcGRhdGUgPSBmb3JjZVVwZGF0ZUFsbClcbmBgYCJ9 -->
+<pre class="r"><code>source(&quot;../oaflib/commcareExport.R&quot;)
+r &lt;- getFormData(&quot;oafrwanda&quot;, &quot;M&amp;E&quot;, &quot;16B Ubutaka (Soil)&quot;, forceUpdate = forceUpdateAll)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiWzFdIFwiZm91bmQgZmRkNDM0YTYyYzY1MTJiMzIwYTRjYjhjNGZiODcyYVwiXG4ifQ== -->
+<pre><code>[1] &quot;found fdd434a62c6512b320a4cb8c4fb872a&quot;</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxud3JpdGUuY3N2KHIsIGZpbGU9XCJyYXdDY1IxRGF0YS5jc3ZcIiwgcm93Lm5hbWVzID0gRilcbmBgYCJ9 -->
+<pre class="r"><code>write.csv(r, file=&quot;rawCcR1Data.csv&quot;, row.names = F)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<p>Download the yield data</p>
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxueXAgPC0gZ2V0Rm9ybURhdGEoXCJvYWZyd2FuZGFcIiwgXCJNJkVcIiwgXCIxNkIgQUxMIElzYXJ1cmEgKEhhcnZlc3QpXCIsIGZvcmNlVXBkYXRlID0gZm9yY2VVcGRhdGVBbGwpXG5gYGAifQ== -->
+<pre class="r"><code>yp &lt;- getFormData(&quot;oafrwanda&quot;, &quot;M&amp;E&quot;, &quot;16B ALL Isarura (Harvest)&quot;, forceUpdate = forceUpdateAll)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiWzFdIFwiZm91bmQgNzM2YjI1NDI2YmI0ZjkzMjBhMDdkOWM0MmI3MzhlYVwiXG4ifQ== -->
+<pre><code>[1] &quot;found 736b25426bb4f9320a07d9c42b738ea&quot;</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxud3JpdGUuY3N2KHlwLCBmaWxlPVwicmF3Q2NZcERhdGEuY3N2XCIsIHJvdy5uYW1lcz1GKVxuYGBgIn0= -->
+<pre class="r"><code>write.csv(yp, file=&quot;rawCcYpData.csv&quot;, row.names=F)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<p>The first round of data from CommCare has 2397 observations. This leaves XX number of farmers unsurveyed in the first survey round. See <a href="www.github.com">this cleaning file</a> for more information on the farmers we did not find again in the first follow up.</p>
+<p>Here I’m going to call the STATA cleaning file to make AV’s changes to the R1 follow up data. This requires that the data from CC have the same variable names as the STATA cleaning file. I’m going to try to execute that here:</p>
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuc3RhdGFEaXIgPC0gbm9ybWFsaXplUGF0aChmaWxlLnBhdGgoXCIuLlwiLCBcInJ3X3JvdW5kXzFfY2hlY2tcIikpXG5gYGAifQ== -->
+<pre class="r"><code>stataDir &lt;- normalizePath(file.path(&quot;..&quot;, &quot;rw_round_1_check&quot;))</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<p>Here I access the soil predictions from the OAF soil lab. <a href="mailto:patrick.bell@oneacrefund.org">Patrick Bell</a> manages the lab and <a href="mike.barber@oneacrefund.org">Mike Barber</a> oversees the prediction scripts.</p>
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuc29pbERpciA8LSBub3JtYWxpemVQYXRoKGZpbGUucGF0aChcIi4uXCIsIFwiLi5cIiwgXCJPQUYgU29pbCBMYWIgRm9sZGVyXCIsIFwiUHJvamVjdHNcIiwgXCJyd19zaHNfc2Vjb25kX3JvdW5kXCIsIFwiNF9wcmVkaWN0ZWRcIiwgXCJvdGhlcl9zdW1tYXJpZXNcIikpXG5zb2lsIDwtIHJlYWQuY3N2KGZpbGU9cGFzdGUoc29pbERpciwgXCJjb21iaW5lZC1wcmVkaWN0aW9ucy1pbmNsdWRpbmctYmFkLW9uZXMuY3N2XCIsIHNlcCA9IFwiL1wiKSlcbmBgYCJ9 -->
+<pre class="r"><code>soilDir &lt;- normalizePath(file.path(&quot;..&quot;, &quot;..&quot;, &quot;OAF Soil Lab Folder&quot;, &quot;Projects&quot;, &quot;rw_shs_second_round&quot;, &quot;4_predicted&quot;, &quot;other_summaries&quot;))
+soil &lt;- read.csv(file=paste(soilDir, &quot;combined-predictions-including-bad-ones.csv&quot;, sep = &quot;/&quot;))</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<div id="combine-baseline-and-r1" class="section level2">
+<h2><span class="header-section-number">3.1</span> Combine baseline and R1</h2>
+<p>Combine the available data by farmer and resolve merging issues. These data can be combined long as long as the variable names are consistent or wide. I’m going to combine the data long and use <code>split</code> type commands to aggregate the data more easily. Confirm the variable names are consistent. By advancing this code on 5/9/17, I’m for the time being ignoring the cleaning Alex did in his do file. I’ll need to go back and incorporate those changes.</p>
+<p>Not many of the names are the same. I’ve downloaded the meta data from CommCare which I’ll use to simplify the cleaning of the round 1 data. I’m also going to reshape the baseline variable names to simplify the matching of baseline variables to round 1 variables.</p>
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuZGF0TmFtZXMgPC0gZnVuY3Rpb24oZGF0KXtcbiAgdmFyTmFtZXMgPSBuYW1lcyhkYXQpXG4gIGV4VmFsID0gZG8uY2FsbChyYmluZCwgbGFwcGx5KHZhck5hbWVzLCBmdW5jdGlvbih4KXtcbiAgICB2YWwgPSBkYXRbMTozLHhdXG4gICAgcmV0dXJuKHZhbClcbiAgfSkpXG4gIFxuICBvdXQgPSBjYmluZCh2YXJOYW1lcywgZXhWYWwpXG4gIHJldHVybihvdXQpXG59XG5iYXNlTmFtZXMgPC0gZGF0TmFtZXMoYilcbndyaXRlLmNzdihiYXNlTmFtZXMsIGZpbGU9XCJiYXNlbGluZSB2YXIgbmFtZXMuY3N2XCIsIHJvdy5uYW1lcyA9IEYpXG5gYGAifQ== -->
+<pre class="r"><code>datNames &lt;- function(dat){
+  varNames = names(dat)
+  exVal = do.call(rbind, lapply(varNames, function(x){
+    val = dat[1:3,x]
+    return(val)
+  }))
+  
+  out = cbind(varNames, exVal)
+  return(out)
+}
+baseNames &lt;- datNames(b)
+write.csv(baseNames, file=&quot;baseline var names.csv&quot;, row.names = F)</code></pre>
 <!-- rnb-source-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxucjEgPC0gZ2V0Rm9ybURhdGEoXCJvYWZyd2FuZGFcIiwgXCJNJkVcIixcbiAgICAgICAgICAgICAgICAgICAgICAgICAgXCIxNkIgVWJ1dGFrYSAoU29pbClcIilcblxuYGBgIn0= -->
-<pre class="r"><code>r1 &lt;- getFormData(&quot;oafrwanda&quot;, &quot;M&amp;E&quot;,
-                          &quot;16B Ubutaka (Soil)&quot;)
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubGVuZ3RoKG5ld05hbWVWYXJzKT09ZGltKHIpWzJdXG5cbmBgYCJ9 -->
+<pre class="r"><code>length(newNameVars)==dim(r)[2]
 </code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiWzFdIFwiZ2V0dGluZzogaHR0cHM6Ly93d3cuY29tbWNhcmVocS5vcmcvYS9vYWZyd2FuZGEvYXBpL3YwLjUvYXBwbGljYXRpb24vP2xpbWl0PTAgdGhpcyBtYXkgdGFrZSBhIGZldyBtaW51dGVzXCJcbiJ9 -->
-<pre><code>[1] &quot;getting: https://www.commcarehq.org/a/oafrwanda/api/v0.5/application/?limit=0 this may take a few minutes&quot;</code></pre>
+<!-- rnb-output-begin eyJkYXRhIjoiWzFdIFRSVUVcbiJ9 -->
+<pre><code>[1] TRUE</code></pre>
 <!-- rnb-output-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<p>This function will remove all strange outputs from the data from CommCare</p>
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuY2hhckNsZWFuIDwtIGZ1bmN0aW9uKGRmKXtcbiAgXG4gIGRmIDwtIGFzLmRhdGEuZnJhbWUobGFwcGx5KGRmLCBmdW5jdGlvbih4KXtcbiAgeCA9IGdzdWIoXCInXCIsICcnLCB4KVxuICB4ID0gZ3N1YihcIl5iXCIsICcnLCB4KVxuICB4ID0gaWZlbHNlKGdyZXBsKFwibWFwIG9iamVjdFwiLCB4KT09VCwgTkEsIHgpXG4gIHJldHVybih4KVxuICB9KSlcbnJldHVybihkZilcbn1cbnIgPC0gY2hhckNsZWFuKHIpXG5gYGAifQ== -->
+<pre class="r"><code>charClean &lt;- function(df){
+  
+  df &lt;- as.data.frame(lapply(df, function(x){
+  x = gsub(&quot;'&quot;, '', x)
+  x = gsub(&quot;^b&quot;, '', x)
+  x = ifelse(grepl(&quot;map object&quot;, x)==T, NA, x)
+  return(x)
+  }))
+return(df)
+}
+r &lt;- charClean(r)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<p>Convert variables that are supposed to be numbers to numbers in <code>r</code></p>
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<p>The <code>r</code> dataframe has many more variables than the baseline survey. This was in part expected; we added questions to the first follow up round based on lessons from the baseline. It’s also due to how the survey was set up in CommCare. Before combining the baseline and the first follow up round I need to:</p>
+<ul>
+<li>reshape the round 1 variables so that they appropriately match the baseline variables</li>
+<li>Clean those variales or prepare them as need be for a</li>
+<li>For variables with no match, clean</li>
+</ul>
+</div>
 </div>
 <div id="analysis" class="section level1">
 <h1><span class="header-section-number">4</span> Analysis</h1>
+<div id="demographic-summary" class="section level2">
+<h2><span class="header-section-number">4.1</span> Demographic summary</h2>
+</div>
+<div id="soil-summary" class="section level2">
+<h2><span class="header-section-number">4.2</span> Soil summary</h2>
+</div>
+<div id="longitudinal-soil-summary" class="section level2">
+<h2><span class="header-section-number">4.3</span> Longitudinal soil summary</h2>
+</div>
+<div id="matching" class="section level2">
+<h2><span class="header-section-number">4.4</span> Matching</h2>
+</div>
+<div id="regressions" class="section level2">
+<h2><span class="header-section-number">4.5</span> Regressions</h2>
+</div>
 </div>
 <div id="summary" class="section level1">
 <h1><span class="header-section-number">5</span> Summary</h1>
+<div id="changes-to-the-survey" class="section level2">
+<h2><span class="header-section-number">5.1</span> Changes to the survey</h2>
+</div>
 </div>
 <div id="appendix" class="section level1">
 <h1><span class="header-section-number">6</span> Appendix</h1>
 <!-- rnb-text-end -->
 </div>
 
-<div id="rmd-source-code">LS0tCnRpdGxlOiAiUndhbmRhIFNvaWwgSGVhbHRoIFN0dWR5IC0gUm91bmQgMSIKYXV0aG9yOiAnW01hdHQgTG93ZXNdKG1haWx0bzptYXR0Lmxvd2VzQG9uZWFjcmVmdW5kLm9yZyknCmRhdGU6ICdgciBmb3JtYXQoU3lzLnRpbWUoKSwgIiVCICVkLCAlWSIpYCcKb3V0cHV0OgogIGh0bWxfbm90ZWJvb2s6CiAgICBudW1iZXJfc2VjdGlvbnM6IHllcwogICAgY29kZV9mb2xkaW5nOiBoaWRlCiAgICB0aGVtZTogZmxhdGx5CiAgICB0b2M6IHllcwogICAgdG9jX2RlcHRoOiA2CiAgICB0b2NfZmxvYXQ6IHllcwpzdWJ0aXRsZTogInN1YnRpdGxlIgotLS0KCmBgYHtyIHNldHVwLCBpbmNsdWRlPUZBTFNFfQojIyMjIHNldCB1cAojIyBjbGVhciBlbnZpcm9ubWVudCBhbmQgY29uc29sZQpybShsaXN0ID0gbHMoKSkKY2F0KCJcMDE0IikKCiMjIHNldCB1cCBzb21lIGdsb2JhbCBvcHRpb25zCiMgYWx3YXlzIHNldCBzdHJpbmdzQXNGYWN0b3JzID0gRiB3aGVuIGxvYWRpbmcgZGF0YQpvcHRpb25zKHN0cmluZ3NBc0ZhY3RvcnM9RkFMU0UpCgojIHNob3cgdGhlIGNvZGUKa25pdHI6Om9wdHNfY2h1bmskc2V0KGVjaG8gPSBUUlVFKQoKIyBkZWZpbmUgYWxsIGtuaXRyIHRhYmxlcyB0byBiZSBodG1sIGZvcm1hdApvcHRpb25zKGtuaXRyLnRhYmxlLmZvcm1hdCA9ICdodG1sJykKCiMgY2hhbmdlIGNvZGUgY2h1bmsgZGVmYXVsdCB0byBub3Qgc2hvdyB3YXJuaW5ncyBvciBtZXNzYWdlcwprbml0cjo6b3B0c19jaHVuayRzZXQod2FybmluZyA9IEZBTFNFLCBtZXNzYWdlID0gRkFMU0UpCgojIyBsb2FkIGxpYnJhcmllcwojIGRwbHlyIGFuZCB0aWJibGUgYXJlIGZvciB3b3JraW5nIHdpdGggdGFibGVzCiMgcmVzaGFwZSBpcyBmb3IgZWFzeSB0YWJsZSB0cmFuc2Zvcm1hdGlvbgojIGtuaXRyIGlzIHRvIG1ha2UgcHJldHR5IHRhYmxlcyBhdCB0aGUgZW5kCiMgZ2dwbG90MiBpcyBmb3IgbWFraW5nIGdyYXBocwojIHJlYWR4bCBpcyBmb3IgcmVhZGluZyBpbiBFeGNlbCBmaWxlcwojIE1BU1MgaXMgZm9yIHJ1bm5pbmcgYm94Y294IHRlc3RzCiMgZ3JpZEV4dHJhIGlzIGZvciBhcnJhbmdpbmcgcGxvdHMKIyBjb3dwbG90IGlzIGZvciBhZGRpbmcgc3VidGl0bGVzIHRvIHBsb3RzCiMgcm9idXN0YmFzZSBpcyB0byBydW4gcm9idXN0IHJlZ3Jlc3Npb25zIHRvIGNvbXBlbnNhdGUgZm9yIG91dGxpZXJzCiMgY2FyIGlzIGZvciBwZXJmb3JtaW5nIGxvZ2l0IHRyYW5zZm9ybWF0aW9ucwpsaWJzIDwtIGMoImRwbHlyIiwgInJlc2hhcGUyIiwgImtuaXRyIiwgImdncGxvdDIiLCAidGliYmxlIiwgInJlYWR4bCIsIAogICAgIk1BU1MiLCAiZ3JpZEV4dHJhIiwgImNvd3Bsb3QiLCAicm9idXN0YmFzZSIsICJjYXIiKQpsYXBwbHkobGlicywgcmVxdWlyZSwgY2hhcmFjdGVyLm9ubHkgPSBULCBxdWlldGx5ID0gVCwgd2Fybi5jb25mbGljdHMgPSBGKQoKIyMjIyBkZWZpbmUgaGVscGZ1bCBmdW5jdGlvbnMKIyBkZWZpbmUgZnVuY3Rpb24gdG8gYWRqdXN0IHRhYmxlIHdpZHRocwpodG1sX3RhYmxlX3dpZHRoIDwtIGZ1bmN0aW9uKGthYmxlX291dHB1dCwgd2lkdGgpIHsKICB3aWR0aF9odG1sIDwtIHBhc3RlMChwYXN0ZTAoJzxjb2wgd2lkdGg9IicsIHdpZHRoLCAnIj4nKSwgY29sbGFwc2UgPSAiXG4iKQogIHN1YigiPHRhYmxlPiIsIHBhc3RlMCgiPHRhYmxlPlxuIiwgd2lkdGhfaHRtbCksIGthYmxlX291dHB1dCkKfQpgYGAKCmBgYHtyfQpkYXRhRGlyIDwtIG5vcm1hbGl6ZVBhdGgoZmlsZS5wYXRoKCIuLiIsICIuLiIsICJkYXRhIikpCmZvcmNlVXBkYXRlQWxsIDwtIEZBTFNFCmBgYAoKIyBPYmplY3RpdmVzCgpUaGUgb2JqZWN0aXZlcyBvZiB0aGlzIG5vdGVib29rIGFyZSB0byBhbmFseXplIHRoZSByZXN1bHRzIGZyb20gdGhlIGZpcnN0IGZvbGxvdyB1cCByb3VuZCBvZiB0aGUgUndhbmRhIGxvbmcgdGVybSBzb2lsIGhlYWx0aCBzdHVkeS4KCiMgS2V5IFRha2Vhd2F5cwoKPiBDb21pbmcgc29vbiEKCiMgRGF0YSBQcmVwCgpJJ20gZ29pbmcgdG8gbG9hZCB0aGUgYmFzZWxpbmUgZGF0YSBmcm9tIHRoZSBiYXNlbGluZSBhbmFseXNpcy4gVGhlIHJlcG9ydCBhbmQgZGF0YSBjYW4gYmUgZm91bmQgaGVyZS4gSSdsbCBsb2FkIHRoZSBuZXcgZGF0YSBkaXJlY3RseSBmcm9tIENvbW1DYXJlLiBUaGUgb3JpZ2luYWwgYmFzZWxpbmUgZGF0YSBvYmplY3Qgd2FzIGBkYCBidXQgSSdtIGdvaW5nIHRvIG1ha2UgaXQgYGJgLiBFYWNoIHN1YnNlcXVlbnQgcm91bmQgd2lsbCBiZSBgcjFgLCBgcjJgIGFuZCBzbyBvbi4KCk92ZXJhbGwgSSB3YW50IHRvIGJyaW5nIGluIDMgZGF0YSBzb3VyY2VzOgoKKiBCYXNsaW5lIHN1cnZleSBkYXRhIGFuZCBzb2lsIGRhdGEKKiBSb3VuZCAxIHN1cnZleSBhbmQgYW5kIHNvaWwgZGF0YQoqIFJvdW5kIDEgeWllbGQgYW5kIHNvaWwgZGF0YSAtIHRoZXNlIGRhdGEgY29tZSBmcm9tIHBhaXJlZCBjbGltYmluZyBiZWFuIGhhcnZlc3QgbWVhc3VyZW1lbnRzIGFuZCBzb2lsIHNhbXBsZXMKCmBgYHtyfQpiYXNlbGluZURpciA8LSBub3JtYWxpemVQYXRoKGZpbGUucGF0aCgiLi4iLCAicndfYmFzZWxpbmUiLCAiZGF0YSIpKQoKbG9hZChmaWxlPXBhc3RlMChiYXNlbGluZURpciwgIi9zaHMgcncgYmFzZWxpbmUuUmRhdGEiKSkgIyBvYmogZApiIDwtIGQKYGBgCgpgYGB7cn0Kc291cmNlKCIuLi9vYWZsaWIvY29tbWNhcmVFeHBvcnQuUiIpCgpyMSA8LSBnZXRGb3JtRGF0YSgib2FmcndhbmRhIiwgIk0mRSIsCiAgICAgICAgICAgICAgICAgICAgICAgICAgIjE2QiBVYnV0YWthIChTb2lsKSIpCiN5cCA8LSBnZXRGb3JtRGF0YSgpCgpgYGAKCgoKIyBBbmFseXNpcwoKIyBTdW1tYXJ5IAoKIyBBcHBlbmRpeAoKCg==</div>
+<div id="rmd-source-code">LS0tCnRpdGxlOiAiUndhbmRhIFNvaWwgSGVhbHRoIFN0dWR5IC0gUm91bmQgMSIKYXV0aG9yOiAnW01hdHQgTG93ZXNdKG1haWx0bzptYXR0Lmxvd2VzQG9uZWFjcmVmdW5kLm9yZyknCmRhdGU6ICdgciBmb3JtYXQoU3lzLnRpbWUoKSwgIiVCICVkLCAlWSIpYCcKb3V0cHV0OgogIGh0bWxfbm90ZWJvb2s6CiAgICBudW1iZXJfc2VjdGlvbnM6IHllcwogICAgY29kZV9mb2xkaW5nOiBoaWRlCiAgICB0aGVtZTogZmxhdGx5CiAgICB0b2M6IHllcwogICAgdG9jX2RlcHRoOiA2CiAgICB0b2NfZmxvYXQ6IHllcwpzdWJ0aXRsZTogInN1YnRpdGxlIgotLS0KCmBgYHtyIHNldHVwLCBpbmNsdWRlPUZBTFNFfQojIyMjIHNldCB1cAojIyBjbGVhciBlbnZpcm9ubWVudCBhbmQgY29uc29sZQpybShsaXN0ID0gbHMoKSkKY2F0KCJcMDE0IikKCiMjIHNldCB1cCBzb21lIGdsb2JhbCBvcHRpb25zCiMgYWx3YXlzIHNldCBzdHJpbmdzQXNGYWN0b3JzID0gRiB3aGVuIGxvYWRpbmcgZGF0YQpvcHRpb25zKHN0cmluZ3NBc0ZhY3RvcnM9RkFMU0UpCgojIHNob3cgdGhlIGNvZGUKa25pdHI6Om9wdHNfY2h1bmskc2V0KGVjaG8gPSBUUlVFKQoKIyBkZWZpbmUgYWxsIGtuaXRyIHRhYmxlcyB0byBiZSBodG1sIGZvcm1hdApvcHRpb25zKGtuaXRyLnRhYmxlLmZvcm1hdCA9ICdodG1sJykKCiMgY2hhbmdlIGNvZGUgY2h1bmsgZGVmYXVsdCB0byBub3Qgc2hvdyB3YXJuaW5ncyBvciBtZXNzYWdlcwprbml0cjo6b3B0c19jaHVuayRzZXQod2FybmluZyA9IEZBTFNFLCBtZXNzYWdlID0gRkFMU0UpCgojIyBsb2FkIGxpYnJhcmllcwojIGRwbHlyIGFuZCB0aWJibGUgYXJlIGZvciB3b3JraW5nIHdpdGggdGFibGVzCiMgcmVzaGFwZSBpcyBmb3IgZWFzeSB0YWJsZSB0cmFuc2Zvcm1hdGlvbgojIGtuaXRyIGlzIHRvIG1ha2UgcHJldHR5IHRhYmxlcyBhdCB0aGUgZW5kCiMgZ2dwbG90MiBpcyBmb3IgbWFraW5nIGdyYXBocwojIHJlYWR4bCBpcyBmb3IgcmVhZGluZyBpbiBFeGNlbCBmaWxlcwojIE1BU1MgaXMgZm9yIHJ1bm5pbmcgYm94Y294IHRlc3RzCiMgZ3JpZEV4dHJhIGlzIGZvciBhcnJhbmdpbmcgcGxvdHMKIyBjb3dwbG90IGlzIGZvciBhZGRpbmcgc3VidGl0bGVzIHRvIHBsb3RzCiMgcm9idXN0YmFzZSBpcyB0byBydW4gcm9idXN0IHJlZ3Jlc3Npb25zIHRvIGNvbXBlbnNhdGUgZm9yIG91dGxpZXJzCiMgY2FyIGlzIGZvciBwZXJmb3JtaW5nIGxvZ2l0IHRyYW5zZm9ybWF0aW9ucwpsaWJzIDwtIGMoImRwbHlyIiwgInJlc2hhcGUyIiwgImtuaXRyIiwgImdncGxvdDIiLCAidGliYmxlIiwgInJlYWR4bCIsIAogICAgIk1BU1MiLCAiZ3JpZEV4dHJhIiwgImNvd3Bsb3QiLCAicm9idXN0YmFzZSIsICJjYXIiLCAiUlN0YXRhIikKbGFwcGx5KGxpYnMsIHJlcXVpcmUsIGNoYXJhY3Rlci5vbmx5ID0gVCwgcXVpZXRseSA9IFQsIHdhcm4uY29uZmxpY3RzID0gRikKCiMjIyMgZGVmaW5lIGhlbHBmdWwgZnVuY3Rpb25zCiMgZGVmaW5lIGZ1bmN0aW9uIHRvIGFkanVzdCB0YWJsZSB3aWR0aHMKaHRtbF90YWJsZV93aWR0aCA8LSBmdW5jdGlvbihrYWJsZV9vdXRwdXQsIHdpZHRoKSB7CiAgd2lkdGhfaHRtbCA8LSBwYXN0ZTAocGFzdGUwKCc8Y29sIHdpZHRoPSInLCB3aWR0aCwgJyI+JyksIGNvbGxhcHNlID0gIlxuIikKICBzdWIoIjx0YWJsZT4iLCBwYXN0ZTAoIjx0YWJsZT5cbiIsIHdpZHRoX2h0bWwpLCBrYWJsZV9vdXRwdXQpCn0KCm9wdGlvbnMoIlJTdGF0YS5TdGF0YVZlcnNpb24iID0gMTIpCm9wdGlvbnMoIlJTdGF0YS5TdGF0YVBhdGgiID0gIi9BcHBsaWNhdGlvbnMvU3RhdGEvU3RhdGFTRS5hcHAvQ29udGVudHMvTWFjT1Mvc3RhdGEtc2UiKQpgYGAKCmBgYHtyfQpkYXRhRGlyIDwtIG5vcm1hbGl6ZVBhdGgoZmlsZS5wYXRoKCIuLiIsICIuLiIsICJkYXRhIikpCmZvcmNlVXBkYXRlQWxsIDwtIEZBTFNFCmBgYAoKIyBPYmplY3RpdmVzCgpUaGUgb2JqZWN0aXZlcyBvZiB0aGlzIG5vdGVib29rIGFyZSB0byBhbmFseXplIHRoZSByZXN1bHRzIGZyb20gdGhlIGZpcnN0IGZvbGxvdyB1cCByb3VuZCBvZiB0aGUgUndhbmRhIGxvbmcgdGVybSBzb2lsIGhlYWx0aCBzdHVkeS4KCiMgS2V5IFRha2Vhd2F5cwoKPiBDb21pbmcgc29vbiEKCiMgRGF0YSBQcmVwCgpJJ20gZ29pbmcgdG8gbG9hZCB0aGUgYmFzZWxpbmUgZGF0YSBmcm9tIHRoZSBiYXNlbGluZSBhbmFseXNpcy4gVGhlIHJlcG9ydCBhbmQgZGF0YSBjYW4gYmUgZm91bmQgaGVyZS4gSSdsbCBsb2FkIHRoZSBuZXcgZGF0YSBkaXJlY3RseSBmcm9tIENvbW1DYXJlLiBUaGUgb3JpZ2luYWwgYmFzZWxpbmUgZGF0YSBvYmplY3Qgd2FzIGBkYCBidXQgSSdtIGdvaW5nIHRvIG1ha2UgaXQgYGJgLiBFYWNoIHN1YnNlcXVlbnQgcm91bmQgd2lsbCBiZSBgcjFgLCBgcjJgIGFuZCBzbyBvbi4KCk92ZXJhbGwgSSB3YW50IHRvIGJyaW5nIGluIDMgZGF0YSBzb3VyY2VzOgoKKiBCYXNsaW5lIHN1cnZleSBkYXRhIGFuZCBzb2lsIGRhdGEKKiBSb3VuZCAxIHN1cnZleSBhbmQgYW5kIHNvaWwgZGF0YSBmcm9tIDE2QgoqIFJvdW5kIDEgeWllbGQgYW5kIHNvaWwgZGF0YSAtIHRoZXNlIGRhdGEgY29tZSBmcm9tIHBhaXJlZCBjbGltYmluZyBiZWFuIGhhcnZlc3QgbWVhc3VyZW1lbnRzIGFuZCBzb2lsIHNhbXBsZXMgZnJvbSAxNkIKKiBXZSBjYW4gYWxzbyBsb29rIGF0IG1haXplIHBhaXJlZCB5aWVsZCBhbmQgc29pbCBzYW1wbGVzIGZyb20gMTdBLgoKCmBgYHtyfQpiYXNlbGluZURpciA8LSBub3JtYWxpemVQYXRoKGZpbGUucGF0aCgiLi4iLCAicndfYmFzZWxpbmUiLCAiZGF0YSIpKQoKbG9hZChmaWxlPXBhc3RlMChiYXNlbGluZURpciwgIi9zaHMgcncgYmFzZWxpbmUgZnVsbCBzb2lsLlJkYXRhIikpICMgb2JqIGQKYiA8LSBiYXNlVmFycwpgYGAKCioqQ29udGV4dCBwb2ludCoqOiBUaGUgYmFzZWxpbmUgZGF0YSBoYXMgYHIgZGltKGIpWzFdYCByb3dzLiBUaGlzIGlzIGByIDI0NDgtZGltKGIpWzFdYCBmZXdlciByb3dzIHRoYW4gd2UgZXhwZWN0ZWQgaW4gdGhlIGJhc2VsaW5lLiBUaGlzIGlzIGJlY2F1c2Ugb2Ygc29tZSBmYXJtZXJzIG5vdCBiZWluZyBzdXJ2ZXllZCBhcyBleHBlY3RlZC4gU2VlIHRoZSBiYXNlbGluZSByZXBvcnQgZm9yIG1vcmUgZGV0YWlscy4gQWxzbywgdGhlc2UgYmFlc2xpbmUgdmFsdWVzIGhhdmUgdGUKCltBbGV4IFZpbGxlY10obWF0aWx0bzphbGV4LnZpbGxlY0BvbmVhY3JlZnVuZC5vcmcpIHdyb3RlIGEgY2xlYW5pbmcgc2NyaXB0IHRvIGRlYWwgd2l0aCB0aGUgZmlyc3Qgcm91bmQgb2YgUndhbmRhIFNIUyBmb2xsb3cgdXAgZGF0YSBhbmQgbWFrZSBrZXkgYWRqdXN0bWVudHMgdG8gdGhlIGRhdGEuIFRvIHV0aWxpemUgdGhhdCBkbyBmaWxlIGhlcmUsIEknbSBnb2luZyB0byBkb3dubG9hZCB0aGUgZGF0YSBmcm9tIENvbW1jYXJlLCBzYXZlIGl0LCBhbmQgaGF2ZSB0aGUgZG9maWxlIGFjY2VzcyB0aGF0IGZpbGUgdG8gZXhlY3V0ZS4gSG93ZXZlciwgdGhlIG9yaWdpbmFsIGZpbGUgQWxleCB3YXMgdXNpbmcgaGFkIGRpZmZlcmVudCB2YXJpYWJsZSBuYW1lcyB0aGFuIHRoZSBmaWxlIHB1bGxlZCBieSB0aGUgQVBJLiBUaGUgb3B0aW9ucyBmcm9tIGhlcmUgYXJlIHRvIGp1c3QgZ28gd2l0aCB0aGUgZmlsZSBmcm9tIEFsZXggb3IgdG8gYWxpZ24gdGhlIHZhcmlhYmxlIG5hbWVzIGJldHdlZW4gaGlzIHZlcnNpb24gYW5kIHRoZSBDQyB2ZXJzaW9uLiBJdCdzIHZhbHVhYmxlIHRvIGhhdmUgdGhlIGRhdGEgZGlyZWN0bHkgZnJvbSBDQyBidXQgaXQnbGwgaW52b2x2ZSBtb3JlIHdvcmsgdXAgZnJvbnQKCmBgYHtyfQpzb3VyY2UoIi4uL29hZmxpYi9jb21tY2FyZUV4cG9ydC5SIikKciA8LSBnZXRGb3JtRGF0YSgib2FmcndhbmRhIiwgIk0mRSIsICIxNkIgVWJ1dGFrYSAoU29pbCkiLCBmb3JjZVVwZGF0ZSA9IGZvcmNlVXBkYXRlQWxsKQp3cml0ZS5jc3YociwgZmlsZT0icmF3Q2NSMURhdGEuY3N2Iiwgcm93Lm5hbWVzID0gRikKYGBgCgpEb3dubG9hZCB0aGUgeWllbGQgZGF0YQoKYGBge3J9CnlwIDwtIGdldEZvcm1EYXRhKCJvYWZyd2FuZGEiLCAiTSZFIiwgIjE2QiBBTEwgSXNhcnVyYSAoSGFydmVzdCkiLCBmb3JjZVVwZGF0ZSA9IGZvcmNlVXBkYXRlQWxsKQp3cml0ZS5jc3YoeXAsIGZpbGU9InJhd0NjWXBEYXRhLmNzdiIsIHJvdy5uYW1lcz1GKQpgYGAKClRoZSBmaXJzdCByb3VuZCBvZiBkYXRhIGZyb20gQ29tbUNhcmUgaGFzIGByIGRpbShyKVsxXWAgb2JzZXJ2YXRpb25zLiBUaGlzIGxlYXZlcyBYWCBudW1iZXIgb2YgZmFybWVycyB1bnN1cnZleWVkIGluIHRoZSBmaXJzdCBzdXJ2ZXkgcm91bmQuIFNlZSBbdGhpcyBjbGVhbmluZyBmaWxlXSh3d3cuZ2l0aHViLmNvbSkgZm9yIG1vcmUgaW5mb3JtYXRpb24gb24gdGhlIGZhcm1lcnMgd2UgZGlkIG5vdCBmaW5kIGFnYWluIGluIHRoZSBmaXJzdCBmb2xsb3cgdXAuCgpIZXJlIEknbSBnb2luZyB0byBjYWxsIHRoZSBTVEFUQSBjbGVhbmluZyBmaWxlIHRvIG1ha2UgQVYncyBjaGFuZ2VzIHRvIHRoZSBSMSBmb2xsb3cgdXAgZGF0YS4gVGhpcyByZXF1aXJlcyB0aGF0IHRoZSBkYXRhIGZyb20gQ0MgaGF2ZSB0aGUgc2FtZSB2YXJpYWJsZSBuYW1lcyBhcyB0aGUgU1RBVEEgY2xlYW5pbmcgZmlsZS4gSSdtIGdvaW5nIHRvIHRyeSB0byBleGVjdXRlIHRoYXQgaGVyZToKCmBgYHtyfQpzdGF0YURpciA8LSBub3JtYWxpemVQYXRoKGZpbGUucGF0aCgiLi4iLCAicndfcm91bmRfMV9jaGVjayIpKQpgYGAKCkhlcmUgSSBhY2Nlc3MgdGhlIHNvaWwgcHJlZGljdGlvbnMgZnJvbSB0aGUgT0FGIHNvaWwgbGFiLiBbUGF0cmljayBCZWxsXShtYWlsdG86cGF0cmljay5iZWxsQG9uZWFjcmVmdW5kLm9yZykgbWFuYWdlcyB0aGUgbGFiIGFuZCBbTWlrZSBCYXJiZXJdKG1pa2UuYmFyYmVyQG9uZWFjcmVmdW5kLm9yZykgb3ZlcnNlZXMgdGhlIHByZWRpY3Rpb24gc2NyaXB0cy4KCmBgYHtyfQpzb2lsRGlyIDwtIG5vcm1hbGl6ZVBhdGgoZmlsZS5wYXRoKCIuLiIsICIuLiIsICJPQUYgU29pbCBMYWIgRm9sZGVyIiwgIlByb2plY3RzIiwgInJ3X3Noc19zZWNvbmRfcm91bmQiLCAiNF9wcmVkaWN0ZWQiLCAib3RoZXJfc3VtbWFyaWVzIikpCnNvaWwgPC0gcmVhZC5jc3YoZmlsZT1wYXN0ZShzb2lsRGlyLCAiY29tYmluZWQtcHJlZGljdGlvbnMtaW5jbHVkaW5nLWJhZC1vbmVzLmNzdiIsIHNlcCA9ICIvIikpCmBgYAoKIyMgQ29tYmluZSBiYXNlbGluZSBhbmQgUjEKCkNvbWJpbmUgdGhlIGF2YWlsYWJsZSBkYXRhIGJ5IGZhcm1lciBhbmQgcmVzb2x2ZSBtZXJnaW5nIGlzc3Vlcy4gVGhlc2UgZGF0YSBjYW4gYmUgY29tYmluZWQgbG9uZyBhcyBsb25nIGFzIHRoZSB2YXJpYWJsZSBuYW1lcyBhcmUgY29uc2lzdGVudCBvciB3aWRlLiBJJ20gZ29pbmcgdG8gY29tYmluZSB0aGUgZGF0YSBsb25nIGFuZCB1c2UgYHNwbGl0YCB0eXBlIGNvbW1hbmRzIHRvIGFnZ3JlZ2F0ZSB0aGUgZGF0YSBtb3JlIGVhc2lseS4gQ29uZmlybSB0aGUgdmFyaWFibGUgbmFtZXMgYXJlIGNvbnNpc3RlbnQuIEJ5IGFkdmFuY2luZyB0aGlzIGNvZGUgb24gNS85LzE3LCBJJ20gZm9yIHRoZSB0aW1lIGJlaW5nIGlnbm9yaW5nIHRoZSBjbGVhbmluZyBBbGV4IGRpZCBpbiBoaXMgZG8gZmlsZS4gSSdsbCBuZWVkIHRvIGdvIGJhY2sgYW5kIGluY29ycG9yYXRlIHRob3NlIGNoYW5nZXMuCgpOb3QgbWFueSBvZiB0aGUgbmFtZXMgYXJlIHRoZSBzYW1lLiBJJ3ZlIGRvd25sb2FkZWQgdGhlIG1ldGEgZGF0YSBmcm9tIENvbW1DYXJlIHdoaWNoIEknbGwgdXNlIHRvIHNpbXBsaWZ5IHRoZSBjbGVhbmluZyBvZiB0aGUgcm91bmQgMSBkYXRhLiBJJ20gYWxzbyBnb2luZyB0byByZXNoYXBlIHRoZSBiYXNlbGluZSB2YXJpYWJsZSBuYW1lcyB0byBzaW1wbGlmeSB0aGUgbWF0Y2hpbmcgb2YgYmFzZWxpbmUgdmFyaWFibGVzIHRvIHJvdW5kIDEgdmFyaWFibGVzLgpgYGB7ciwgbWVzc2FnZXM9Rn0KZGF0TmFtZXMgPC0gZnVuY3Rpb24oZGF0KXsKICB2YXJOYW1lcyA9IG5hbWVzKGRhdCkKICBleFZhbCA9IGRvLmNhbGwocmJpbmQsIGxhcHBseSh2YXJOYW1lcywgZnVuY3Rpb24oeCl7CiAgICB2YWwgPSBkYXRbMTozLHhdCiAgICByZXR1cm4odmFsKQogIH0pKQogIAogIG91dCA9IGNiaW5kKHZhck5hbWVzLCBleFZhbCkKICByZXR1cm4ob3V0KQp9CgpiYXNlTmFtZXMgPC0gZGF0TmFtZXMoYikKd3JpdGUuY3N2KGJhc2VOYW1lcywgZmlsZT0iYmFzZWxpbmUgdmFyIG5hbWVzLmNzdiIsIHJvdy5uYW1lcyA9IEYpCmBgYAoKYGBge3J9Cm5ld05hbWUgPC0gcmVhZF9leGNlbCgidmFyX25hbWVzLnhsc3giLCBzaGVldD0xKQoKcVR5cGVzIDwtIGMoIk11bHRpcGxlIENob2ljZSIsICJQaG9uZSBOdW1iZXIgb3IgTnVtZXJpYyBJRCIsICJDaGVja2JveCIsICJUZXh0IiwgIkRlY2ltYWwiLCAiSW1hZ2UgQ2FwdHVyZSIsICJCYXJjb2RlIFNjYW4iLCAiR1BTIiwgIkludGVnZXIiLCAiVGltZSIsICJEYXRlIikKCm5ld05hbWUgPC0gbmV3TmFtZSAlPiUgZHBseXI6OnNlbGVjdCgxOjYKKSAlPiUgZHBseXI6OmZpbHRlcihuZXdOYW1lJFR5cGUgJWluJSBxVHlwZXMpICU+JSBhcy5kYXRhLmZyYW1lKCkKCiNuZXdOYW1lIDwtIG5ld05hbWUgJT4lIGZpbHRlcihuZXcudmFyLm5hbWUhPSJnZW5lcmFsLmNvbW1lbnQiKQptZXRhVmFycyA8LSBuYW1lcyhyKVsxOjEwXQpuZXdOYW1lVmFycyA8LSBjKG1ldGFWYXJzLCBuZXdOYW1lJG5ldy52YXIubmFtZSkKCmxlbmd0aChuZXdOYW1lVmFycyk9PWRpbShyKVsyXQoKd3JpdGUuY3N2KG5ld05hbWVWYXJzLCBmaWxlPSJuZXdWYXIgY2hlY2suY3N2IikKd3JpdGUuY3N2KG5hbWVzKHIpLCBmaWxlPSJyb3VuZDEgVmFyIGNoZWNrLmNzdiIpCgpgYGAKCgpgYGB7cn0KbmFtZXMocikgPC0gbmV3TmFtZVZhcnMKCiMgZHJvcCB2YXJzIHdpdGggZHJvcApyIDwtIHJbLC13aGljaChncmVwbCgiZHJvcC4iLCBuYW1lcyhyKSkpXQpgYGAKClRoaXMgZnVuY3Rpb24gd2lsbCByZW1vdmUgYWxsIHN0cmFuZ2Ugb3V0cHV0cyBmcm9tIHRoZSBkYXRhIGZyb20gQ29tbUNhcmUKCmBgYHtyfQpjaGFyQ2xlYW4gPC0gZnVuY3Rpb24oZGYpewogIAogIGRmIDwtIGFzLmRhdGEuZnJhbWUobGFwcGx5KGRmLCBmdW5jdGlvbih4KXsKICB4ID0gZ3N1YigiJyIsICcnLCB4KQogIHggPSBnc3ViKCJeYiIsICcnLCB4KQogIHggPSBpZmVsc2UoZ3JlcGwoIm1hcCBvYmplY3QiLCB4KT09VCwgTkEsIHgpCiAgcmV0dXJuKHgpCiAgfSkpCnJldHVybihkZikKfQoKciA8LSBjaGFyQ2xlYW4ocikKYGBgCgpDb252ZXJ0IHZhcmlhYmxlcyB0aGF0IGFyZSBzdXBwb3NlZCB0byBiZSBudW1iZXJzIHRvIG51bWJlcnMgaW4gYHJgCgpgYGB7cn0KcU51bSA8LSBjKCJQaG9uZSBOdW1iZXIgb3IgTnVtZXJpYyBJRCIsICJEZWNpbWFsIiwgIkludGVnZXIiKQpudW1zIDwtIG5ld05hbWVbbmV3TmFtZSRUeXBlICVpbiUgcU51bSwgIm5ldy52YXIubmFtZSJdCm51bXMgPC0gbnVtc1std2hpY2goZ3JlcGwoImRyb3AuIiwgbnVtcykpXQoKdG9SZW1vdmUgPC0gYygicGhvbmUiLCAib2FmaWQiKQpudW1zIDwtIG51bXNbIW51bXMgJWluJSB0b1JlbW92ZV0KCiMgYWRkIGluIHBsb3Quc2l6ZQojbnVtcyA8LSBjKG51bXMsICJwbG90LnNpemUiKQoKclssIG51bXNdIDwtIGFzLmRhdGEuZnJhbWUobGFwcGx5KHJbLG51bXNdLCBmdW5jdGlvbih4KXsKICBhcy5udW1lcmljKGFzLmNoYXJhY3Rlcih4KSkKfSkpCmBgYAoKVGhlIGByYCBkYXRhZnJhbWUgaGFzIG1hbnkgbW9yZSB2YXJpYWJsZXMgdGhhbiB0aGUgYmFzZWxpbmUgc3VydmV5LiBUaGlzIHdhcyBpbiBwYXJ0IGV4cGVjdGVkOyB3ZSBhZGRlZCBxdWVzdGlvbnMgdG8gdGhlIGZpcnN0IGZvbGxvdyB1cCByb3VuZCBiYXNlZCBvbiBsZXNzb25zIGZyb20gdGhlIGJhc2VsaW5lLiBJdCdzIGFsc28gZHVlIHRvIGhvdyB0aGUgc3VydmV5IHdhcyBzZXQgdXAgaW4gQ29tbUNhcmUuIEJlZm9yZSBjb21iaW5pbmcgdGhlIGJhc2VsaW5lIGFuZCB0aGUgZmlyc3QgZm9sbG93IHVwIHJvdW5kIEkgbmVlZCB0bzoKCiogcmVzaGFwZSB0aGUgcm91bmQgMSB2YXJpYWJsZXMgc28gdGhhdCB0aGV5IGFwcHJvcHJpYXRlbHkgbWF0Y2ggdGhlIGJhc2VsaW5lIHZhcmlhYmxlcwoqIENsZWFuIHRob3NlIHZhcmlhbGVzIG9yIHByZXBhcmUgdGhlbSBhcyBuZWVkIGJlIGZvciBhIAoqIEZvciB2YXJpYWJsZXMgd2l0aCBubyBtYXRjaCwgY2xlYW4KCiMgQW5hbHlzaXMKCiMjIERlbW9ncmFwaGljIHN1bW1hcnkKCiMjIFNvaWwgc3VtbWFyeQoKIyMgTG9uZ2l0dWRpbmFsIHNvaWwgc3VtbWFyeQoKIyMgTWF0Y2hpbmcKCiMjIFJlZ3Jlc3Npb25zCgojIFN1bW1hcnkKCiMjIENoYW5nZXMgdG8gdGhlIHN1cnZleQoKIyBBcHBlbmRpeAoKCg==</div>
 
 
 </div>
@@ -373,7 +496,7 @@ $(document).ready(function () {
   (function () {
     var script = document.createElement("script");
     script.type = "text/javascript";
-    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
     document.getElementsByTagName("head")[0].appendChild(script);
   })();
 </script>

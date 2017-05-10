@@ -44,7 +44,7 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 # robustbase is to run robust regressions to compensate for outliers
 # car is for performing logit transformations
 libs <- c("dplyr", "reshape2", "knitr", "ggplot2", "tibble", "readxl", 
-    "MASS", "gridExtra", "cowplot", "robustbase", "car")
+    "MASS", "gridExtra", "cowplot", "robustbase", "car", "RStata")
 lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F)
 
 #### define helpful functions
@@ -53,6 +53,9 @@ html_table_width <- function(kable_output, width) {
   width_html <- paste0(paste0('<col width="', width, '">'), collapse = "\n")
   sub("<table>", paste0("<table>\n", width_html), kable_output)
 }
+
+options("RStata.StataVersion" = 12)
+options("RStata.StataPath" = "/Applications/Stata/StataSE.app/Contents/MacOS/stata-se")
 ```
 
 ```{r}
@@ -75,30 +78,154 @@ I'm going to load the baseline data from the baseline analysis. The report and d
 Overall I want to bring in 3 data sources:
 
 * Basline survey data and soil data
-* Round 1 survey and and soil data
-* Round 1 yield and soil data - these data come from paired climbing bean harvest measurements and soil samples
+* Round 1 survey and and soil data from 16B
+* Round 1 yield and soil data - these data come from paired climbing bean harvest measurements and soil samples from 16B
+* We can also look at maize paired yield and soil samples from 17A.
+
 
 ```{r}
 baselineDir <- normalizePath(file.path("..", "rw_baseline", "data"))
 
-load(file=paste0(baselineDir, "/shs rw baseline.Rdata")) # obj d
-b <- d
+load(file=paste0(baselineDir, "/shs rw baseline full soil.Rdata")) # obj d
+b <- baseVars
 ```
+
+**Context point**: The baseline data has `r dim(b)[1]` rows. This is `r 2448-dim(b)[1]` fewer rows than we expected in the baseline. This is because of some farmers not being surveyed as expected. See the baseline report for more details. Also, these baesline values have te
+
+[Alex Villec](matilto:alex.villec@oneacrefund.org) wrote a cleaning script to deal with the first round of Rwanda SHS follow up data and make key adjustments to the data. To utilize that do file here, I'm going to download the data from Commcare, save it, and have the dofile access that file to execute. However, the original file Alex was using had different variable names than the file pulled by the API. The options from here are to just go with the file from Alex or to align the variable names between his version and the CC version. It's valuable to have the data directly from CC but it'll involve more work up front
 
 ```{r}
 source("../oaflib/commcareExport.R")
+r <- getFormData("oafrwanda", "M&E", "16B Ubutaka (Soil)", forceUpdate = forceUpdateAll)
+write.csv(r, file="rawCcR1Data.csv", row.names = F)
+```
 
-r1 <- getFormData("oafrwanda", "M&E",
-                          "16B Ubutaka (Soil)")
-#yp <- getFormData()
+Download the yield data
+
+```{r}
+yp <- getFormData("oafrwanda", "M&E", "16B ALL Isarura (Harvest)", forceUpdate = forceUpdateAll)
+write.csv(yp, file="rawCcYpData.csv", row.names=F)
+```
+
+The first round of data from CommCare has `r dim(r)[1]` observations. This leaves XX number of farmers unsurveyed in the first survey round. See [this cleaning file](www.github.com) for more information on the farmers we did not find again in the first follow up.
+
+Here I'm going to call the STATA cleaning file to make AV's changes to the R1 follow up data. This requires that the data from CC have the same variable names as the STATA cleaning file. I'm going to try to execute that here:
+
+```{r}
+stataDir <- normalizePath(file.path("..", "rw_round_1_check"))
+```
+
+Here I access the soil predictions from the OAF soil lab. [Patrick Bell](mailto:patrick.bell@oneacrefund.org) manages the lab and [Mike Barber](mike.barber@oneacrefund.org) oversees the prediction scripts.
+
+```{r}
+soilDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_second_round", "4_predicted", "other_summaries"))
+soil <- read.csv(file=paste(soilDir, "combined-predictions-including-bad-ones.csv", sep = "/"))
+```
+
+## Combine baseline and R1
+
+Combine the available data by farmer and resolve merging issues. These data can be combined long as long as the variable names are consistent or wide. I'm going to combine the data long and use `split` type commands to aggregate the data more easily. Confirm the variable names are consistent. By advancing this code on 5/9/17, I'm for the time being ignoring the cleaning Alex did in his do file. I'll need to go back and incorporate those changes.
+
+Not many of the names are the same. I've downloaded the meta data from CommCare which I'll use to simplify the cleaning of the round 1 data. I'm also going to reshape the baseline variable names to simplify the matching of baseline variables to round 1 variables.
+```{r, messages=F}
+datNames <- function(dat){
+  varNames = names(dat)
+  exVal = do.call(rbind, lapply(varNames, function(x){
+    val = dat[1:3,x]
+    return(val)
+  }))
+  
+  out = cbind(varNames, exVal)
+  return(out)
+}
+
+baseNames <- datNames(b)
+write.csv(baseNames, file="baseline var names.csv", row.names = F)
+```
+
+```{r}
+newName <- read_excel("var_names.xlsx", sheet=1)
+
+qTypes <- c("Multiple Choice", "Phone Number or Numeric ID", "Checkbox", "Text", "Decimal", "Image Capture", "Barcode Scan", "GPS", "Integer", "Time", "Date")
+
+newName <- newName %>% dplyr::select(1:6
+) %>% dplyr::filter(newName$Type %in% qTypes) %>% as.data.frame()
+
+#newName <- newName %>% filter(new.var.name!="general.comment")
+metaVars <- names(r)[1:10]
+newNameVars <- c(metaVars, newName$new.var.name)
+
+length(newNameVars)==dim(r)[2]
+
+write.csv(newNameVars, file="newVar check.csv")
+write.csv(names(r), file="round1 Var check.csv")
 
 ```
 
 
+```{r}
+names(r) <- newNameVars
+
+# drop vars with drop
+r <- r[,-which(grepl("drop.", names(r)))]
+```
+
+This function will remove all strange outputs from the data from CommCare
+
+```{r}
+charClean <- function(df){
+  
+  df <- as.data.frame(lapply(df, function(x){
+  x = gsub("'", '', x)
+  x = gsub("^b", '', x)
+  x = ifelse(grepl("map object", x)==T, NA, x)
+  return(x)
+  }))
+return(df)
+}
+
+r <- charClean(r)
+```
+
+Convert variables that are supposed to be numbers to numbers in `r`
+
+```{r}
+qNum <- c("Phone Number or Numeric ID", "Decimal", "Integer")
+nums <- newName[newName$Type %in% qNum, "new.var.name"]
+nums <- nums[-which(grepl("drop.", nums))]
+
+toRemove <- c("phone", "oafid")
+nums <- nums[!nums %in% toRemove]
+
+# add in plot.size
+#nums <- c(nums, "plot.size")
+
+r[, nums] <- as.data.frame(lapply(r[,nums], function(x){
+  as.numeric(as.character(x))
+}))
+```
+
+The `r` dataframe has many more variables than the baseline survey. This was in part expected; we added questions to the first follow up round based on lessons from the baseline. It's also due to how the survey was set up in CommCare. Before combining the baseline and the first follow up round I need to:
+
+* reshape the round 1 variables so that they appropriately match the baseline variables
+* Clean those variales or prepare them as need be for a 
+* For variables with no match, clean
 
 # Analysis
 
-# Summary 
+## Demographic summary
+
+## Soil summary
+
+## Longitudinal soil summary
+
+## Matching
+
+## Regressions
+
+# Summary
+
+## Changes to the survey
 
 # Appendix
 
