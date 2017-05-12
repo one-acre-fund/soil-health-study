@@ -5,12 +5,11 @@ date: '`r format(Sys.time(), "%B %d, %Y")`'
 output:
   html_notebook:
     number_sections: yes
-    code_folding: hide
+    code_folding: show
     theme: flatly
     toc: yes
     toc_depth: 6
     toc_float: yes
-subtitle: "subtitle"
 ---
 
 ```{r setup, include=FALSE}
@@ -44,7 +43,7 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 # robustbase is to run robust regressions to compensate for outliers
 # car is for performing logit transformations
 libs <- c("dplyr", "reshape2", "knitr", "ggplot2", "tibble", "readxl", 
-    "MASS", "gridExtra", "cowplot", "robustbase", "car", "RStata")
+    "MASS", "gridExtra", "cowplot", "robustbase", "car", "RStata", "foreign")
 lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F)
 
 #### define helpful functions
@@ -126,6 +125,8 @@ soil <- read.csv(file=paste(soilDir, "combined-predictions-including-bad-ones.cs
 
 Combine the available data by farmer and resolve merging issues. These data can be combined long as long as the variable names are consistent or wide. I'm going to combine the data long and use `split` type commands to aggregate the data more easily. Confirm the variable names are consistent. By advancing this code on 5/9/17, I'm for the time being ignoring the cleaning Alex did in his do file. I'll need to go back and incorporate those changes.
 
+**TODO**: see if the variables names in Alex's raw data, shared by [Nathaniel](mailto:nathaniel.rosenblum@oneacrefund.org), match the data I'm downloading from commcare. If so, don't use the `var_names.xlsx` sheet and instead use those variable names and Alex's do file to preserve all of his changes.
+
 Not many of the names are the same. I've downloaded the meta data from CommCare which I'll use to simplify the cleaning of the round 1 data. I'm also going to reshape the baseline variable names to simplify the matching of baseline variables to round 1 variables.
 ```{r, messages=F}
 datNames <- function(dat){
@@ -143,7 +144,63 @@ baseNames <- datNames(b)
 write.csv(baseNames, file="baseline var names.csv", row.names = F)
 ```
 
+Load Alex's raw data and take the variable names from this. If I can align these variable names with the data from CC I can then execute Alex's cleaning script on the CC data and proceed with combining the data
+
 ```{r}
+rawDir <- normalizePath(file.path("Soil health study (year one)", "data"))
+
+avRaw <- read.csv(paste(rawDir, "y1_shs_rwanda_28sep.csv", sep = "/"), stringsAsFactors = F)
+
+```
+
+It looks like the data from CommCare aligns with the raw data Alex worked with at `info_formid` which is the second index for `avRaw` and the 10th index for `r`. Let's just try transferring them over and the work of updating the variable names through the CC codebook export may not be necessary!
+
+```{r}
+varTest <- data.frame(fromcc = names(r)[10:409], fromav = names(avRaw)[2:401])
+# head(varTest)
+# tail(varTest)
+#varTest[90:120,]
+
+
+
+```
+
+It seems to line up okay (with some adjustments)! To incorporate Alex's cleaning code I have to export the data from R to a form Stata accept, run the code, and then load the data back in.
+
+This function will remove all strange outputs from the data from CommCare so that the STATA code works
+
+```{r}
+charClean <- function(df){
+  
+  df <- as.data.frame(lapply(df, function(x){
+  x = gsub("'", '', x)
+  x = gsub("^b", '', x)
+  x = ifelse(grepl("map object", x)==T, NA, x)
+  return(x)
+  }))
+return(df)
+}
+
+r <- charClean(r)
+```
+
+```{r}
+names(r)[10:409] <- names(avRaw)[2:401]
+
+#export so stata can run - check for variable names longer than 32char
+table(nchar(names(r)))
+
+write.csv(r, file="toBeCleanedStata.csv", row.names = F)
+
+stata("cleans_y1_shs_rwanda.do")
+```
+
+Now load the result of the Stata file
+```{r}
+r <- read.csv("cleanedforR.csv", stringsAsFactors = F)
+```
+
+```{r,eval=F}
 newName <- read_excel("var_names.xlsx", sheet=1)
 
 qTypes <- c("Multiple Choice", "Phone Number or Numeric ID", "Checkbox", "Text", "Decimal", "Image Capture", "Barcode Scan", "GPS", "Integer", "Time", "Date")
@@ -162,34 +219,15 @@ write.csv(names(r), file="round1 Var check.csv")
 
 ```
 
-
-```{r}
+```{r, eval=F}
 names(r) <- newNameVars
 
 # drop vars with drop
 r <- r[,-which(grepl("drop.", names(r)))]
 ```
 
-This function will remove all strange outputs from the data from CommCare
 
-```{r}
-charClean <- function(df){
-  
-  df <- as.data.frame(lapply(df, function(x){
-  x = gsub("'", '', x)
-  x = gsub("^b", '', x)
-  x = ifelse(grepl("map object", x)==T, NA, x)
-  return(x)
-  }))
-return(df)
-}
-
-r <- charClean(r)
-```
-
-Convert variables that are supposed to be numbers to numbers in `r`
-
-```{r}
+```{r, eval=F}
 qNum <- c("Phone Number or Numeric ID", "Decimal", "Integer")
 nums <- newName[newName$Type %in% qNum, "new.var.name"]
 nums <- nums[-which(grepl("drop.", nums))]
@@ -210,6 +248,11 @@ The `r` dataframe has many more variables than the baseline survey. This was in 
 * reshape the round 1 variables so that they appropriately match the baseline variables
 * Clean those variales or prepare them as need be for a 
 * For variables with no match, clean
+
+
+
+
+
 
 # Analysis
 
