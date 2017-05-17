@@ -81,6 +81,7 @@ Overall I want to bring in 3 data sources:
 * Round 1 yield and soil data - these data come from paired climbing bean harvest measurements and soil samples from 16B
 * We can also look at maize paired yield and soil samples from 17A.
 
+## Baseline data
 
 ```{r}
 baselineDir <- normalizePath(file.path("..", "rw_baseline", "data"))
@@ -93,13 +94,15 @@ b <- baseVars
 
 [Alex Villec](matilto:alex.villec@oneacrefund.org) wrote a cleaning script to deal with the first round of Rwanda SHS follow up data and make key adjustments to the data. To utilize that do file here, I'm going to download the data from Commcare, save it, and have the dofile access that file to execute. However, the original file Alex was using had different variable names than the file pulled by the API. The options from here are to just go with the file from Alex or to align the variable names between his version and the CC version. It's valuable to have the data directly from CC but it'll involve more work up front
 
+## Round 1 data
+
 ```{r}
 source("../oaflib/commcareExport.R")
 r <- getFormData("oafrwanda", "M&E", "16B Ubutaka (Soil)", forceUpdate = forceUpdateAll)
 write.csv(r, file="rawCcR1Data.csv", row.names = F)
 ```
 
-Download the yield data
+## Yield data
 
 ```{r}
 yp <- getFormData("oafrwanda", "M&E", "16B ALL Isarura (Harvest)", forceUpdate = forceUpdateAll)
@@ -146,6 +149,8 @@ write.csv(baseNames, file="baseline var names.csv", row.names = F)
 
 Load Alex's raw data and take the variable names from this. If I can align these variable names with the data from CC I can then execute Alex's cleaning script on the CC data and proceed with combining the data
 
+## Stata .do file
+
 ```{r}
 rawDir <- normalizePath(file.path("Soil health study (year one)", "data"))
 
@@ -160,9 +165,6 @@ varTest <- data.frame(fromcc = names(r)[10:409], fromav = names(avRaw)[2:401])
 # head(varTest)
 # tail(varTest)
 #varTest[90:120,]
-
-
-
 ```
 
 It seems to line up okay (with some adjustments)! To incorporate Alex's cleaning code I have to export the data from R to a form Stata accept, run the code, and then load the data back in.
@@ -243,15 +245,98 @@ r[, nums] <- as.data.frame(lapply(r[,nums], function(x){
 }))
 ```
 
+# Cleaning
+
 The `r` dataframe has many more variables than the baseline survey. This was in part expected; we added questions to the first follow up round based on lessons from the baseline. It's also due to how the survey was set up in CommCare. Before combining the baseline and the first follow up round I need to:
 
 * reshape the round 1 variables so that they appropriately match the baseline variables
 * Clean those variales or prepare them as need be for a 
 * For variables with no match, clean
 
+```{r}
+source("../oaflib/misc.R")
+names(r) <- gsub("^y1_|intro_", "", names(r))
+r[r=="."] <- NA
+
+r <- divideGps(r, "gps_coord")
+```
+
+## Numeric variables
+
+```{r}
+numVars <- names(r)[sapply(r, function(x){
+  is.numeric(x)
+})]
+```
+
+Basic cleaning of known issues like enumerator codes for DK, NWR, etc.
+```{r}
+enumVals <- c(-88,-85, -99)
+enumClean <- function(dat, x, toRemove){
+  dat[,x] <- ifelse(dat[,x] %in% toRemove, NA, dat[,x])
+  return(dat[,x])
+}
+
+r[,numVars] <- sapply(numVars, function(y){
+  r[,y] <- enumClean(r,y, enumVals)
+})
+```
+
+```{r}
+iqr.check <- function(dat, x) { 
+  q1 = summary(dat[,x])[[2]]
+  q3 = summary(dat[,x])[[5]] 
+  iqr = q3-q1
+  mark  = ifelse(dat[,x] < (q1 - (1.5*iqr)) | dat[,x] > (q3 + (1.5*iqr)), 1,0)
+  tab = rbind(
+    summary(dat[,x]),
+    summary(dat[mark==0, x])
+  )
+  return(tab)
+}
 
 
+iqrTab <- do.call(plyr::rbind.fill, lapply(numVars, function(y){
+  #print(y)
+  res = iqr.check(r, y)
+  #print(dim(res))
+  out = data.frame(var=rbind(y, paste(y, ".iqr", sep="")), res)
+  return(out)
+}))
 
+iqrTab[,2:8] <- sapply(iqrTab[,2:8], function(x){round(x,1)})
+```
+
+## Outlier table
+
+The outlier table summarizes the numeric variables with and without IQR outliers to show how the data changes based on this filter.
+
+```{r}
+knitr::kable(iqrTab, row.names = F, digits = 0, format = 'html')
+```
+
+## Outlier Graphs
+```{r}
+for(i in 1:length(numVars)){
+  print(
+    ggplot(r, aes(x=r[,numVars[i]])) + geom_density() +
+      labs(x = numVars[i])
+  )
+}
+```
+
+## Categorical variables
+
+```{r}
+
+```
+
+
+## Create new variables
+
+```{r}
+
+```
 
 
 # Analysis
