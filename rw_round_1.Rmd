@@ -261,6 +261,78 @@ r[r=="."] <- NA
 r <- divideGps(r, "gps_coord")
 ```
 
+## Categorical variables
+
+The responses of the categorical variables should be regulated through CC, however, to check, make a table that shows the top ten responses in descending order and make a graph of response counts to know what to check
+
+```{r}
+catVars <- names(r)[sapply(r, function(x){
+  is.character(x)
+})]
+
+enumClean <- function(dat, x, toRemove){
+  dat[,x] <- ifelse(dat[,x] %in% toRemove, NA, dat[,x])
+  return(dat[,x])
+}
+
+strTable <- function(dat, x){
+  varName = x
+  tab = as.data.frame(table(dat[,x], useNA = 'ifany'))
+  tab = tab[order(tab$Freq, decreasing = T),]
+  end = ifelse(length(tab$Var1)<10, length(tab$Var1), 10)
+  repOrder = paste(tab$Var1[1:end], collapse=", ")
+  out = data.frame(variable = varName,
+                   responses = repOrder)
+  
+  return(out)
+}
+
+# clean up known values
+catEnumVals <- c("-99", "-88", "- 99", "-99.0", "88", "_88", "- 88", "0.88",
+                 "--88", "__88", "-88.0")
+r[,catVars] <- sapply(catVars, function(y){
+  r[,y] <- enumClean(r,y, catEnumVals)
+})
+
+
+responseTable <- do.call(rbind, lapply(catVars, function(x){
+  strTable(r, x)
+}))
+
+```
+
+### Categorical response table
+
+```{r}
+kable(responseTable)
+```
+
+### Categorical response graphs
+```{r}
+repGraphs <- function(dat, x){
+  tab = as.data.frame(table(dat[,x], useNA = 'ifany'))
+  tab = tab[order(tab$Freq, decreasing = T),]
+  print(
+    ggplot(data=tab, aes(x=Var1, y=Freq)) + geom_bar(stat="identity") +
+      theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+      labs(title =paste0("Composition of variable: ", x))
+  )
+}
+
+adminVars <- c(catVars[c(1:12)], "cell_field", "village", "farmer_respond", "farmer_phonenumber", "d_phone", "neighbor_phonenumber", "farmer_list", "unique_location", "comments", "gps_coord")
+nonAdminVars <- catVars[!catVars %in% adminVars]
+
+for(i in 1:length(nonAdminVars)){
+  repGraphs(r, nonAdminVars[i])
+}
+```
+
+### Char to Num
+```{r}
+strToNum <- # variables as characters to numeric
+```
+
+
 ## Numeric variables
 
 ```{r}
@@ -272,15 +344,13 @@ numVars <- names(r)[sapply(r, function(x){
 Basic cleaning of known issues like enumerator codes for DK, NWR, etc.
 ```{r}
 enumVals <- c(-88,-85, -99)
-enumClean <- function(dat, x, toRemove){
-  dat[,x] <- ifelse(dat[,x] %in% toRemove, NA, dat[,x])
-  return(dat[,x])
-}
 
 r[,numVars] <- sapply(numVars, function(y){
   r[,y] <- enumClean(r,y, enumVals)
 })
 ```
+
+### Numeric outlier table
 
 ```{r}
 iqr.check <- function(dat, x) { 
@@ -307,15 +377,13 @@ iqrTab <- do.call(plyr::rbind.fill, lapply(numVars, function(y){
 iqrTab[,2:8] <- sapply(iqrTab[,2:8], function(x){round(x,1)})
 ```
 
-## Outlier table
-
 The outlier table summarizes the numeric variables with and without IQR outliers to show how the data changes based on this filter.
 
 ```{r}
 knitr::kable(iqrTab, row.names = F, digits = 0, format = 'html')
 ```
 
-## Outlier Graphs
+### Outlier Graphs
 ```{r}
 for(i in 1:length(numVars)){
   print(
@@ -323,12 +391,6 @@ for(i in 1:length(numVars)){
       labs(x = numVars[i])
   )
 }
-```
-
-## Categorical variables
-
-```{r}
-
 ```
 
 
