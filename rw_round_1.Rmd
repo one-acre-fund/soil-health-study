@@ -465,6 +465,69 @@ There are a lot of variables to try to line up. Some already have the same name 
 
 ```{r}
 names(b)
+names(r)
+
+# check the names that already match
+baselineFound <- names(b)[names(b) %in% names(r)] # not many variable names are aligned
+```
+
+The `matchRounds` function updates variable names across rounds and reports the index and new name of the variables. I can then take the first part of the list for `dat1` and the second part for `dat2`.
+
+```{r}
+matchRounds <- function(dat1, dat2, var1, var2, new=NULL, choice="first"){
+  
+  
+  
+  if (choice=="first"){
+    var2new  = var1
+    #names(dat2)[names(dat2)==var2] <- var2new
+    return(list(
+      list(var1, grep(var1, names(dat1))),
+      list(var2new, grep(var2, names(dat2)))
+                ))
+    
+  } else if (choice=="second") {
+    var1new = var2
+    #names(dat1)[names(dat1)==var1] <- var1new
+    return(list(
+      list(var1new, grep(var1, names(dat1))),
+      list(var2, grep(var2, names(dat2)))
+                ))
+    
+  } else{
+    var1new = var2new = new
+    #names(dat2)[names(dat2)==var2] <- var2new 
+    #names(dat1)[names(dat1)==var1] <- var1new
+    return(list(
+      list(var1new, grep(var1, names(dat1))),
+      list(var2new, grep(var2, names(dat2)))
+                ))
+  }
+} 
+
+
+namesToUpdate <- rbind(
+ c("demographicdate", "date", "first"),
+  c("sample", "d_sample", "second")
+)
+
+
+# example
+dat1=b
+dat2=r
+var1 = "field_dim1"
+var2 = "field_length"
+choice="first"
+
+test <- matchRounds(b, r, "field_dim1", "field_length", choice="first")
+test2 <- matchRounds(b, r, "field_dim2", "field_width", choice="first")
+
+
+test <- lapply(namesToUpdate, function(x,y,z){
+  val = matchRounds(b, r, x, y, choice=z)
+  return(val)
+})
+
 ```
 
 ## Combine long with baseline
