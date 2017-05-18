@@ -194,7 +194,7 @@ table(nchar(names(r)))
 
 write.csv(r, file="toBeCleanedStata.csv", row.names = F)
 
-stata("cleans_y1_shs_rwanda.do")
+stata("cleans_y1_shs_rwanda.do", stata.echo=F)
 ```
 
 Now load the result of the Stata file
@@ -254,6 +254,51 @@ The `r` dataframe has many more variables than the baseline survey. This was in 
 * For variables with no match, clean
 
 ```{r}
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+```
+
+## Drop variables
+```{r}
+toDrop <- c("appformid", "id", "domain", "metadatadeviceid")
+r <- r[,!names(r) %in% toDrop]
+```
+
+
+```{r}
 source("../oaflib/misc.R")
 names(r) <- gsub("^y1_|intro_", "", names(r))
 r[r=="."] <- NA
@@ -263,7 +308,7 @@ r <- divideGps(r, "gps_coord")
 
 ## Categorical variables
 
-The responses of the categorical variables should be regulated through CC, however, to check, make a table that shows the top ten responses in descending order and make a graph of response counts to know what to check
+The responses of the categorical variables should be regulated through CC, however, to check, make a table that shows the top ten responses in descending order and make a graph of response counts to know what to check. I'll then capture any characters that should be numeric and convert them.
 
 ```{r}
 catVars <- names(r)[sapply(r, function(x){
@@ -289,7 +334,7 @@ strTable <- function(dat, x){
 
 # clean up known values
 catEnumVals <- c("-99", "-88", "- 99", "-99.0", "88", "_88", "- 88", "0.88",
-                 "--88", "__88", "-88.0")
+                 "--88", "__88", "-88.0", "99.0")
 r[,catVars] <- sapply(catVars, function(y){
   r[,y] <- enumClean(r,y, catEnumVals)
 })
@@ -302,6 +347,8 @@ responseTable <- do.call(rbind, lapply(catVars, function(x){
 ```
 
 ### Categorical response table
+
+A simple table to preview the values in the data. The values are ranked by frequency.
 
 ```{r}
 kable(responseTable)
@@ -319,7 +366,7 @@ repGraphs <- function(dat, x){
   )
 }
 
-adminVars <- c(catVars[c(1:12)], "cell_field", "village", "farmer_respond", "farmer_phonenumber", "d_phone", "neighbor_phonenumber", "farmer_list", "unique_location", "comments", "gps_coord")
+adminVars <- c(names(r)[grep("meta", names(r))], "start_time", "enum_name", "photo", "cell_field", "village", "farmer_respond", "farmer_phonenumber", "d_phone", "neighbor_phonenumber", "farmer_list", "unique_location", "comments", "gps_coord", "sample_id")
 nonAdminVars <- catVars[!catVars %in% adminVars]
 
 for(i in 1:length(nonAdminVars)){
@@ -327,11 +374,23 @@ for(i in 1:length(nonAdminVars)){
 }
 ```
 
-### Char to Num
+### Manual character cleaning
 ```{r}
-strToNum <- # variables as characters to numeric
+r$female <- ifelse(r$gender=="female", 1, 0)
+r$district <- ifelse(grepl("nyanza", r$district)==T, "Nyanza", r$district)
+
+table(r$kg_seed_16b_1)
+table(r$kg_yield_16a_2)
+
+strtoNum <- c("kg_seed_16b_1", "kg_yield_16a_1", "kg_yield_16b_1", "kg_yield_16b_2")
+r[,strtoNum] <- sapply(r[,strtoNum], function(x){as.numeric(x)})
 ```
 
+Notes on the categorical variables:
+
+* We don't have many actual responses on seed type despite all farmers telling us about a crop they are growing. Why? Check that there wasn't a mislabeling of variables.
+* Check the 'which_maize_seed' variables to make certain they're flexible to the type of crop selected in the previous question.
+* Confirm that blank is NA not 0.
 
 ## Numeric variables
 
@@ -365,8 +424,11 @@ iqr.check <- function(dat, x) {
   return(tab)
 }
 
+# remove admin vars
+numAdminVars <- c(numVars[1:3])
+numVarsNotAdmin <- numVars[!numVars %in% numAdminVars]
 
-iqrTab <- do.call(plyr::rbind.fill, lapply(numVars, function(y){
+iqrTab <- do.call(plyr::rbind.fill, lapply(numVarsNotAdmin, function(y){
   #print(y)
   res = iqr.check(r, y)
   #print(dim(res))
@@ -385,21 +447,27 @@ knitr::kable(iqrTab, row.names = F, digits = 0, format = 'html')
 
 ### Outlier Graphs
 ```{r}
-for(i in 1:length(numVars)){
-  print(
-    ggplot(r, aes(x=r[,numVars[i]])) + geom_density() +
-      labs(x = numVars[i])
-  )
+# http://rforpublichealth.blogspot.com/2014/02/ggplot2-cheatsheet-for-visualizing.html
+for(i in 1:length(numVarsNotAdmin)){
+    base <- ggplot(r, aes(x=r[,numVarsNotAdmin[i]])) + labs(x = numVarsNotAdmin[i])
+    temp1 <- base + geom_density()
+    temp2 <- base + geom_histogram()
+    #temp2 <- boxplot(r[,numVars[i]],main=paste0("Variable: ", numVars[i]))
+    multiplot(temp1, temp2, cols = 2)
 }
 ```
 
-
 ## Create new variables
 
-```{r}
+Let's first check with the baseline data to see what variables we made there so I can make the same ones from the round 1 data. There are some variables that are baseline variables only like variables asking about historical practices. There are then other variables that will vary by season. These are the variables that we ultimately want in to shape in a long dataset by season to analyze changes overtime in practices and soil management. I think this will result in a dataset that has one row per farmer per season. Some variables may not fit nicely into this but we can deal with those. For variables that aren't changing over time they'll show as not important in our model. They're important for matching farmers.
 
+There are a lot of variables to try to line up. Some already have the same name but how to best combine the ones that have different variable names? I'm going to write a function that takes a variable name from `b` and a variable name from `r` that should go together, updates the `r` variable name and uses that info to `rbind` the data into a long dataset.
+
+```{r}
+names(b)
 ```
 
+## Combine long with baseline
 
 # Analysis
 
