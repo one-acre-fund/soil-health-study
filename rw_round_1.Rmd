@@ -43,7 +43,8 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 # robustbase is to run robust regressions to compensate for outliers
 # car is for performing logit transformations
 libs <- c("dplyr", "reshape2", "knitr", "ggplot2", "tibble", "readxl", 
-    "MASS", "gridExtra", "cowplot", "robustbase", "car", "RStata", "foreign")
+    "MASS", "gridExtra", "cowplot", "robustbase", "car", "RStata", "foreign",
+    "tidyr")
 lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F)
 
 #### define helpful functions
@@ -457,7 +458,25 @@ for(i in 1:length(numVarsNotAdmin)){
 }
 ```
 
-## Create new variables
+## Check for unique ids
+
+I'm seeing that there are duplicated farmers in the data when I'm trying to reshape the `r` data from wide to long. Let's check them out here and see if we can figure out which observation is right. 
+
+* Check Alex's do file to see if there's mention of these farmers. [No mention]
+* Check the baseline values as these should line up.
+
+```{r}
+length(r$sample_id)==length(unique(r$sample_id))
+dups <- r$sample_id[duplicated(r$sample_id)]
+dupIndex <- which(duplicated(r$sample_id))
+
+#dupDat <- r[r$sample_id %in% dups,]
+head(r[r$sample_id==dups[1],])
+head(r[r$sample_id==dups[2],])
+```
+
+
+## Combine long with baseline
 
 Let's first check with the baseline data to see what variables we made there so I can make the same ones from the round 1 data. There are some variables that are baseline variables only like variables asking about historical practices. There are then other variables that will vary by season. These are the variables that we ultimately want in to shape in a long dataset by season to analyze changes overtime in practices and soil management. I think this will result in a dataset that has one row per farmer per season. Some variables may not fit nicely into this but we can deal with those. For variables that aren't changing over time they'll show as not important in our model. They're important for matching farmers.
 
@@ -470,6 +489,88 @@ There are a lot of variables to try to line up. Some already have the same name 
 # check the names that already match
 baselineFound <- names(b)[names(b) %in% names(r)] # not many variable names are aligned
 ```
+
+Update variable names so that any variable with 16a or 16b has a the `a` or `b` season designation at the end it so I can replicate the `gather()` and `spread()` options for reorganizing the data by season and by plot. This means that the variable names will retain their designation of first or second application and be distinguishable.
+
+TODO(mattlowes) - rename the variables according to that convention to reshape the `r` data. Keep the baseline data in mind.
+
+```{r}
+r <- r %>% rename(
+  which_crop_1_16a = which_crop_16a_1,
+  which_maize_seed_1_16a = which_maize_seed_16a_1,
+  which_crop_2_16a = which_crop_16a_2,
+  which_maize_seed_2_16a = which_maize_seed_16a_2,
+  kg_seed_veg_1_16a = kg_seed_veg_16a_1,
+  kg_seed_1_16a = kg_seed_16a_1,
+  kg_seed_2_16a = kg_seed_16a_2,
+  kg_yield_1_16a = kg_yield_16a_1,
+  kg_yield_2_16a = kg_yield_16a_2,
+  yield_compare_1_16a = yield_compare_16a_1,
+  yield_compare_2_16a = yield_compare_16a_2,
+  
+  which_crop_1_16b = which_crop_16b_1,
+  which_maize_seed_1_16b = which_maize_seed_16b_1,
+  which_crop_2_16b = which_crop_16b_2,
+  which_maize_seed_2_16b = which_maize_seed_16b_2,
+  #kg_seed_veg_1_16a = kg_seed_veg_16a_1,
+  kg_seed_1_16b = kg_seed_16b_1,
+  kg_seed_2_16b = kg_seed_16b_2,
+  kg_yield_1_16b = kg_yield_16b_1,
+  kg_yield_2_16b = kg_yield_16b_2,
+  yield_compare_1_16b = yield_compare_16b_1,
+  yield_compare_2_16b = yield_compare_16b_2
+)
+
+
+
+aSeason <- names(r)[grep("16a", names(r))]
+bSeason <- names(r)[grep("16b", names(r))]
+seasonalVars <- rbind(aSeason, bSeason, "sample_id")
+farmerVars <- names(r)[!names(r) %in% seasonalVars]
+```
+
+
+```{r}
+# example data
+df <- data.frame(
+  id = 1:10,
+  time = as.Date('2009-01-01') + 0:9,
+  Q3.2.1. = rnorm(10, 0, 1),
+  Q3.2.2. = rnorm(10, 0, 1),
+  Q3.2.3. = rnorm(10, 0, 1),
+  Q3.3.1. = rnorm(10, 0, 1),
+  Q3.3.2. = rnorm(10, 0, 1),
+  Q3.3.3. = rnorm(10, 0, 1)
+)
+
+df %>%
+  gather(key, value, -id, -time) %>%
+  extract(key, c("question", "loop_number"), "(Q.\\..)\\.(.)") %>%
+  spread(question, value)
+
+# aDat <- r[,names(r) %in% aSeason] # works for this too!
+# aDat <- aDat[,grep("16a_1", names(aDat))] # works for this
+aDat <- r[,names(r) %in% seasonalVars] # works for this!
+aDat <- aDat[-dupIndex,]
+
+
+#http://stackoverflow.com/questions/25925556/gather-multiple-sets-of-columns
+# this works with aDat
+test <- aDat %>%
+  gather(key, value, -sample_id) %>%
+  extract(key, c("variable", "season"), "(^.*\\_16)(.)") %>%
+  spread(variable, value)
+
+
+test[76322,]
+test[78707,]
+test[285:286,]
+
+test <- melt(r, measure.vars = seasonalVars, id.vars = farmerVars)
+
+```
+
+TODO - reshape these variables to have a season variable and then make outcomes for each season.
 
 The `matchRounds` function updates variable names across rounds and reports the index and new name of the variables. I can then take the first part of the list for `dat1` and the second part for `dat2`.
 
@@ -530,7 +631,7 @@ test <- lapply(namesToUpdate, function(x,y,z){
 
 ```
 
-## Combine long with baseline
+## Create new variables
 
 # Analysis
 
