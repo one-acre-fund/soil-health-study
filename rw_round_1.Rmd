@@ -475,6 +475,59 @@ head(r[r$sample_id==dups[1],])
 head(r[r$sample_id==dups[2],])
 ```
 
+Let's solve the unique id issue by looking at identifying information in the baseline data
+```{r}
+
+
+roundId <- r %>%
+  dplyr::select(district, cell_field, village, sample_id, farmer_list) %>%
+  filter(r$sample_id %in% dups)
+
+
+
+#d
+load("rawBaselineWithIdentifers.Rdata")
+baseId <- d %>% 
+  dplyr::select(district, selected_cell, umudugudu,  sample_id, farmer_name ) %>%
+  filter(d$sample_id %in% dups)
+
+#baseId
+roundId
+
+```
+
+### Correct duplicates
+
+Correct the duplicates I can and drop the others for now. Flag the duplicated ones and save them to share with Nathaniel.
+
+TODO(mattlowes) - share any remaining duplicates with Nathaniel and see if he has a solution. Also see if he can understand why this might have happened and if they should actually have a different sample id.
+
+```{r}
+r <- r %>% mutate(
+    dup = ifelse(
+      sample_id == "12" & cell_field == "MUNANIRA" |
+      sample_id == "137" & village == "Rusuma" |
+      sample_id == "1503" & farmer_list=="NAKAGIZE Val\\xc3\\xa9rie" |
+      #sample_id == "2044C" &  # same!
+      sample_id == "2278" & cell_field=="Nkira A" | # check this as maybe this was the only thing wrong?
+      #sample_id == "2299" & # same!
+      sample_id == "2610" & village=="agakiri" #|  #agakiri is close to gakiri in spelling. Is this just a typo?
+      #sample_id == "2612" &  # same names!
+      #sample_id == "2612C" # same names!
+      , 1, 0)
+) %>% filter(
+  dup!=1
+) %>% dplyr::select(-dup) 
+
+# run this code again from above to get updated duplicates list
+#length(r$sample_id)==length(unique(r$sample_id))
+dups <- r$sample_id[duplicated(r$sample_id)]
+dupIndex <- which(duplicated(r$sample_id))
+
+# for the time being drop the observations that are duplicates
+r <- r[!r$sample_id %in% dups,]
+
+```
 
 ## Reshape variables
 
@@ -494,7 +547,7 @@ baselineFound <- names(b)[names(b) %in% names(r)] # not many variable names are 
 
 Update variable names so that any variable with 16a or 16b has a the `a` or `b` season designation at the end it so I can replicate the `gather()` and `spread()` options for reorganizing the data by season and by plot. This means that the variable names will retain their designation of first or second application and be distinguishable.
 
-TODO(mattlowes) - rename the variables according to that convention to reshape the `r` data. Keep the baseline data in mind.
+TODO(mattlowes) - rename the variables according to that convention to reshape the `r` data. Keep the baseline data in mind as we'll want to do the same thing with the baseline data to make them match.
 
 ```{r}
 r <- r %>% rename(
@@ -525,50 +578,110 @@ r <- r %>% rename(
 
 
 
-aSeason <- names(r)[grep("16a", names(r))]
-bSeason <- names(r)[grep("16b", names(r))]
-seasonalVars <- rbind(aSeason, bSeason, "sample_id")
-farmerVars <- names(r)[!names(r) %in% seasonalVars]
+aSeason <- names(r)[grep("(1.a)", names(r))]
+bSeason <- names(r)[grep("(1.b)", names(r))]
+seasonalVars <- c(aSeason, bSeason, "sample_id")
+farmerVars <- c(names(r)[!names(r) %in% seasonalVars], "sample_id")
 ```
 
 
 ```{r}
 # example data
-df <- data.frame(
-  id = 1:10,
-  time = as.Date('2009-01-01') + 0:9,
-  Q3.2.1. = rnorm(10, 0, 1),
-  Q3.2.2. = rnorm(10, 0, 1),
-  Q3.2.3. = rnorm(10, 0, 1),
-  Q3.3.1. = rnorm(10, 0, 1),
-  Q3.3.2. = rnorm(10, 0, 1),
-  Q3.3.3. = rnorm(10, 0, 1)
-)
+# df <- data.frame(
+#   id = 1:10,
+#   time = as.Date('2009-01-01') + 0:9,
+#   Q3.2.1. = rnorm(10, 0, 1),
+#   Q3.2.2. = rnorm(10, 0, 1),
+#   Q3.2.3. = rnorm(10, 0, 1),
+#   Q3.3.1. = rnorm(10, 0, 1),
+#   Q3.3.2. = rnorm(10, 0, 1),
+#   Q3.3.3. = rnorm(10, 0, 1)
+# )
+# 
+# df %>%
+#   gather(key, value, -id, -time) %>%
+#   extract(key, c("question", "loop_number"), "(Q.\\..)\\.(.)") %>%
+#   spread(question, value)
+```
 
-df %>%
-  gather(key, value, -id, -time) %>%
-  extract(key, c("question", "loop_number"), "(Q.\\..)\\.(.)") %>%
-  spread(question, value)
-
+```{r}
+source("../oaflib/misc.R")
 # aDat <- r[,names(r) %in% aSeason] # works for this too!
 # aDat <- aDat[,grep("16a_1", names(aDat))] # works for this
 aDat <- r[,names(r) %in% seasonalVars] # works for this!
-aDat <- aDat[-dupIndex,]
-
 
 #http://stackoverflow.com/questions/25925556/gather-multiple-sets-of-columns
-# this works with aDat
-test <- aDat %>%
+seasonalDat <- aDat %>%
   gather(key, value, -sample_id) %>%
-  extract(key, c("variable", "season"), "(^.*\\_16)(.)") %>%
+  tidyr::extract(key, c("variable", "season"), "(^.*\\_1.)(.)") %>%
   mutate(season = paste0("16", season)) %>% 
   spread(variable, value)
 
-# test[76322,]
-# test[78707,]
-# test[285:286,]
+names(seasonalDat) <- gsub("_16", "", names(seasonalDat))
 
-#test <- melt(r, measure.vars = seasonalVars, id.vars = farmerVars)
+```
+
+TODO(mattlowes) - confirm that the tidyr process worked as I expected as there are numerous missing values. These seem to appear where the variable only had one version of the variable, _16, rather than a _16a and a _16b. Check out how this is handling variables with _17 instead of _16.
+
+## Merge seasonal and demographic data
+
+```{r}
+rs <- left_join(seasonalDat, r[,c(names(r)[!names(r) %in% seasonalVars],"sample_id")], by="sample_id")
+```
+
+## Create new variables
+
+### Field variables
+
+```{r}
+rs$dim <- rs$field_length * rs$field_width
+inputVars <- names(rs)[grep("fert_|quality_compost|type_compost|which_crop|which_maize", names(rs))]
+
+rs[,inputVars] <- sapply(rs[, inputVars], tolower)
+
+# input quanitites
+rs$fert_kg_urea1 <- ifelse(rs$fert_type1=="urea", rs$fert_kg1, NA)
+rs$fert_kg_urea2 <- ifelse(rs$fert_type2=="urea", rs$fert_kg2, NA)
+rs$fert_total_urea <- apply(rs[, grep("(urea.)", names(rs))], 1, function(x){
+  sum(as.numeric(x), na.rm=T)})
+
+
+rs$fert_kg_dap1 <- ifelse(rs$fert_type1=="dap", rs$fert_kg1, NA)
+rs$fert_kg_dap2 <- ifelse(rs$fert_type2=="dap", rs$fert_kg2, NA)
+rs$fert_total_dap <- apply(rs[, grep("(dap.)", names(rs))], 1, function(x){
+  sum(as.numeric(x), na.rm=T)})
+
+
+rs$fert_kg_17npk1 <- ifelse(rs$fert_type1=="npk-17", rs$fert_kg1, NA)
+rs$fert_kg_17npk2 <- ifelse(rs$fert_type2=="npk-17", rs$fert_kg2, NA)
+rs$fert_total_npk17 <- apply(rs[, grep("(17npk.)", names(rs))], 1, function(x){
+  sum(as.numeric(x), na.rm=T)})
+
+
+rs$fert_kg_22npk1 <- ifelse(rs$fert_type1=="npk-22", rs$fert_kg1, NA)
+rs$fert_kg_22npk2 <- ifelse(rs$fert_type2=="npk-22", rs$fert_kg2, NA)
+rs$fert_total_npk22 <- apply(rs[, grep("(22npk.)", names(rs))], 1, function(x){
+  sum(as.numeric(x), na.rm=T)})
+
+
+rs$fert_kg_2555npk1 <- ifelse(rs$fert_type1=="npk2555", rs$fert_kg1, NA)
+rs$fert_kg_2555npk2 <- ifelse(rs$fert_type2=="npk2555", rs$fert_kg2, NA)
+rs$fert_total_npk2555 <- apply(rs[, grep("(2555npk.)", names(rs))], 1, function(x){
+  sum(as.numeric(x), na.rm=T)})
+
+#lime
+rs$lime_outside <- ifelse(rs$d_lime=="lime_outside", rs$kg_lime, NA)
+rs$lime_tubura <- ifelse(rs$d_lime=="lime_tubura", rs$kg_lime, NA)
+rs$lime_both <- ifelse(rs$d_lime=="both_tubura_non_tubura", rs$kg_lime, NA)
+```
+
+### Demographic variables
+
+```{r}
+rs$season_16a <- ifelse(grepl("16a", rs$n_tubura_season), 1, 0)
+rs$season_16b <- ifelse(grepl("16b", rs$n_tubura_season), 1, 0)
+rs$season_17a <- ifelse(grepl("17a", rs$n_tubura_season), 1, 0)
+rs$notClient3Seasons <- ifelse(grepl("not_a_client", rs$n_tubura_season), 1, 0)
 
 ```
 
@@ -633,7 +746,6 @@ test <- lapply(namesToUpdate, function(x,y,z){
 
 ```
 
-## Create new variables
 
 # Analysis
 
