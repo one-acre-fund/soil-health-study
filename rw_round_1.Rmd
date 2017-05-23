@@ -69,6 +69,8 @@ The objectives of this notebook are to analyze the results from the first follow
 
 # Key Takeaways
 
+> See section with [Notes for Nathaniel](#lessons-for-nathaniel)
+
 > Coming soon!
 
 # Data Prep
@@ -165,7 +167,8 @@ It looks like the data from CommCare aligns with the raw data Alex worked with a
 varTest <- data.frame(fromcc = names(r)[10:409], fromav = names(avRaw)[2:401])
 # head(varTest)
 # tail(varTest)
-#varTest[90:120,]
+varTest[90:120,]
+write.csv(varTest, file="variableNameCheck.csv")
 ```
 
 It seems to line up okay (with some adjustments)! To incorporate Alex's cleaning code I have to export the data from R to a form Stata accept, run the code, and then load the data back in.
@@ -186,6 +189,8 @@ return(df)
 
 r <- charClean(r)
 ```
+
+Here is where I actually update the names in `r` to match Alex's original data.
 
 ```{r}
 names(r)[10:409] <- names(avRaw)[2:401]
@@ -715,7 +720,6 @@ rs$fert_kgare_2555npk2 <- rs$fert_kg_2555npk2/rs$are
 rs$fert_kgare_2555npk_total <- rs$fert_total_2555npk/rs$are
 ```
 
-
 ### Demographic variables
 
 ```{r}
@@ -751,6 +755,40 @@ ggplot(rs, aes(x=field_width, y=field_length)) +
   labs(title= "Field dimensions", x = "Width (m)", y= "Length (m)")
 ```
 
+## Map of samples
+
+```{r}
+library(dismo)
+if (!(exists("rwanda"))){
+  # Only need to geocode once per session library(dismo)
+  rwanda <- try(geocode("Rwanda"))
+  # If the internet fails, use a local value 
+  if (class(rwanda) == "try-error") {
+    rwanda <- ""
+    # arusha$longitude <- 36.68299
+    # arusha$latitude <- -3.386925
+  } 
+}
+```
+
+See [here](http://rstudio-pubs-static.s3.amazonaws.com/208998_3592d3c6ac9a47ccbf3a3997ec2b68ec.html) for more on using markerClusterOptions in leaflet.
+
+In the map below, the larger green circles are Tubura farmers and the smaller blue circles are control farmers. **The number of observations will appear larger on the map because it's plot level instead of farmer level.**
+
+```{r leaflet, fig.width=9, fig.height=7}
+e <- rs[!is.na(rs$lon),]
+ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e)
+
+pal <- colorNumeric(c("navy", "green"), domain=unique(ss$client))
+map <- leaflet() %>% addTiles() %>%
+  setView(lng=rwanda$longitude, lat=rwanda$latitude, zoom=8) %>%
+  addCircleMarkers(lng=ss$lon, lat=ss$lat, 
+                   radius= ifelse(ss$client==1, 10,6),
+                   color = pal(ss$client),
+clusterOptions = markerClusterOptions(disableClusteringAtZoom=13, spiderfyOnMaxZoom=FALSE))
+
+map
+```
 
 ## Lessons for Nathaniel
 
@@ -758,6 +796,8 @@ Here are the key pieces of feedback for the next survey round:
 
 * Variable naming convention - quite a bit of work had to be done to work with the data. Any plot specific variable should be named with _(year)(season) at the end. This will make it easy to reshape those variables into plot level variables.
 * Check variables - some of the input variables are quite large. Is it possible to have CC automatically calculate quantities in a per are rate and signal the enumerator if the values seem high? Better field estimates should help with this but that sort of check would be a good reality check in the field.
+* Soil texturing - how long did this take? I think we can have this done in the lab
+* Seed types - not many farmers responded to the seed type question. Do we have a reason why from either farmers or enumerators? 
 
 
 ## Combine long with baseline
