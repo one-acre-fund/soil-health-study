@@ -635,6 +635,9 @@ rs <- left_join(seasonalDat, r[,c(names(r)[!names(r) %in% seasonalVars],"sample_
 
 ```{r}
 rs$dim <- rs$field_length * rs$field_width
+rs$are <- rs$dim/100
+
+
 inputVars <- names(rs)[grep("fert_|quality_compost|type_compost|which_crop|which_maize", names(rs))]
 
 rs[,inputVars] <- sapply(rs[, inputVars], tolower)
@@ -646,34 +649,72 @@ rs$fert_total_urea <- apply(rs[, grep("(urea.)", names(rs))], 1, function(x){
   sum(as.numeric(x), na.rm=T)})
 
 
+
 rs$fert_kg_dap1 <- ifelse(rs$fert_type1=="dap", rs$fert_kg1, NA)
 rs$fert_kg_dap2 <- ifelse(rs$fert_type2=="dap", rs$fert_kg2, NA)
 rs$fert_total_dap <- apply(rs[, grep("(dap.)", names(rs))], 1, function(x){
   sum(as.numeric(x), na.rm=T)})
 
 
+
 rs$fert_kg_17npk1 <- ifelse(rs$fert_type1=="npk-17", rs$fert_kg1, NA)
 rs$fert_kg_17npk2 <- ifelse(rs$fert_type2=="npk-17", rs$fert_kg2, NA)
-rs$fert_total_npk17 <- apply(rs[, grep("(17npk.)", names(rs))], 1, function(x){
+rs$fert_total_17npk <- apply(rs[, grep("(17npk.)", names(rs))], 1, function(x){
   sum(as.numeric(x), na.rm=T)})
+
 
 
 rs$fert_kg_22npk1 <- ifelse(rs$fert_type1=="npk-22", rs$fert_kg1, NA)
 rs$fert_kg_22npk2 <- ifelse(rs$fert_type2=="npk-22", rs$fert_kg2, NA)
-rs$fert_total_npk22 <- apply(rs[, grep("(22npk.)", names(rs))], 1, function(x){
+rs$fert_total_22npk <- apply(rs[, grep("(22npk.)", names(rs))], 1, function(x){
   sum(as.numeric(x), na.rm=T)})
+
 
 
 rs$fert_kg_2555npk1 <- ifelse(rs$fert_type1=="npk2555", rs$fert_kg1, NA)
 rs$fert_kg_2555npk2 <- ifelse(rs$fert_type2=="npk2555", rs$fert_kg2, NA)
-rs$fert_total_npk2555 <- apply(rs[, grep("(2555npk.)", names(rs))], 1, function(x){
+rs$fert_total_2555npk <- apply(rs[, grep("(2555npk.)", names(rs))], 1, function(x){
   sum(as.numeric(x), na.rm=T)})
+
 
 #lime
 rs$lime_outside <- ifelse(rs$d_lime=="lime_outside", rs$kg_lime, NA)
 rs$lime_tubura <- ifelse(rs$d_lime=="lime_tubura", rs$kg_lime, NA)
 rs$lime_both <- ifelse(rs$d_lime=="both_tubura_non_tubura", rs$kg_lime, NA)
 ```
+
+```{r}
+inputVars <- names(rs)[grep("field_length|field_width|dim|fert_kg_|fert_total_|lime_", names(rs))]
+
+rs[,inputVars] <-sapply(rs[,inputVars], as.numeric)
+
+
+#urea
+rs$fert_kgare_urea1 <- rs$fert_kg_urea1/rs$are
+rs$fert_kgare_urea2 <- rs$fert_kg_urea2/rs$are
+rs$fert_kgare_urea_total <- rs$fert_total_urea/rs$are
+
+#dap
+rs$fert_kgare_dap1 <- rs$fert_kg_dap1/rs$are
+rs$fert_kgare_dap2 <- rs$fert_kg_dap2/rs$are
+rs$fert_kgare_dap_total <- rs$fert_total_dap/rs$are
+
+#npk17
+rs$fert_kgare_17npk1 <- rs$fert_kg_17npk1/rs$are
+rs$fert_kgare_17npk2 <- rs$fert_kg_17npk2/rs$are
+rs$fert_kgare_17npk_total <- rs$fert_total_17npk/rs$are
+
+#npk22
+rs$fert_kgare_22npk1 <- rs$fert_kg_22npk1/rs$are
+rs$fert_kgare_22npk2 <- rs$fert_kg_22npk2/rs$are
+rs$fert_kgare_22npk_total <- rs$fert_total_22npk/rs$are
+
+#2555 npk
+rs$fert_kgare_2555npk1 <- rs$fert_kg_2555npk1/rs$are
+rs$fert_kgare_2555npk2 <- rs$fert_kg_2555npk2/rs$are
+rs$fert_kgare_2555npk_total <- rs$fert_total_2555npk/rs$are
+```
+
 
 ### Demographic variables
 
@@ -684,6 +725,40 @@ rs$season_17a <- ifelse(grepl("17a", rs$n_tubura_season), 1, 0)
 rs$notClient3Seasons <- ifelse(grepl("not_a_client", rs$n_tubura_season), 1, 0)
 
 ```
+
+## Visualize variables
+
+```{r}
+fieldInputVars <- names(rs)[grep("field_length|field_width|dim|fert_kgare_", names(rs))]
+
+
+for(i in 1:length(fieldInputVars)){
+    base <- ggplot(rs, aes(x=rs[,fieldInputVars[i]])) + labs(x = fieldInputVars[i], title=fieldInputVars[i])
+    temp1 <- base + geom_density()
+    temp2 <- base + geom_histogram()
+    #temp2 <- boxplot(r[,numVars[i]],main=paste0("Variable: ", numVars[i]))
+    multiplot(temp1, temp2, cols = 2)
+}
+
+
+```
+
+Check field dimensions:
+
+```{r}
+ggplot(rs, aes(x=field_width, y=field_length)) + 
+  geom_point() +
+  labs(title= "Field dimensions", x = "Width (m)", y= "Length (m)")
+```
+
+
+## Lessons for Nathaniel
+
+Here are the key pieces of feedback for the next survey round:
+
+* Variable naming convention - quite a bit of work had to be done to work with the data. Any plot specific variable should be named with _(year)(season) at the end. This will make it easy to reshape those variables into plot level variables.
+* Check variables - some of the input variables are quite large. Is it possible to have CC automatically calculate quantities in a per are rate and signal the enumerator if the values seem high? Better field estimates should help with this but that sort of check would be a good reality check in the field.
+
 
 ## Combine long with baseline
 
