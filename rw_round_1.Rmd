@@ -44,7 +44,7 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 # car is for performing logit transformations
 libs <- c("dplyr", "reshape2", "knitr", "ggplot2", "tibble", "readxl", 
     "MASS", "gridExtra", "cowplot", "robustbase", "car", "RStata", "foreign",
-    "tidyr")
+    "tidyr", "readxl")
 lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F)
 
 #### define helpful functions
@@ -125,9 +125,10 @@ Here I access the soil predictions from the OAF soil lab. [Patrick Bell](mailto:
 ```{r}
 soilDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_second_round", "4_predicted", "other_summaries"))
 soil <- read.csv(file=paste(soilDir, "combined-predictions-including-bad-ones.csv", sep = "/"))
-```
 
-## Combine baseline and R1
+idDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_second_round", "5_merged"))
+Identifiers <- read_excel(paste(idDir,"database.xlsx",sep="/"), sheet=1)
+```
 
 Combine the available data by farmer and resolve merging issues. These data can be combined long as long as the variable names are consistent or wide. I'm going to combine the data long and use `split` type commands to aggregate the data more easily. Confirm the variable names are consistent. By advancing this code on 5/9/17, I'm for the time being ignoring the cleaning Alex did in his do file. I'll need to go back and incorporate those changes.
 
@@ -207,6 +208,48 @@ Now load the result of the Stata file
 ```{r}
 r <- read.csv("cleanedforR.csv", stringsAsFactors = F)
 ```
+
+## Merge in soil data
+
+First merge the soil data with the identifiers as we should get full matches. Then merge soil data to the survey data
+
+```{r}
+Identifiers <- Identifiers %>% rename(
+  sample_id = `Sample ID`,
+  SSN = `Lab ssn`
+) %>% mutate(
+  sample_id = gsub(" ", "", tolower(sample_id))
+)
+
+table(Identifiers$SSN %in% soil$SSN) # full matches
+
+soil <- left_join(soil, Identifiers[, c("SSN", "sample_id")], by="SSN") 
+```
+
+We have some surveys that don't have soil data. It seems the soil sample id in the `Identifiers` data are a bit messy. Let's clean both up above by removing spaces and making lower case.
+
+```{r}
+r$sample_id <- tolower(r$sample_id)
+
+table(r$sample_id %in% soil$sample_id)
+r$sample_id[!r$sample_id %in% soil$sample_id]
+
+write.csv(r$sample_id[!r$sample_id %in% soil$sample_id], "surveysWoSoil.csv", row.names = F)
+```
+
+And some soil sample_id that don't have a survey
+```{r}
+soil$sample_id[!soil$sample_id %in% r$sample_id]
+write.csv(soil$sample_id[!soil$sample_id %in% r$sample_id], "soilsWoSurvey.csv", row.names = F)
+```
+
+```{r}
+dim(r)
+r <- left_join(r, soil, by="sample_id")
+dim(r) # why is it one row longer after the left_join?
+```
+
+This code is old. Delete.
 
 ```{r,eval=F}
 newName <- read_excel("var_names.xlsx", sheet=1)
@@ -798,6 +841,8 @@ Here are the key pieces of feedback for the next survey round:
 * Check variables - some of the input variables are quite large. Is it possible to have CC automatically calculate quantities in a per are rate and signal the enumerator if the values seem high? Better field estimates should help with this but that sort of check would be a good reality check in the field.
 * Soil texturing - how long did this take? I think we can have this done in the lab
 * Seed types - not many farmers responded to the seed type question. Do we have a reason why from either farmers or enumerators? 
+* NAs - so many NAs in the data! Why?
+* Timing for upcoming survey
 
 
 ## Combine long with baseline
