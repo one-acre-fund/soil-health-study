@@ -249,51 +249,6 @@ r <- left_join(r, soil, by="sample_id")
 dim(r) # why is it one row longer after the left_join?
 ```
 
-This code is old. Delete.
-
-```{r,eval=F}
-newName <- read_excel("var_names.xlsx", sheet=1)
-
-qTypes <- c("Multiple Choice", "Phone Number or Numeric ID", "Checkbox", "Text", "Decimal", "Image Capture", "Barcode Scan", "GPS", "Integer", "Time", "Date")
-
-newName <- newName %>% dplyr::select(1:6
-) %>% dplyr::filter(newName$Type %in% qTypes) %>% as.data.frame()
-
-#newName <- newName %>% filter(new.var.name!="general.comment")
-metaVars <- names(r)[1:10]
-newNameVars <- c(metaVars, newName$new.var.name)
-
-length(newNameVars)==dim(r)[2]
-
-write.csv(newNameVars, file="newVar check.csv")
-write.csv(names(r), file="round1 Var check.csv")
-
-```
-
-```{r, eval=F}
-names(r) <- newNameVars
-
-# drop vars with drop
-r <- r[,-which(grepl("drop.", names(r)))]
-```
-
-
-```{r, eval=F}
-qNum <- c("Phone Number or Numeric ID", "Decimal", "Integer")
-nums <- newName[newName$Type %in% qNum, "new.var.name"]
-nums <- nums[-which(grepl("drop.", nums))]
-
-toRemove <- c("phone", "oafid")
-nums <- nums[!nums %in% toRemove]
-
-# add in plot.size
-#nums <- c(nums, "plot.size")
-
-r[, nums] <- as.data.frame(lapply(r[,nums], function(x){
-  as.numeric(as.character(x))
-}))
-```
-
 # Cleaning
 
 The `r` dataframe has many more variables than the baseline survey. This was in part expected; we added questions to the first follow up round based on lessons from the baseline. It's also due to how the survey was set up in CommCare. Before combining the baseline and the first follow up round I need to:
