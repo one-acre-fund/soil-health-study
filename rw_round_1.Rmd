@@ -71,7 +71,7 @@ The objectives of this notebook are to analyze the results from the first follow
 
 > See section with [Notes for Nathaniel](#lessons-for-nathaniel)
 
-> Coming soon!
+> See section with [Notes for Patrick and Step](#soil-notes-for-patrick-and-step)
 
 # Data Prep
 
@@ -370,7 +370,7 @@ repGraphs <- function(dat, x){
   )
 }
 
-adminVars <- c(names(r)[grep("meta", names(r))], "start_time", "enum_name", "photo", "cell_field", "village", "farmer_respond", "farmer_phonenumber", "d_phone", "neighbor_phonenumber", "farmer_list", "unique_location", "comments", "gps_coord", "sample_id")
+adminVars <- c(names(r)[grep("meta", names(r))], "start_time", "enum_name", "photo", "cell_field", "village", "farmer_respond", "farmer_phonenumber", "d_phone", "neighbor_phonenumber", "farmer_list", "unique_location", "comments", "gps_coord", "sample_id", "SSN")
 nonAdminVars <- catVars[!catVars %in% adminVars]
 
 for(i in 1:length(nonAdminVars)){
@@ -383,8 +383,8 @@ for(i in 1:length(nonAdminVars)){
 r$female <- ifelse(r$gender=="female", 1, 0)
 r$district <- ifelse(grepl("nyanza", r$district)==T, "Nyanza", r$district)
 
-table(r$kg_seed_16b_1)
-table(r$kg_yield_16a_2)
+#table(r$kg_seed_16b_1)
+#table(r$kg_yield_16a_2)
 
 strtoNum <- c("kg_seed_16b_1", "kg_yield_16a_1", "kg_yield_16b_1", "kg_yield_16b_2")
 r[,strtoNum] <- sapply(r[,strtoNum], function(x){as.numeric(x)})
@@ -461,6 +461,57 @@ for(i in 1:length(numVarsNotAdmin)){
 }
 ```
 
+## Soil values
+```{r}
+ggplot(r, aes(x=Calcium, y=Magnesium)) + geom_point() +
+    stat_smooth(method="loess") +
+    labs(x = "Calcium (m3)", y= "Magnesium (m3)", title="Calcium and Magnesium relationship")
+
+ggplot(r, aes(x=pH, y=Calcium)) + geom_point() +
+  stat_smooth(method="loess") +
+  labs(x = "pH", y="Calcium (m3)", title = "pH and Calcium relationship")
+
+ggplot(r, aes(x=pH, y=Magnesium)) + geom_point() +
+  stat_smooth(method="loess") +
+  labs(x = "pH", y="Magnesium (m3)", title = "pH and Magnesium relationship")
+
+ggplot(r, aes(x=pH, y=X.Exchangeable.Acidity)) + geom_point() +
+  stat_smooth(method="loess") +
+  labs(x = "pH", y="Exchangeable Aluminum", title = "pH and Aluminum relationship")
+
+ggplot(r, aes(x=X.Organic.Carbon, y=X.Total.Nitrogen)) + geom_point() + 
+  stat_smooth(method="loess") +
+  labs(x = "Total Carbon", y="Total Nitrogen", title = "Carbon and Nitrogen relationship")
+```
+
+```{r}
+soilVars <- names(r)[which(names(r)=="pH"):which(names(r)=="X.Total.Nitrogen")]
+```
+
+### Initial T vs. C soil comparison
+
+**Please note**: These are raw comparisons and thus should not be taken as initial findings for how T and C farmers compare. Farmers will be matched to ensure a proper comparison.
+
+```{r}
+for(i in 1:length(soilVars)){
+  p1 <- ggplot(data=r, aes(x=as.factor(d_client_16b), y=r[,soilVars[i]])) + 
+    geom_boxplot() +
+    labs(x="Tubura Farmer", y=soilVars[i])
+  p2 <- ggplot(data=r, aes(x=r[,soilVars[i]])) + 
+    geom_density() + 
+    labs(x=soilVars[i])
+  multiplot(p1, p2, cols=2)
+}
+
+
+```
+
+
+### Soil notes for Patrick and Step
+
+* The carbon vs. nitrogen scatter plot looks odd in that the values are clumped in discrete lines. Why might that be?
+* What are appropriate cutoff values for the lab predictions? (Patrick, as a general question, we should probably apply those cutoffs to any lab data before sharing it with the teams to simplify working with those data)
+
 ## Check for unique ids
 
 I'm seeing that there are duplicated farmers in the data when I'm trying to reshape the `r` data from wide to long. Let's check them out here and see if we can figure out which observation is right. 
@@ -495,7 +546,7 @@ baseId <- d %>%
   filter(d$sample_id %in% dups)
 
 #baseId
-roundId
+#roundId
 
 ```
 
@@ -728,7 +779,7 @@ rs$notClient3Seasons <- ifelse(grepl("not_a_client", rs$n_tubura_season), 1, 0)
 
 ```
 
-## Visualize variables
+### Visualize field variables
 
 ```{r}
 fieldInputVars <- names(rs)[grep("field_length|field_width|dim|fert_kgare_", names(rs))]
