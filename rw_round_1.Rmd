@@ -58,11 +58,6 @@ options("RStata.StataVersion" = 12)
 options("RStata.StataPath" = "/Applications/Stata/StataSE.app/Contents/MacOS/stata-se")
 ```
 
-```{r}
-dataDir <- normalizePath(file.path("..", "..", "data"))
-forceUpdateAll <- FALSE
-```
-
 # Objectives
 
 The objectives of this notebook are to analyze the results from the first follow up round of the Rwanda long term soil health study.
@@ -72,6 +67,8 @@ The objectives of this notebook are to analyze the results from the first follow
 > See section with [Notes for Nathaniel](#lessons-for-nathaniel)
 
 > See section with [Notes for Patrick and Step](#soil-notes-for-patrick-and-step)
+
+> [Paired Yield and Soil](#clean-soil-ids) ids are a mess. We lose a lot of observations due to unreconciliable duplicates or ids that simply don't have a match. We lose almost 500 observations. 
 
 # Data Prep
 
@@ -85,6 +82,11 @@ Overall I want to bring in 3 data sources:
 * We can also look at maize paired yield and soil samples from 17A.
 
 ## Baseline data
+
+```{r}
+dataDir <- normalizePath(file.path("..", "..", "data"))
+forceUpdateAll <- FALSE
+```
 
 ```{r}
 baselineDir <- normalizePath(file.path("..", "rw_baseline", "data"))
