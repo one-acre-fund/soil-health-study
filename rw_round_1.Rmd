@@ -68,7 +68,9 @@ The objectives of this notebook are to analyze the results from the first follow
 
 > See section with [Notes for Patrick and Step](#soil-notes-for-patrick-and-step)
 
-> [Paired Yield and Soil](#clean-soil-ids) ids are a mess. We lose a lot of observations due to unreconciliable duplicates or ids that simply don't have a match. We lose almost 500 observations. 
+> [Paired Yield and Soil](#clean-soil-ids) ids are a mess. We lose a lot of observations due to unreconciliable duplicates or ids that simply don't have a match. We lose almost 500 observations.
+
+> See [initial yield response analysis](#individual-soil-models)
 
 TODO - check projection from baseline maps, are they shifted over?
 TODO - how to connect photos to farmers for enumerators
@@ -1171,8 +1173,17 @@ py <- py %>%
 
 ### Clean and construct vars
 
-I'm going to take a quick guess at how kg/m2 and t/ha yield calculations were made so that I can set up the analyses I want. 
-**Disclaimer**: These should be updated based on what Nathaniel says.
+I'm going to take a quick guess at how kg/m2 and t/ha yield calculations were made so that I can set up the analyses I want. I'm first incorporating chagnes to the data Alex Villec did in his .do file. See `cleans_harvest_16b.do` starting on line 85.
+
+```{r}
+py$box_length1 <- ifelse(py$d_box_lenght1!=7 & py$d_box_lenght1!=3, 5, py$d_box_lenght1)
+py$box_width1 <- ifelse(py$d_box_width1!=7 & py$d_box_width1!=3, 5, py$d_box_width1)
+
+py$box_length2 <- ifelse(py$d_box_length2!=7 & py$d_box_length2!=3, 5, py$d_box_length2)
+py$box_width2 <- ifelse(py$d_box_width2!=7 & py$d_box_width2!=3, 5, py$d_box_width2)
+
+```
+
 
 ```{r}
 calculateYield <- function(bagA, bagB, lenA, lenB, widthA, widthB, df) {
@@ -1201,11 +1212,12 @@ calculateYield <- function(bagA, bagB, lenA, lenB, widthA, widthB, df) {
   return(df)
 }
 
-py <- calculateYield("box_kg1", "box_kg2", "d_box_lenght1", "d_box_length2", "d_box_width1", "d_box_width2", py)
+py <- calculateYield("box_kg1", "box_kg2", "box_length1", "box_length2", "box_width1", "box_width2", py)
 
 respVar <- c(names(py)[which(names(py)=="ph"): which(names(py)=="x.total.nitrogen")], "yield")
 
 yr <- py[,names(py) %in% respVar]
+yr$tha <- yr$yield * 10
 ```
 
 ### Yield response curves
@@ -1329,7 +1341,7 @@ soilVars <- names(yr)[which(names(yr)=="ph"):which(names(yr)=="x.total.nitrogen"
 
 invisible(lapply(soilVars, function(x){
   #print(paste0("Soil variable: ", x))
-  plm(lm(yield ~ yr[,x], data=yr))
+  plm(lm(tha ~ yr[,x], data=yr))
   
 }))
 ```
@@ -1351,7 +1363,7 @@ respCurve <- function(dat, yVar, xVar, yLab, xLab, gTitle){
 # response curves
 for(i in 1:length(soilVars)){
   print(
-    respCurve(yr, "yield", soilVars[i],"Yield (kg/m2)", soilVars[i], gTitle = paste0("Basic response curve: ", soilVars[i]))
+    respCurve(yr, "tha", soilVars[i],"Yield (t/ha)", soilVars[i], gTitle = paste0("Basic response curve: ", soilVars[i]))
   )
 }
 
