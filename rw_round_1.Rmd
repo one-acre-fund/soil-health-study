@@ -70,6 +70,9 @@ The objectives of this notebook are to analyze the results from the first follow
 
 > [Paired Yield and Soil](#clean-soil-ids) ids are a mess. We lose a lot of observations due to unreconciliable duplicates or ids that simply don't have a match. We lose almost 500 observations. 
 
+TODO - check projection from baseline maps, are they shifted over?
+TODO - how to connect photos to farmers for enumerators
+
 # Data Prep
 
 I'm going to load the baseline data from the baseline analysis. The report and data can be found here. I'll load the new data directly from CommCare. The original baseline data object was `d` but I'm going to make it `b`. Each subsequent round will be `r1`, `r2` and so on.
@@ -554,6 +557,8 @@ baseId <- d %>%
 Correct the duplicates I can and drop the others for now. Flag the duplicated ones and save them to share with Nathaniel.
 
 TODO(mattlowes) - share any remaining duplicates with Nathaniel and see if he has a solution. Also see if he can understand why this might have happened and if they should actually have a different sample id.
+
+* share the merged data for Nathaniel to put into CC (include the duplicate ids)
 
 ```{r}
 r <- r %>% mutate(
@@ -1166,9 +1171,194 @@ py <- py %>%
 
 ### Clean and construct vars
 
+I'm going to take a quick guess at how kg/m2 and t/ha yield calculations were made so that I can set up the analyses I want. 
+**Disclaimer**: These should be updated based on what Nathaniel says.
 
+```{r}
+calculateYield <- function(bagA, bagB, lenA, lenB, widthA, widthB, df) {
+  
+  #convert to numeric
+  df[,c(bagA, bagB, lenA, lenB, widthA, widthB)] <- sapply(df[,c(bagA, bagB, lenA, lenB, widthA, widthB)], function(x){
+    as.numeric(as.character(x))
+  })
+  
+  # calculate box areas
+  df$boxAreaA <- df[,lenA] * df[,widthA]
+  df$boxAreaB <- df[,lenB] * df[,widthB]
+
+  df$yieldA <- df[,bagA] / df$boxAreaA
+  df$yieldB <- df[,bagB] / df$boxAreaB
+
+  df$yieldProbsA <- is.na(df$yieldA) | is.infinite(df$yieldA)
+  df$yieldProbsB <- is.na(df$yieldB) | is.infinite(df$yieldB)
+
+  df$yield <- (df[,bagA] + df[,bagB]) / (df$boxAreaA + df$boxAreaB)
+  
+  df$yield[!df$yieldProbsA & df$yieldProbsB] <- 
+    df$yieldA[!df$yieldProbsA & df$yieldProbsB]
+  df$yield[!df$yieldProbsB & df$yieldProbsA] <- 
+    df$yieldB[!df$yieldProbsB & df$yieldProbsA]
+  return(df)
+}
+
+py <- calculateYield("box_kg1", "box_kg2", "d_box_lenght1", "d_box_length2", "d_box_width1", "d_box_width2", py)
+
+respVar <- c(names(py)[which(names(py)=="ph"): which(names(py)=="x.total.nitrogen")], "yield")
+
+yr <- py[,names(py) %in% respVar]
+```
 
 ### Yield response curves
+
+[Link to the diagPlot](https://rpubs.com/therimalaya/43190) and the [interpretation of linear diagnostics](http://strata.uga.edu/8370/rtips/regressionPlots.html) and guidance on [GridExtra](https://cran.r-project.org/web/packages/gridExtra/vignettes/tableGrob.html)
+```{r}
+diagPlot<-function(model){
+  
+    p1<-ggplot(model, aes(.fitted, .resid))+geom_point()
+    p1<-p1+stat_smooth(method="loess")+geom_hline(yintercept=0, col="red", linetype="dashed")
+    p1<-p1+xlab("Fitted values")+ylab("Residuals")
+    p1<-p1+ggtitle("Residual vs Fitted Plot")+theme_bw()
+    
+    
+    #p2Mod <- fortify(model)
+    p2 <- ggplot() + geom_qq(data=model, aes(sample=.stdresid))
+    p2<-p2+geom_abline()
+    p2<-p2+ggtitle("Normal Q-Q")+theme_bw()
+    
+    p3<-ggplot(model, aes(.fitted, sqrt(abs(.stdresid))))+geom_point(na.rm=TRUE)
+    p3<-p3+stat_smooth(method="loess", na.rm = TRUE)+xlab("Fitted Value")
+    p3<-p3+ylab(expression(sqrt("|Standardized residuals|")))
+    p3<-p3+ggtitle("Scale-Location")+theme_bw()
+    
+    # p4<-ggplot(model, aes(seq_along(.cooksd), .cooksd))+geom_bar(stat="identity", position="identity")
+    # p4<-p4+xlab("Obs. Number")+ylab("Cook's distance")
+    # p4<-p4+ggtitle("Cook's distance")+theme_bw()
+    
+    p5<-ggplot(model, aes(.hat, .stdresid))+geom_point(aes(size=.cooksd), na.rm=TRUE)
+    p5<-p5+stat_smooth(method="loess", na.rm=TRUE)
+    p5<-p5+xlab("Leverage")+ylab("Standardized Residuals")
+    p5<-p5+ggtitle("Residual vs Leverage Plot")
+    p5<-p5+scale_size_continuous("Cook's Distance", range=c(1,5))
+    p5<-p5+theme_bw()+theme(legend.position="bottom")
+    
+    # p6<-ggplot(model, aes(.hat, .cooksd))+geom_point(na.rm=TRUE)+stat_smooth(method="loess", na.rm=TRUE)
+    # p6<-p6+xlab("Leverage hii")+ylab("Cook's Distance")
+    # p6<-p6+ggtitle("Cook's dist vs Leverage hii/(1-hii)")
+    # p6<-p6+geom_abline(slope=seq(0,3,0.5), color="gray", linetype="dashed")
+    # p6<-p6+theme_bw()
+    
+    return(list(rvfPlot=p1, 
+                qqPlot=p2, 
+                sclLocPlot=p3, 
+                #cdPlot=p4, 
+                rvlevPlot=p5
+                #cvlPlot=p6
+                ))
+}
+```
+
+```{r}
+plm <- function(x) { # x is a model
+    require(gridExtra)
+        # generate raw tables of useful information
+        cp <- data.frame(coef(summary(x))) # coefficient and p-values
+        ci <- data.frame(confint(x)) # 95% confidence intervals
+        
+        # strip out and format just what we need from cp into another table
+        names(cp) <- c("Coefficient", "Std.Error", "T", "P")
+        tab <- cp[, c("Coefficient", "P")]
+        
+        tab$Coefficient <- signif(tab$Coefficient, digits = 2)
+        tab$P <- ifelse(tab$P < 0.001, paste("<0.001", "***"),
+            ifelse(tab$P < 0.01 & tab$P >= 0.001, 
+                paste(signif(tab$P, digits = 2), "**"), 
+            ifelse(tab$P < 0.05 & tab$P >= 0.01, 
+                paste(signif(tab$P, digits = 2), "*"),
+            ifelse(tab$P < 0.1 & tab$P >= 0.05, 
+                paste(signif(tab$P, digits = 2), "."), 
+            round(tab$P, digits = 2)))))
+        
+        # add prettified confidence intervals to tab
+        ci$X2.5.. <- signif(ci$X2.5.., digits = 2)
+        ci$X97.5.. <- signif(ci$X97.5.., digits = 2)
+        tab$CI <- paste(ci$X2.5.., ci$X97.5.., sep = " to ")
+        
+        # rearrange and rename tab
+        tab <- tab[, c("Coefficient", "CI", "P")]
+        names(tab) <- c("Coefficient", "95% Confidence Interval", "P-Value")
+        
+        # remove the district controls, which are always the last 
+        tab = tab[!grepl("district", row.names(tab)), ]
+        
+        tt = ttheme_default(colhead=list(fg_params = list(parse=TRUE)))
+        tabOut = tableGrob(tab, theme=tt,
+                           rows=names(x$coefficients))  
+        
+        
+        # make the plot and table
+        do.call(grid.arrange, diagPlot(x))
+        grid.arrange(tabOut)
+        
+        # grid.arrange(
+        #  list(do.call(grid.arrange,diagPlot(x)),
+        #       tabOut),
+        #  nrow=2,
+        #  top="Model Diagnostics"
+        #  )
+        #making the graphics go together
+        
+        
+        # output = grid.arrange(plotOut,
+        #                       tabOut, 
+        #                       as.table=TRUE)
+        
+        #return(output)
+    
+    #return(do.call(cbind, tmp))
+    #return(tmp)
+}
+
+```
+
+#### Individual soil models
+
+I'm not entirely certain how to best model yield as a function of soil properties. I'm going to run a handful of models and give some initial caveats.
+
+```{r}
+soilVars <- names(yr)[which(names(yr)=="ph"):which(names(yr)=="x.total.nitrogen")]
+
+invisible(lapply(soilVars, function(x){
+  #print(paste0("Soil variable: ", x))
+  plm(lm(yield ~ yr[,x], data=yr))
+  
+}))
+```
+
+#### Individual soil curves
+
+```{r}
+
+respCurve <- function(dat, yVar, xVar, yLab, xLab, gTitle){
+  ggplot(dat) + 
+	stat_smooth(aes(x = dat[,xVar], y=dat[,yVar]), se=FALSE) + 
+	theme_bw() + 
+  labs(x = xLab, y = yLab, title=gTitle)
+}
+
+```
+
+```{r}
+# response curves
+for(i in 1:length(soilVars)){
+  print(
+    respCurve(yr, "yield", soilVars[i],"Yield (kg/m2)", soilVars[i], gTitle = paste0("Basic response curve: ", soilVars[i]))
+  )
+}
+
+```
+
+
+
 
 
 # Summary
