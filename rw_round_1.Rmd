@@ -1218,7 +1218,50 @@ respVar <- c(names(py)[which(names(py)=="ph"): which(names(py)=="x.total.nitroge
 
 yr <- py[,names(py) %in% respVar]
 yr$tha <- yr$yield * 10
+
+soilVars <- names(yr)[which(names(yr)=="ph"):which(names(yr)=="x.total.nitrogen")]
 ```
+
+```{r}
+
+soilYTab <- do.call(plyr::rbind.fill, lapply(soilVars, function(y){
+  #print(y)
+  res = iqr.check(yr, y)
+  #print(dim(res))
+  out = data.frame(var=rbind(y, paste(y, ".iqr", sep="")), res)
+  return(out)
+}))
+
+soilYTab[,2:length(soilYTab)] <- sapply(soilYTab[,2:length(soilYTab)], function(x){round(x,2)})
+```
+
+The outlier table summarizes the numeric variables with and without IQR outliers to show how the data changes based on this filter.
+
+```{r}
+knitr::kable(soilYTab, row.names = F, digits = 3, format = 'html')
+```
+
+Impose sensible constraints on soil variables
+
+**Ask Patrick and Step what those might be**. I've removed IQR outliers but that's probably a bit too crude. 
+
+```{r}
+mat <- sapply(yr[,soilVars], function(x){
+  q1 = summary(x)[[2]]
+  q3 = summary(x)[[5]] 
+  iqr = q3-q1
+  check  = ifelse(x < (q1 - (1.5*iqr)) | x > (q3 + (1.5*iqr)), NA,x)
+  return(check)
+})
+
+mat <- as.data.frame(mat)
+names(mat) <-paste0(soilVars, ".iqr")
+yr <- cbind(yr, mat)
+
+soilIqr <- names(yr)[which(names(yr)=="ph.iqr"):which(names(yr)=="x.total.nitrogen.iqr")]
+
+```
+
 
 ### Yield response curves
 
@@ -1226,10 +1269,10 @@ yr$tha <- yr$yield * 10
 ```{r}
 diagPlot<-function(model){
   
-    p1<-ggplot(model, aes(.fitted, .resid))+geom_point()
-    p1<-p1+stat_smooth(method="loess")+geom_hline(yintercept=0, col="red", linetype="dashed")
-    p1<-p1+xlab("Fitted values")+ylab("Residuals")
-    p1<-p1+ggtitle("Residual vs Fitted Plot")+theme_bw()
+    p1 <- ggplot(model, aes(.fitted, .resid)) + geom_point()
+    p1 <- p1 + stat_smooth(method="loess") + geom_hline(yintercept=0, col="red", linetype="dashed")
+    p1 <- p1 + xlab("Fitted values")+ylab("Residuals")
+    p1 <- p1 + ggtitle("Residual vs Fitted Plot")+theme_bw()
     
     
     #p2Mod <- fortify(model)
@@ -1336,9 +1379,11 @@ plm <- function(x) { # x is a model
 
 I'm not entirely certain how to best model yield as a function of soil properties. I'm going to run a handful of models and give some initial caveats.
 
-```{r}
-soilVars <- names(yr)[which(names(yr)=="ph"):which(names(yr)=="x.total.nitrogen")]
+##### Full values - individual
 
+**Obligatory disclaimer**: These summaries are intended to show if the regression models are reliable. We know already that the regressions are unable to be directly interpreted. We should try to find more established linear yield models to give our approach a firmer foundation in the literature.
+
+```{r}
 invisible(lapply(soilVars, function(x){
   #print(paste0("Soil variable: ", x))
   plm(lm(tha ~ yr[,x], data=yr))
@@ -1346,7 +1391,19 @@ invisible(lapply(soilVars, function(x){
 }))
 ```
 
+##### IQR values - individual
+```{r}
+invisible(lapply(soilIqr, function(x){
+  #print(paste0("Soil variable: ", x))
+  plm(lm(tha ~ yr[,x], data=yr))
+  
+}))
+```
+
+
 #### Individual soil curves
+
+**Obligatory disclaimer**: These curves are simplistic and can't be taken at face value. We only have soil chemistry data and it's noisy soil chemistry data. We should follow more established yield models to understand the contribution of individual featuers toward yield response.
 
 ```{r}
 
@@ -1359,11 +1416,27 @@ respCurve <- function(dat, yVar, xVar, yLab, xLab, gTitle){
 
 ```
 
+##### Full values - curves
+
 ```{r}
 # response curves
 for(i in 1:length(soilVars)){
   print(
     respCurve(yr, "tha", soilVars[i],"Yield (t/ha)", soilVars[i], gTitle = paste0("Basic response curve: ", soilVars[i]))
+  )
+}
+
+```
+
+
+
+##### IQR values - curves
+
+```{r}
+# response curves
+for(i in 1:length(soilIqr)){
+  print(
+    respCurve(yr, "tha", soilIqr[i],"Yield (t/ha)", soilIqr[i], gTitle = paste0("Basic response curve: ", soilIqr[i]))
   )
 }
 
