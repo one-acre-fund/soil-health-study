@@ -644,7 +644,6 @@ seasonalVars <- c(aSeason, bSeason, "sample_id")
 farmerVars <- c(names(r)[!names(r) %in% seasonalVars], "sample_id")
 ```
 
-
 ```{r}
 # example data
 # df <- data.frame(
@@ -903,73 +902,54 @@ b <- b %>% rename(
       field_fert_t_1 = field_fert_t,
       field_fert_t_2 = v69
     )
-      
-# check what's already the same
-matchNames <- names(rs)[names(rs) %in% names(b)]
-# matchNames
 ```
 
 TODO - now match all the variable names that need to be matched for the data to be appended. Ugh.
+TODO - it also seems to the case that some of the seed type variables are mixed up in `r` and `rs`. See what the issue is. Each plot should have only one answer for those.
+
+**Note**: the final long data by plot should have only one observation for stationary variables like slope or historical information
 
 ```{r}
-
-```
-
-```{r, eval=F}
-matchRounds <- function(dat1, dat2, var1, var2, new=NULL, choice="first"){
-
-  if (choice=="first"){
-    var2new  = var1
-    #names(dat2)[names(dat2)==var2] <- var2new
-    return(list(
-      list(var1, grep(var1, names(dat1))),
-      list(var2new, grep(var2, names(dat2)))
-                ))
-    
-  } else if (choice=="second") {
-    var1new = var2
-    #names(dat1)[names(dat1)==var1] <- var1new
-    return(list(
-      list(var1new, grep(var1, names(dat1))),
-      list(var2, grep(var2, names(dat2)))
-                ))
-    
-  } else{
-    var1new = var2new = new
-    #names(dat2)[names(dat2)==var2] <- var2new 
-    #names(dat1)[names(dat1)==var1] <- var1new
-    return(list(
-      list(var1new, grep(var1, names(dat1))),
-      list(var2new, grep(var2, names(dat2)))
-                ))
-  }
-} 
-
-
-dataSources <- c("b", "r")
-
-namesToUpdate <- list(
- c("demographicdate", "date", "first"),
-  c("sample", "d_sample", "second")
+# i'm updating baseline names to match round 1 names. 
+bUpdate <- b %>% 
+  mutate(
+    d_compost = ifelse(field_kg_compost > 0, 1, 0)
+  ) %>%
+  rename(
+  tablet = demographicid_tablet,
+  village = umudugudu,
+  n_household = hhsize,
+  n_tubura_season = total.seasons,
+  field_length = field_dim1, # I'm assuming dim1 is length. it might not be. It might not matter.
+  field_width = field_dim2,
+  n_spots = n_spots_c,
+  kg_seed_1 = crop1_seedkg,
+  kg_seed_2 = crop2_seedkg,
+  fert_kg1 = field_kg_fert1,
+  fert_kg2 = field_kg_fert2,
+  kg_yield_1 = crop1_yield,
+  kg_yield_2 = crop2_yield,
+  kg_compost = field_kg_compost,
+  d_client = client,
+  cell_field = cellule_field,
+  X.Total.Nitrogen = Total.Nitrogen,
+  X.Sodium = Sodium,
+  X.Organic.Carbon = Organic.Carbon,
+  X.EC..Salts. = EC..Salts.,
+  X.C.E.C = C.E.C,
+  X.Exchangeable.Acidity = Exchangeable.Acidity,
+  X.Exchangeable.Aluminum = Exchangeable.Aluminium
 )
 
+# check what's already the same
+matchNames <- names(rs)[names(rs) %in% names(bUpdate)]
+# matchNames
 
-# example
-dat1=b
-dat2=r
-var1 = "field_dim1"
-var2 = "field_length"
-choice="first"
+unmatchedB <- names(bUpdate)[!names(bUpdate) %in% names(rs)]
+unmatchedRs <- names(rs)[!names(rs) %in% names(bUpdate)]
 
-test <- matchRounds(b, r, "field_dim1", "field_length", choice="first")
-test2 <- matchRounds(b, r, "field_dim2", "field_width", choice="first")
-
-
-test <- lapply(namesToUpdate, function(x){
-  val = matchRounds(x)
-  return(val)
-})
 ```
+
 
 Analysis TODO:
 * clean round 1
@@ -1377,7 +1357,7 @@ plm <- function(x) { # x is a model
 
 #### Individual soil models
 
-I'm not entirely certain how to best model yield as a function of soil properties. I'm going to run a handful of models and give some initial caveats.
+I'm not entirely certain how to best model yield as a function of soil properties. I'm going to run a handful of models and give some initial caveats. These model diagnositics still need to be incorporated into model use and interpretation. 
 
 ##### Full values - individual
 
@@ -1408,10 +1388,17 @@ invisible(lapply(soilIqr, function(x){
 ```{r}
 
 respCurve <- function(dat, yVar, xVar, yLab, xLab, gTitle){
-  ggplot(dat) + 
-	stat_smooth(aes(x = dat[,xVar], y=dat[,yVar]), se=FALSE) + 
-	theme_bw() + 
-  labs(x = xLab, y = yLab, title=gTitle)
+  lineSmooth <- ggplot(dat) + 
+	  stat_smooth(aes(x = dat[,xVar], y=dat[,yVar]), se=FALSE) + 
+	  theme_bw() + 
+    labs(x = xLab, y = yLab, title=paste0("Basic response curve: ", gTitle))
+  
+  dotGraph <- ggplot(dat) + 
+	  geom_point(aes(x = dat[,xVar], y=dat[,yVar]), se=FALSE) + 
+	  theme_bw() + 
+    labs(x = xLab, y = yLab, title=paste0("Scatter plot: ", gTitle))
+  
+  multiplot(lineSmooth, dotGraph)
 }
 
 ```
@@ -1421,27 +1408,36 @@ respCurve <- function(dat, yVar, xVar, yLab, xLab, gTitle){
 ```{r}
 # response curves
 for(i in 1:length(soilVars)){
-  print(
-    respCurve(yr, "tha", soilVars[i],"Yield (t/ha)", soilVars[i], gTitle = paste0("Basic response curve: ", soilVars[i]))
-  )
+    respCurve(yr, "tha", soilVars[i],"Yield (t/ha)", soilVars[i], gTitle = soilVars[i])
+  
 }
 
 ```
-
-
 
 ##### IQR values - curves
 
 ```{r}
 # response curves
 for(i in 1:length(soilIqr)){
-  print(
-    respCurve(yr, "tha", soilIqr[i],"Yield (t/ha)", soilIqr[i], gTitle = paste0("Basic response curve: ", soilIqr[i]))
-  )
+    respCurve(yr, "tha", soilIqr[i],"Yield (t/ha)", soilIqr[i], gTitle = soilIqr[i])
+
 }
 
 ```
 
+### Yield response tables
+
+The concept here was to show the yield values at discrete x-axis values but this begets the question of how to calculate that y-value. The stylized lines above aren't sufficiently vetted to present them in a table. 
+
+```{r}
+yTable <- function(dat, yVars, xVar){
+  
+  fit = lm(yVar ~ xVars, dat)
+  
+}
+
+
+```
 
 
 
