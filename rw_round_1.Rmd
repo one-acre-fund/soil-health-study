@@ -628,6 +628,8 @@ r <- r %>% rename(
   which_crop_2_16b = which_crop_16b_2,
   which_maize_seed_2_16b = which_maize_seed_16b_2,
   #kg_seed_veg_1_16a = kg_seed_veg_16a_1,
+  #kg_seed_ananas_2_16a = kg_seed_ananas_16a_2,
+  #kg_seed_hwag_1_16a = kg_seed_hwag_16a_1,
   kg_seed_1_16b = kg_seed_16b_1,
   kg_seed_2_16b = kg_seed_16b_2,
   kg_yield_1_16b = kg_yield_16b_1,
@@ -688,123 +690,348 @@ TODO(mattlowes) - confirm that the tidyr process worked as I expected as there a
 rs <- left_join(seasonalDat, r[,c(names(r)[!names(r) %in% seasonalVars],"sample_id")], by="sample_id")
 ```
 
+## Combine long with baseline
+
+The `matchRounds` function updates variable names across rounds and reports the index and new name of the variables. I can then take the first part of the list for `dat1` and the second part for `dat2`.
+
+Or just change baseline variable names manually. What's the best way to do this? First reshape the baseline variables to be plot level as well with a season indicator. 
+
+TODO(matt.lowes) Confirm that this is necessary. If the baseline data only includes the previous season and the history then the reshape may not be necessary. All subsequent surveys asked about two seasons, the intervening season and the relevant season. Get your head around the baseline data again and act.
+
+```{r}
+# b <- b %>% rename(
+#   inputuse_priord_fertilizer_15b = inputuse_15b_priord_fertilizer,
+#   inputuse_priorculture_15b_1 = inputuse_15b_priorculture_15b_1,
+#   inputuse_priord_intercrop_15b = inputuse_15b_priord_intercrop_15b,
+#   inputuse_priorculture_in_15b = inputuse_15b_priorculture_15b_in,
+#   crop1_seety_15b = crop1_15b_seedty,
+#   #v58
+#   crop1_yield_15b = crop1_15b_yield,
+#   crop1_yield__15b = crop1_15b_yield_,
+#   crop2_seedty_15b = crop2_15b_seedty,
+#   #63
+#   crop2_seedkg_15b = crop2_15b_seedkg,
+#   crop2_yield_16b = crop2_15b_yield,
+#   crop2_yield__15b = crop2_15b_yield_,
+#   field_fert_t_15b = field_15b_fert_t,
+#   #v69
+#   field_compost_qu_15b = field_compost_qu
+# )
+
+```
+
+I think that all needs to be done is to add a season variable and rename the baseline variables to take off the `_15b` portion.
+
+```{r}
+write.csv(names(b), "baselineVars.csv", row.names = T)
+write.csv(names(rs), "round1Vars.csv", row.names = T)
+
+names(b) <- gsub("_15b", "", names(b))
+b$season <- "15b"
+
+b <- b %>% rename(
+      crop1_local = v58,
+      crop2_local = v63,
+      field_fert_t_1 = field_fert_t,
+      field_fert_t_2 = v69
+    )
+```
+
+
+TODO - it also seems to the case that some of the seed type variables are mixed up in `r` and `rs`. See what the issue is. Each plot should have only one answer for those.
+
+MAJOR TODO: confirm that I'm not duplicating the soil data by assigning it to both of the seasons we asked about in the follow up survey (I think I currently am 6/15/17). We want to account for field management in the intervening season but **we don't want to assume the soil outcome is the same for both seasons. Specifically, this means the 16a season**
+
+**Note**: the final long data by plot should have only one observation for stationary variables like slope or historical information
+
+```{r}
+# i'm updating baseline names to match round 1 names. 
+bUpdate <- b %>% 
+  mutate(
+    d_compost = ifelse(field_kg_compost > 0, 1, 0)
+  ) %>%
+  rename(
+  tablet = demographicid_tablet,
+  village = umudugudu,
+  n_household = hhsize,
+  n_tubura_season = total.seasons,
+  field_length = field_dim1, # I'm assuming dim1 is length. it might not be. It might not matter.
+  field_width = field_dim2,
+  n_spots = n_spots_c,
+  kg_seed_1 = crop1_seedkg,
+  kg_seed_2 = crop2_seedkg,
+  fert_kg1 = field_kg_fert1,
+  fert_kg2 = field_kg_fert2,
+  kg_yield_1 = crop1_yield,
+  kg_yield_2 = crop2_yield,
+  kg_compost = field_kg_compost,
+  d_client = client,
+  cell_field = cellule_field,
+  fert_type1 = field_fert_t_1,
+  fert_type2 = field_fert_t_2,
+  X.Total.Nitrogen = Total.Nitrogen,
+  X.Sodium = Sodium,
+  X.Organic.Carbon = Organic.Carbon,
+  X.EC..Salts. = EC..Salts.,
+  X.C.E.C = C.E.C,
+  X.Exchangeable.Acidity = Exchangeable.Acidity,
+  X.Exchangeable.Aluminium = Exchangeable.Aluminium,
+  X.Phosphorus.Sorption.Index..PSI. = Acid.Saturation, # check that this is right
+  n_cows = betail_ownedn_inka,
+  n_goats = betail_ownedn_ihene,
+  n_chickens = betail_ownedn_inkoko,
+  n_pigs = betail_ownedn_ingurube,
+  n_sheep = betail_ownedn_intama,
+  date = demographicdate,
+  field_slope = general_field_infograde_hill,
+  field_erosion = general_field_infoantierosion_ef,
+  type_compost = field_type_compo,
+  quality_compost = field_compost_qu,
+  d_sample = sample,
+  enum_name = surveyor,
+  how_use_residues = action_cropresid
+)
+
+# biographical variales that apply to actions in the baseline before the study started
+bioVars <- bUpdate %>% dplyr::select(
+  n_season_fert, nofert_why, n_season_compost, nocompost_why, n_season_lime, nolime_why,
+  n_season_fallow, n_seasons_leg_1, n_seasons_leg_2, aez, contains("d_season_listd_"),
+  contains("inputuse_prior")
+)
+
+bVars <- names(bUpdate)[!names(bUpdate) %in% names(bioVars)] # remove biographical vars
+
+# organizational variables to be ignored
+orgVars <- bUpdate %>%
+  dplyr::select(
+    fieldcollectiondate, datecollectedindistrict, datesenttohq, datereceivedathq,
+    processedathq_, packedforsendingtokenya_, datefinishedprocessing
+  )
+
+bVars <- bVars[!bVars %in% names(orgVars)]
+
+# variables that only appear in the round 1 data >> likely want to keep these and make them part of the "stable" identifying data
+onlyR1 <- rs %>%
+  dplyr::select(
+    field_n_crops, crop_direction, field_texture
+  )
+
+r1Vars <- names(rs)[!names(rs) %in% names(onlyR1)]
+
+# check what's already the same
+matchNames <- r1Vars[r1Vars %in% bVars] # these are the matches we're getting
+# matchNames
+
+# check what isn't accounted for somehow
+unmatchedB <- bVars[!bVars %in% r1Vars] # unmatched baseline minus demographic vars
+unmatchedRs <- r1Vars[!r1Vars %in% bVars] # unmatched r1
+```
+
+Make the sample id lower case
+
+```{r}
+bUpdate$sample_id <- tolower(bUpdate$sample_id)
+rs$sample_id <- tolower(rs$sample_id)
+```
+
+
+## Merge demographic variables
+
+* Identify demographic and historical variables in `b`
+* Identify any new data from R1 not in the baseline and merge them in
+* I'm using `bUpdate` as it's the most up to date and simplifies updating the script.
+
+```{r}
+bDemo <- bUpdate %>% 
+  dplyr::select(
+  SSN, district, cell_field, village, sample_id,  
+  n_season_fert, nofert_why, n_season_compost, nocompost_why, n_season_lime, nolime_why,
+  n_season_fallow, n_seasons_leg_1, n_seasons_leg_2, aez, contains("d_season_listd_"),
+  contains("inputuse_prior")
+)
+```
+
+## Append field level variables
+
+* `rbind` R1 field level variables with `b` field level variables to make a plot level dataset. 
+* Select only the variables I want to keep
+* Generate any new outcomes that bring the data down to a single outcome, rather than one by plot **and season**.
+* I can then make longitudinal outcomes from those data and merge those into the demographic data
+
+```{r}
+commonVars <- names(rs)[names(rs) %in% names(bUpdate)]
+
+fieldDat <- rbind(bUpdate[,commonVars], rs[,commonVars])
+
+soilDat <- fieldDat %>% 
+  dplyr::select(one_of(soilVars), SSN, season, sample_id, d_client) %>%
+  filter(season!="16a") # dropping the 16a values as these aren't true measurements but a result of reshaping the round 1 data.
+```
+
 ## Create new variables
 
 ### Field variables
 
+I originally made these new outcomes for just the round 1 data but I really want to have common outputs for plots by seasons that I can then turn into longitudinal outcomes. 
+
 ```{r}
-rs$dim <- rs$field_length * rs$field_width
-rs$are <- rs$dim/100
+fieldDat$dim <- fieldDat$field_length * fieldDat$field_width
+fieldDat$are <- fieldDat$dim/100
 
 
-inputVars <- names(rs)[grep("fert_|quality_compost|type_compost|which_crop|which_maize", names(rs))]
+inputVars <- names(fieldDat)[grep("fert_|quality_compost|type_compost|which_crop|which_maize", names(fieldDat))]
 
-rs[,inputVars] <- sapply(rs[, inputVars], tolower)
+fieldDat[,inputVars] <- sapply(fieldDat[, inputVars], tolower)
 
 # input quanitites
-rs$fert_kg_urea1 <- ifelse(rs$fert_type1=="urea", rs$fert_kg1, NA)
-rs$fert_kg_urea2 <- ifelse(rs$fert_type2=="urea", rs$fert_kg2, NA)
-rs$fert_total_urea <- apply(rs[, grep("(urea.)", names(rs))], 1, function(x){
+fieldDat$fert_kg_urea1 <- ifelse(fieldDat$fert_type1=="urea", fieldDat$fert_kg1, NA)
+fieldDat$fert_kg_urea2 <- ifelse(fieldDat$fert_type2=="urea", fieldDat$fert_kg2, NA)
+fieldDat$fert_total_urea <- apply(fieldDat[, grep("(urea.)", names(fieldDat))], 1, function(x){
   sum(as.numeric(x), na.rm=T)})
 
 
 
-rs$fert_kg_dap1 <- ifelse(rs$fert_type1=="dap", rs$fert_kg1, NA)
-rs$fert_kg_dap2 <- ifelse(rs$fert_type2=="dap", rs$fert_kg2, NA)
-rs$fert_total_dap <- apply(rs[, grep("(dap.)", names(rs))], 1, function(x){
+fieldDat$fert_kg_dap1 <- ifelse(fieldDat$fert_type1=="dap", fieldDat$fert_kg1, NA)
+fieldDat$fert_kg_dap2 <- ifelse(fieldDat$fert_type2=="dap", fieldDat$fert_kg2, NA)
+fieldDat$fert_total_dap <- apply(fieldDat[, grep("(dap.)", names(fieldDat))], 1, function(x){
   sum(as.numeric(x), na.rm=T)})
 
 
 
-rs$fert_kg_17npk1 <- ifelse(rs$fert_type1=="npk-17", rs$fert_kg1, NA)
-rs$fert_kg_17npk2 <- ifelse(rs$fert_type2=="npk-17", rs$fert_kg2, NA)
-rs$fert_total_17npk <- apply(rs[, grep("(17npk.)", names(rs))], 1, function(x){
+fieldDat$fert_kg_17npk1 <- ifelse(fieldDat$fert_type1=="npk-17", fieldDat$fert_kg1, NA)
+fieldDat$fert_kg_17npk2 <- ifelse(fieldDat$fert_type2=="npk-17", fieldDat$fert_kg2, NA)
+fieldDat$fert_total_17npk <- apply(fieldDat[, grep("(17npk.)", names(fieldDat))], 1, function(x){
   sum(as.numeric(x), na.rm=T)})
 
 
 
-rs$fert_kg_22npk1 <- ifelse(rs$fert_type1=="npk-22", rs$fert_kg1, NA)
-rs$fert_kg_22npk2 <- ifelse(rs$fert_type2=="npk-22", rs$fert_kg2, NA)
-rs$fert_total_22npk <- apply(rs[, grep("(22npk.)", names(rs))], 1, function(x){
+fieldDat$fert_kg_22npk1 <- ifelse(fieldDat$fert_type1=="npk-22", fieldDat$fert_kg1, NA)
+fieldDat$fert_kg_22npk2 <- ifelse(fieldDat$fert_type2=="npk-22", fieldDat$fert_kg2, NA)
+fieldDat$fert_total_22npk <- apply(fieldDat[, grep("(22npk.)", names(fieldDat))], 1, function(x){
   sum(as.numeric(x), na.rm=T)})
 
 
 
-rs$fert_kg_2555npk1 <- ifelse(rs$fert_type1=="npk2555", rs$fert_kg1, NA)
-rs$fert_kg_2555npk2 <- ifelse(rs$fert_type2=="npk2555", rs$fert_kg2, NA)
-rs$fert_total_2555npk <- apply(rs[, grep("(2555npk.)", names(rs))], 1, function(x){
+fieldDat$fert_kg_2555npk1 <- ifelse(fieldDat$fert_type1=="npk2555", fieldDat$fert_kg1, NA)
+fieldDat$fert_kg_2555npk2 <- ifelse(fieldDat$fert_type2=="npk2555", fieldDat$fert_kg2, NA)
+fieldDat$fert_total_2555npk <- apply(fieldDat[, grep("(2555npk.)", names(fieldDat))], 1, function(x){
   sum(as.numeric(x), na.rm=T)})
 
 
 #lime
-rs$lime_outside <- ifelse(rs$d_lime=="lime_outside", rs$kg_lime, NA)
-rs$lime_tubura <- ifelse(rs$d_lime=="lime_tubura", rs$kg_lime, NA)
-rs$lime_both <- ifelse(rs$d_lime=="both_tubura_non_tubura", rs$kg_lime, NA)
+fieldDat$lime_outside <- ifelse(fieldDat$d_lime=="lime_outside", fieldDat$kg_lime, NA)
+fieldDat$lime_tubura <- ifelse(fieldDat$d_lime=="lime_tubura", fieldDat$kg_lime, NA)
+fieldDat$lime_both <- ifelse(fieldDat$d_lime=="both_tubura_non_tubura", fieldDat$kg_lime, NA)
 ```
 
 ```{r}
-inputVars <- names(rs)[grep("field_length|field_width|dim|fert_kg_|fert_total_|lime_", names(rs))]
+inputVars <- names(fieldDat)[grep("field_length|field_width|dim|fert_kg_|fert_total_|lime_", names(fieldDat))]
 
-rs[,inputVars] <-sapply(rs[,inputVars], as.numeric)
+fieldDat[,inputVars] <-sapply(fieldDat[,inputVars], as.numeric)
 
 
 #urea
-rs$fert_kgare_urea1 <- rs$fert_kg_urea1/rs$are
-rs$fert_kgare_urea2 <- rs$fert_kg_urea2/rs$are
-rs$fert_kgare_urea_total <- rs$fert_total_urea/rs$are
+fieldDat$fert_kgare_urea1 <- fieldDat$fert_kg_urea1/fieldDat$are
+fieldDat$fert_kgare_urea2 <- fieldDat$fert_kg_urea2/fieldDat$are
+fieldDat$fert_kgare_urea_total <- fieldDat$fert_total_urea/fieldDat$are
 
 #dap
-rs$fert_kgare_dap1 <- rs$fert_kg_dap1/rs$are
-rs$fert_kgare_dap2 <- rs$fert_kg_dap2/rs$are
-rs$fert_kgare_dap_total <- rs$fert_total_dap/rs$are
+fieldDat$fert_kgare_dap1 <- fieldDat$fert_kg_dap1/fieldDat$are
+fieldDat$fert_kgare_dap2 <- fieldDat$fert_kg_dap2/fieldDat$are
+fieldDat$fert_kgare_dap_total <- fieldDat$fert_total_dap/fieldDat$are
 
 #npk17
-rs$fert_kgare_17npk1 <- rs$fert_kg_17npk1/rs$are
-rs$fert_kgare_17npk2 <- rs$fert_kg_17npk2/rs$are
-rs$fert_kgare_17npk_total <- rs$fert_total_17npk/rs$are
+fieldDat$fert_kgare_17npk1 <- fieldDat$fert_kg_17npk1/fieldDat$are
+fieldDat$fert_kgare_17npk2 <- fieldDat$fert_kg_17npk2/fieldDat$are
+fieldDat$fert_kgare_17npk_total <- fieldDat$fert_total_17npk/fieldDat$are
 
 #npk22
-rs$fert_kgare_22npk1 <- rs$fert_kg_22npk1/rs$are
-rs$fert_kgare_22npk2 <- rs$fert_kg_22npk2/rs$are
-rs$fert_kgare_22npk_total <- rs$fert_total_22npk/rs$are
+fieldDat$fert_kgare_22npk1 <- fieldDat$fert_kg_22npk1/fieldDat$are
+fieldDat$fert_kgare_22npk2 <- fieldDat$fert_kg_22npk2/fieldDat$are
+fieldDat$fert_kgare_22npk_total <- fieldDat$fert_total_22npk/fieldDat$are
 
 #2555 npk
-rs$fert_kgare_2555npk1 <- rs$fert_kg_2555npk1/rs$are
-rs$fert_kgare_2555npk2 <- rs$fert_kg_2555npk2/rs$are
-rs$fert_kgare_2555npk_total <- rs$fert_total_2555npk/rs$are
+fieldDat$fert_kgare_2555npk1 <- fieldDat$fert_kg_2555npk1/fieldDat$are
+fieldDat$fert_kgare_2555npk2 <- fieldDat$fert_kg_2555npk2/fieldDat$are
+fieldDat$fert_kgare_2555npk_total <- fieldDat$fert_total_2555npk/fieldDat$are
 ```
 
-### Demographic variables
+#### Visualize field variables
 
 ```{r}
-rs$season_16a <- ifelse(grepl("16a", rs$n_tubura_season), 1, 0)
-rs$season_16b <- ifelse(grepl("16b", rs$n_tubura_season), 1, 0)
-rs$season_17a <- ifelse(grepl("17a", rs$n_tubura_season), 1, 0)
-rs$notClient3Seasons <- ifelse(grepl("not_a_client", rs$n_tubura_season), 1, 0)
-
-```
-
-### Visualize field variables
-
-```{r}
-fieldInputVars <- names(rs)[grep("field_length|field_width|dim|fert_kgare_", names(rs))]
+fieldInputVars <- names(fieldDat)[grep("field_length|field_width|dim|fert_kgare_", names(fieldDat))]
 
 
 for(i in 1:length(fieldInputVars)){
-    base <- ggplot(rs, aes(x=rs[,fieldInputVars[i]])) + labs(x = fieldInputVars[i], title=fieldInputVars[i])
+    base <- ggplot(fieldDat, aes(x=fieldDat[,fieldInputVars[i]])) + labs(x = fieldInputVars[i], title=fieldInputVars[i])
     temp1 <- base + geom_density()
     temp2 <- base + geom_histogram()
     #temp2 <- boxplot(r[,numVars[i]],main=paste0("Variable: ", numVars[i]))
     multiplot(temp1, temp2, cols = 2)
 }
+```
 
+### Soil variables
+
+`soilOut` is the master soil data to which common changes are made. All resulting soil outcomes are made using that. Soil outcomes are named `soilOut.outcome_name`
+
+```{r}
+soilOut <- soilDat %>% mutate(
+  measure = ifelse(season=="15b", 1, 
+                   ifelse(season=="16b", 2,NA))
+) %>% arrange(measure) %>%
+  as.data.frame()
+
+soilOut.Mean <- soilOut %>%
+  group_by(sample_id) %>%
+  summarize_each(
+    funs(mean(., na.rm=T)), -c(SSN, season, sample_id, measure, d_client)
+  ) %>% 
+  ungroup() %>% 
+  as.data.frame() %>%
+  rename_(.dots = setNames(names(.), gsub("X\\.|\\.", "", names(.))))
+
+# find a way to fit this into piping
+names(soilOut.Mean)[2:19] <- paste0(names(soilOut.Mean)[2:19], ".mean")
+
+# 0s are when we have only one observation
+soilOut.Diff <- soilOut %>%
+  group_by(sample_id) %>%
+  # summarise_each(
+  #   funs(if_else(length(.)==2, diff(x), .)), -c(SSN, season, sample_id, measure)
+  # ) %>% ungroup() %>% as.data.frame()
+  mutate_each(
+    funs(. - lag(., default=first(.))), -c(SSN, season, sample_id, measure, d_client)
+  ) %>%
+  filter(measure==2) %>%
+  as.data.frame() %>%
+  rename_(.dots = setNames(names(.), gsub("X\\.|\\.", "", names(.))))
+
+# find a way to fit this into piping
+names(soilOut.Diff)[1:18] <- paste0(names(soilOut.Diff)[1:18], ".diff")
+
+
+# gather soil outcomes to merge back together
+#soilTrans <- list(ls()[grep("soilOut.", ls())])
+
+soilMerge <- merge(soilOut.Mean, soilOut.Diff,by="sample_id")
+
+```
+
+### Demographic variables
+
+```{r}
+fieldDat$season_16a <- ifelse(grepl("16a", fieldDat$n_tubura_season), 1, 0)
+fieldDat$season_16b <- ifelse(grepl("16b", fieldDat$n_tubura_season), 1, 0)
+fieldDat$season_17a <- ifelse(grepl("17a", fieldDat$n_tubura_season), 1, 0)
+fieldDat$notClient3Seasons <- ifelse(grepl("not_a_client", fieldDat$n_tubura_season), 1, 0)
 
 ```
 
 Check field dimensions:
 
 ```{r}
-ggplot(rs, aes(x=field_width, y=field_length)) + 
+ggplot(fieldDat, aes(x=field_width, y=field_length)) + 
   geom_point() +
   labs(title= "Field dimensions", x = "Width (m)", y= "Length (m)")
 ```
@@ -857,116 +1084,51 @@ Here are the key pieces of feedback for the next survey round:
 * **Commcare**: Please ensure that the variable labels are in the right language box. The export I'm getting directly from Commcare is a mix of English and Kinyarwanda names. I assume that's because the labels were not in the right boxes.
 
 
-## Combine long with baseline
-
-The `matchRounds` function updates variable names across rounds and reports the index and new name of the variables. I can then take the first part of the list for `dat1` and the second part for `dat2`.
-
-Or just change baseline variable names manually. What's the best way to do this? First reshape the baseline variables to be plot level as well with a season indicator. 
-
-TODO(matt.lowes) Confirm that this is necessary. If the baseline data only includes the previous season and the history then the reshape may not be necessary. All subsequent surveys asked about two seasons, the intervening season and the relevant season. Get your head around the baseline data again and act.
-
-```{r}
-# b <- b %>% rename(
-#   inputuse_priord_fertilizer_15b = inputuse_15b_priord_fertilizer,
-#   inputuse_priorculture_15b_1 = inputuse_15b_priorculture_15b_1,
-#   inputuse_priord_intercrop_15b = inputuse_15b_priord_intercrop_15b,
-#   inputuse_priorculture_in_15b = inputuse_15b_priorculture_15b_in,
-#   crop1_seety_15b = crop1_15b_seedty,
-#   #v58
-#   crop1_yield_15b = crop1_15b_yield,
-#   crop1_yield__15b = crop1_15b_yield_,
-#   crop2_seedty_15b = crop2_15b_seedty,
-#   #63
-#   crop2_seedkg_15b = crop2_15b_seedkg,
-#   crop2_yield_16b = crop2_15b_yield,
-#   crop2_yield__15b = crop2_15b_yield_,
-#   field_fert_t_15b = field_15b_fert_t,
-#   #v69
-#   field_compost_qu_15b = field_compost_qu
-# )
-
-```
-
-I think that all needs to be done is to add a season variable and rename the baseline variables to take off the `_15b` portion.
-
-```{r}
-write.csv(names(b), "baselineVars.csv", row.names = T)
-write.csv(names(rs), "round1Vars.csv", row.names = T)
-
-names(b) <- gsub("_15b", "", names(b))
-b$season <- "15b"
-
-b <- b %>% rename(
-      crop1_local = v58,
-      crop2_local = v63,
-      field_fert_t_1 = field_fert_t,
-      field_fert_t_2 = v69
-    )
-```
-
-TODO - now match all the variable names that need to be matched for the data to be appended. Ugh.
-TODO - it also seems to the case that some of the seed type variables are mixed up in `r` and `rs`. See what the issue is. Each plot should have only one answer for those.
-
-**Note**: the final long data by plot should have only one observation for stationary variables like slope or historical information
-
-```{r}
-# i'm updating baseline names to match round 1 names. 
-bUpdate <- b %>% 
-  mutate(
-    d_compost = ifelse(field_kg_compost > 0, 1, 0)
-  ) %>%
-  rename(
-  tablet = demographicid_tablet,
-  village = umudugudu,
-  n_household = hhsize,
-  n_tubura_season = total.seasons,
-  field_length = field_dim1, # I'm assuming dim1 is length. it might not be. It might not matter.
-  field_width = field_dim2,
-  n_spots = n_spots_c,
-  kg_seed_1 = crop1_seedkg,
-  kg_seed_2 = crop2_seedkg,
-  fert_kg1 = field_kg_fert1,
-  fert_kg2 = field_kg_fert2,
-  kg_yield_1 = crop1_yield,
-  kg_yield_2 = crop2_yield,
-  kg_compost = field_kg_compost,
-  d_client = client,
-  cell_field = cellule_field,
-  X.Total.Nitrogen = Total.Nitrogen,
-  X.Sodium = Sodium,
-  X.Organic.Carbon = Organic.Carbon,
-  X.EC..Salts. = EC..Salts.,
-  X.C.E.C = C.E.C,
-  X.Exchangeable.Acidity = Exchangeable.Acidity,
-  X.Exchangeable.Aluminum = Exchangeable.Aluminium
-)
-
-# check what's already the same
-matchNames <- names(rs)[names(rs) %in% names(bUpdate)]
-# matchNames
-
-unmatchedB <- names(bUpdate)[!names(bUpdate) %in% names(rs)]
-unmatchedRs <- names(rs)[!names(rs) %in% names(bUpdate)]
-
-```
-
 
 Analysis TODO:
-* clean round 1
-* feature creation
-* matching
+* feature creation (in process)
+* matching (talk to Maya)
   + 
-* following previous template
+* following previous template (look back)
   + 
 
 For next week:
-* data are together
 * talk with Maya about matching longitudinally
 * soil graphs
 
 # Analysis
 
 Same as the baseline analysis but with two seasons of data
+
+TODO: confirm that `d_client` is reflecting the right status as a farmer in the data. Is it baseline? Is it round 1? Is it a combo of the two?
+
+## Initial soil graphs
+
+These graphs are a peek at how soil parameter averages and differences look between treatment and control farmers. **This is a preliminary rough look**. Next steps include:
+
+* Confirming client assignment and clarifying status
+* Additional cleaning of soil variables
+* Matching of clients to derive a more causal look at client effects on soil parameters.
+
+```{r}
+library(tidyr)
+soilGraph <- soilMerge %>%
+  gather(variable, value, -c(SSN, sample_id, measure, season, d_client)) %>%
+  separate(variable, c("soilChar", "type"), sep="\\.")
+
+for(i in 1:length(unique(soilGraph$soilChar))){
+  for(j in 1:length(unique(soilGraph$type))){
+    print(
+     ggplot(soilGraph[soilGraph$soilChar==unique(soilGraph$soilChar)[i] & soilGraph$type==unique(soilGraph$type)[j],], aes(x = d_client, y=value)) + 
+       geom_boxplot() + 
+       labs(title = paste("NON-MATCHED PRELIM -", unique(soilGraph$soilChar)[i], unique(soilGraph$type)[j], sep=" "), x = "Treatment v. Control", y=unique(soilGraph$soilChar)[i])
+    )
+  }
+}
+
+
+```
+
 
 ## Matching
 
