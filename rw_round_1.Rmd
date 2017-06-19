@@ -1110,23 +1110,70 @@ These graphs are a peek at how soil parameter averages and differences look betw
 * Additional cleaning of soil variables
 * Matching of clients to derive a more causal look at client effects on soil parameters.
 
+[Helpful code for putting the graphics together](https://github.com/tidyverse/ggplot2/wiki/Mixing-ggplot2-graphs-with-other-graphical-output)
+
 ```{r}
 library(tidyr)
+library(RGraphics)
 soilGraph <- soilMerge %>%
   gather(variable, value, -c(SSN, sample_id, measure, season, d_client)) %>%
   separate(variable, c("soilChar", "type"), sep="\\.")
 
 for(i in 1:length(unique(soilGraph$soilChar))){
   for(j in 1:length(unique(soilGraph$type))){
-    print(
-     ggplot(soilGraph[soilGraph$soilChar==unique(soilGraph$soilChar)[i] & soilGraph$type==unique(soilGraph$type)[j],], aes(x = d_client, y=value)) + 
+    
+    temp <- soilGraph %>% 
+      filter(soilChar==unique(soilGraph$soilChar)[i] & soilGraph$type==unique(soilGraph$type)[j]) %>%
+      mutate(
+        value = ifelse(is.infinite(value), NA, value)
+      )
+    
+    
+     gph = ggplot(temp, aes(x = d_client, y=value)) + 
        geom_boxplot() + 
        labs(title = paste("NON-MATCHED PRELIM -", unique(soilGraph$soilChar)[i], unique(soilGraph$type)[j], sep=" "), x = "Treatment v. Control", y=unique(soilGraph$soilChar)[i])
-    )
+    
+    
+    
+      tab = tableGrob(
+        aggregate(temp$value, by=list(temp$d_client), function(x){
+        paste(round(mean(x, na.rm=T),2), " (", round(sd(x,na.rm=T),2), ")", sep="")
+          }),
+        cols = c("Treatment", "Mean (sd)"))
+      
+
+      grid.arrange(gph, tab, ncol=2, top=paste("NON-MATCHED PRELIM -", unique(temp$soilChar), unique(temp$type), sep=" "))
+
   }
 }
 
 
+```
+
+Table comparing the values seen above with a p-value
+```{r}
+tabOut <- do.call(rbind, lapply(split(soilGraph, list(soilGraph$type, soilGraph$soilChar)), function(x){
+  
+  x <- x %>% mutate(
+   value = ifelse(is.infinite(value), NA, value) 
+  )
+  
+  temp = aggregate(x$value, by=list(x$d_client), FUN=mean, na.rm=T)
+  pval = round(wilcox.test(value ~ d_client, data=x)$p.value,3)
+  Tmean = round(temp$x[2], 2)
+  Cmean = round(temp$x[1], 2)
+  
+  output = data.frame(cat = paste0(unique(x$soilChar), " - ", unique(x$type)), Cmean, Tmean, pval)
+  
+  return(output)
+  
+}))
+
+tabOut <- tabOut %>% 
+  mutate(pval.adj = round(p.adjust(pval, "fdr"),3)) %>%
+  arrange(pval.adj)
+
+kable(tabOut, format='html', row.names = F)
 ```
 
 
