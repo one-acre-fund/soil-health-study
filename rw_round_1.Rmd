@@ -407,7 +407,7 @@ iqrTab[,2:8] <- sapply(iqrTab[,2:8], function(x){round(x,1)})
 The outlier table summarizes the numeric variables with and without IQR outliers to show how the data changes based on this filter.
 
 ```{r}
-knitr::kable(iqrTab, row.names = F, digits = 0, format = 'html')
+knitr::kable(iqrTab, row.names = F, digits = 0, format = 'markdown')
 ```
 
 ### Outlier Graphs
@@ -857,12 +857,15 @@ bDemo <- bUpdate %>%
 * Select only the variables I want to keep
 * Generate any new outcomes that bring the data down to a single outcome, rather than one by plot **and season**.
 * I can then make longitudinal outcomes from those data and merge those into the demographic data
+* **Put in variable here that marks whether the farmer retained their treatment status from the baseline**
 
 ```{r}
-commonVars <- names(rs)[names(rs) %in% names(bUpdate)]
+commonVars <- names(rs)[names(rs) %in% names(bUpdate)] # using rs because i changed baseline names to rs names
 
-fieldDat <- rbind(bUpdate[,commonVars], rs[,commonVars])
+fieldDat <- rbind(bUpdate[,commonVars], rs[,commonVars]) # combine baseline and round 1
+```
 
+```{r}
 soilDat <- fieldDat %>% 
   dplyr::select(one_of(soilVars), SSN, season, sample_id, d_client) %>%
   filter(season!="16a") # dropping the 16a values as these aren't true measurements but a result of reshaping the round 1 data.
@@ -973,6 +976,9 @@ for(i in 1:length(fieldInputVars)){
 
 ### Soil variables
 
+TODO: Clean soil data here once Step and Patrick have some feedback regarding what are reasonable and unreasonable values.
+
+
 `soilOut` is the master soil data to which common changes are made. All resulting soil outcomes are made using that. Soil outcomes are named `soilOut.outcome_name`
 
 ```{r}
@@ -1018,14 +1024,11 @@ soilMerge <- merge(soilOut.Mean, soilOut.Diff,by="sample_id")
 
 ```
 
-### Demographic variables
-
 ```{r}
-fieldDat$season_16a <- ifelse(grepl("16a", fieldDat$n_tubura_season), 1, 0)
-fieldDat$season_16b <- ifelse(grepl("16b", fieldDat$n_tubura_season), 1, 0)
-fieldDat$season_17a <- ifelse(grepl("17a", fieldDat$n_tubura_season), 1, 0)
-fieldDat$notClient3Seasons <- ifelse(grepl("not_a_client", fieldDat$n_tubura_season), 1, 0)
-
+# fieldDat$season_16a <- ifelse(grepl("16a", fieldDat$n_tubura_season), 1, 0)
+# fieldDat$season_16b <- ifelse(grepl("16b", fieldDat$n_tubura_season), 1, 0)
+# fieldDat$season_17a <- ifelse(grepl("17a", fieldDat$n_tubura_season), 1, 0)
+# fieldDat$notClient3Seasons <- ifelse(grepl("not_a_client", fieldDat$n_tubura_season), 1, 0)
 ```
 
 Check field dimensions:
@@ -1102,6 +1105,37 @@ Same as the baseline analysis but with two seasons of data
 
 TODO: confirm that `d_client` is reflecting the right status as a farmer in the data. Is it baseline? Is it round 1? Is it a combo of the two?
 
+## Identifier variables
+```{r}
+#table(fieldDat$d_client, fieldDat$season)
+
+fieldDat %>% 
+  dplyr::select(sample_id, season, d_client) %>%
+  group_by(sample_id) %>%
+  spread(., season, d_client) %>%
+  rename(
+    client15b = `15b`,
+    client16a = `16a`,
+    client16b = `16b`
+  ) %>%
+  mutate(
+    becameClient = ifelse(client15b==0 & client16b==1, 1, 0),
+    becameControl = ifelse(client15b==1 & client16b==0, 1, 0),
+    stayedClient = ifelse(client15b==1 & client16b==1, 1, 0),
+    stayedControl = ifelse(client15b==0 & client16b==0, 1, 0)
+  ) %>% 
+  ungroup() %>%
+  dplyr::summarize_each(
+    funs(mean(., na.rm=T)), -c(sample_id, client15b, client16a, client16b)
+  ) %>% 
+  mutate_each(
+    funs(paste0(round(.,2)*100, "%"))
+  ) %>%
+  kable(format='markdown', caption="Movement in Sample")
+
+
+```
+
 ## Initial soil graphs
 
 These graphs are a peek at how soil parameter averages and differences look between treatment and control farmers. **This is a preliminary rough look**. Next steps include:
@@ -1151,6 +1185,9 @@ for(i in 1:length(unique(soilGraph$soilChar))){
 ```
 
 Table comparing the values seen above with a p-value
+
+**Note**: This table is preliminary and does not reflect values ready for interpretation (6/19)
+
 ```{r}
 tabOut <- do.call(rbind, lapply(split(soilGraph, list(soilGraph$type, soilGraph$soilChar)), function(x){
   
@@ -1173,7 +1210,7 @@ tabOut <- tabOut %>%
   mutate(pval.adj = round(p.adjust(pval, "fdr"),3)) %>%
   arrange(pval.adj)
 
-kable(tabOut, format='html', row.names = F)
+kable(tabOut, format='markdown', row.names = F, col.names = c("Outcome", "Control mean", "OAF mean", "p-value", "adj. p-value"))
 ```
 
 
@@ -1427,7 +1464,7 @@ soilYTab[,2:length(soilYTab)] <- sapply(soilYTab[,2:length(soilYTab)], function(
 The outlier table summarizes the numeric variables with and without IQR outliers to show how the data changes based on this filter.
 
 ```{r}
-knitr::kable(soilYTab, row.names = F, digits = 3, format = 'html')
+knitr::kable(soilYTab, row.names = F, digits = 3, format = 'markdown')
 ```
 
 Impose sensible constraints on soil variables
