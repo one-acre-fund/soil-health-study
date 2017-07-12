@@ -741,6 +741,8 @@ TODO - it also seems to the case that some of the seed type variables are mixed 
 
 MAJOR TODO: confirm that I'm not duplicating the soil data by assigning it to both of the seasons we asked about in the follow up survey (I think I currently am 6/15/17). We want to account for field management in the intervening season but **we don't want to assume the soil outcome is the same for both seasons. Specifically, this means the 16a season**
 
+TODO - add the `onlyR1` variables back into the data so we have field texture.
+
 **Note**: the final long data by plot should have only one observation for stationary variables like slope or historical information
 
 ```{r}
@@ -812,7 +814,7 @@ bVars <- bVars[!bVars %in% names(orgVars)]
 # variables that only appear in the round 1 data >> likely want to keep these and make them part of the "stable" identifying data
 onlyR1 <- rs %>%
   dplyr::select(
-    field_n_crops, crop_direction, field_texture
+    field_n_crops, crop_direction, field_texture, sample_id
   )
 
 r1Vars <- names(rs)[!names(rs) %in% names(onlyR1)]
@@ -862,6 +864,9 @@ bDemo <- bUpdate %>%
 commonVars <- names(rs)[names(rs) %in% names(bUpdate)] # using rs because i changed baseline names to rs names
 
 fieldDat <- rbind(bUpdate[,commonVars], rs[,commonVars]) # combine baseline and round 1
+
+# add back in the onlyR1 variables that we want to have
+
 ```
 
 `soilDat` is the object that has the soil variables for soil specific analyses. You can get to field observations with soil observations by dropping the A season data points.
@@ -1126,8 +1131,9 @@ sameStatusVec <- soilDat %>%
   ) %>%
   filter(same==1)
 
-#sameStatus <- soilDat[soilDat$sample_id %in% sameStatusVec$sample_id,] #all appear twice
-
+sameStatus <- soilDat[soilDat$sample_id %in% sameStatusVec$sample_id,]
+sameStatusCount <- table(sameStatus$d_client)/2
+write.csv(sameStatusCount, file="output/sameStatusCount.csv")
 #sameStatusfs <- soilDat[soilDat$sample_id %in% sameStatusVec$sample_id,] #
 ```
 
@@ -1141,6 +1147,7 @@ These graphs are a peek at how soil parameter averages and differences look betw
 
 * Confirming client assignment and clarifying status
 * Additional cleaning of soil variables
+  + reconcile using IQR or SD method for adjusting data
 * Matching of clients to derive a more causal look at client effects on soil parameters.
 
 [Helpful code for putting the graphics together](https://github.com/tidyverse/ggplot2/wiki/Mixing-ggplot2-graphs-with-other-graphical-output)
@@ -1312,6 +1319,25 @@ See [sketch of SHS report](https://docs.google.com/document/d/1koNsKzx97_3rpkGeJ
 TODO - follow up with Maya about how to match over time or if there's a better inference strategy.
 
 ```{r}
+clust.se <- function(mod, clus) {
+        # basic parameters
+        m <- length(clus)
+        n <- length(unique(clus))
+        k <- mod$rank
+        df <- (n / (n - 1)) * ((m - 1) / (m - k))
+        # calculate our summed error terms
+u <- apply(estfun(mod), 2, function(x) {tapply(x, clus, sum)})
+        # calculate var/covar matrix
+        ans <- df * sandwich(mod, meat = (t(u) %*% u) / m)
+return(ans) 
+}
+
+#m1.cluster <- coeftest(m1, clust.se(m1, d$cluster))
+```
+
+```{r}
+library(sandwich)
+library(lmtest)
 source("../oaflib/plm.R")
 
 regVars <- c(keySoilVars, "sample_id", "d_client", "season", "district")
@@ -1338,7 +1364,10 @@ clientVnon <- function(df, variables){
 sameRegBr <- baseVr1(fieldSoilDat, regVars)
 
 baseVr1Mod <- do.call(rbind, lapply(keySoilVars, function(x){
-  mod = plm(lm(as.formula(sameRegBr[,x] ~ as.factor(season) + as.factor(sample_id)), data=sameRegBr), "sample_id")
+  mod = plm(lm(as.formula(sameRegBr[,x] ~ as.factor(season)), data=sameRegBr), "sample_id")
+  #mod = lm(as.formula(sameRegBr[,x] ~ as.factor(season)), data=sameRegBr)
+  #mod.cluster <- coeftest(mod, clust.se(mod, sameRegBr$sample_id))
+  
   rownames(mod) = paste(rownames(mod), x, "same", sep = " ")
   
   return(mod)
@@ -1358,425 +1387,42 @@ clientVnonMod <- do.call(rbind, lapply(keySoilVars, function(x){
   return(mod)
 }))
 write.csv(clientVnonMod, file="output/clientVnon.csv")
-
 ```
 
-## Matching
+* Individual fixed effects account for things specicic to farmeer that don't change over time
+* can control for unobserved sources of heterogeneity over time, very sensitive to model 
+* add in other data points that do change over time
+* so add in things that change over time that plausibly affect our outcome
+* fertilizer and seed use are synoymous with being a client or not, highly endogenous
+* run two regs
+ + one with oaf 
+ + one with oaf and fertilizer
+* things like slope are collinear
 
-## Yield Paired
+* individual fixed effects makes more sense than using PSM now that we have multiple years.
+* means by directional changes
 
-How do soil attributes predict yields (climbing beans) >> can we understand yield as functions of carbon, pH, etc. Are the curves as we might expect?
-
-### Yield data
-
-The variable names from Commcare are in Kinyarwanda and a bit of a mess. I'm going to try to use the names from the Commcare form export. Or is there a way to get this information from Commcare? Surely there must be. 
+* papers using fixed effects by miguel on whether changes to rural to urban areas and income
 
 ```{r}
-bean <- getFormData("oafrwanda", "M&E", "16B ALL Isarura (Harvest)", forceUpdate = forceUpdateAll)
-write.csv(bean, file="rawCcYpData.csv", row.names=F)
-
-yieldNames <- read.table(unz("2016B Harvest2017-06-08.zip", "Forms.csv"), nrows=10, header=T, quote="\"", sep=",") # only first 10 rows
-
-# print variable names together
-write.csv(data.frame(names(bean)[1:100], names(yieldNames)[1:100]), file="matchYieldNames.csv")
-
-# get names from cc
-# appName <- "M&E"
-# formName <- "16B ALL Isarura (Harvest)"
-# moduleIdx=NA
-appData <- getAppStructure("oafrwanda")
-
-enNames <- getFormFromApp(appData, "M&E", "16B ALL Isarura (Harvest)")$values
-
-# leads to duplicates
-onlyVarName <- strsplit(enNames, "/", fixed=F)
-
-newNames <- do.call(rbind, lapply(onlyVarName, function(x){
-  return(x[[length(x)]])
+indFe <- do.call(rbind, lapply(keySoilVars, function(x){
+  mod = plm(lm(as.formula(fieldSoilDat[,x] ~ as.factor(d_client) + as.factor(sample_id) + as.factor(season)),data=fieldSoilDat), c("sample_id", "season"))
+  #mod = lm(as.formula(sameRegBr[,x] ~ as.factor(season)), data=sameRegBr)
+  #mod.cluster <- coeftest(mod, clust.se(mod, sameRegBr$sample_id))
+  
+  rownames(mod) = paste(rownames(mod), x, sep = " ")
+  
+  return(mod)
 }))
+write.csv(indFe, file="output/indFe.csv")
 
-names(bean)[10:length(names(bean))] <- newNames
-
-#names(bean)[duplicated(names(bean))]
-
-# update intercrop names so that they're unique >> manual cleaning
-names(bean)[61:70] <- paste("plants_box1", names(bean)[61:70], sep="_")
-names(bean)[82:91] <- paste("plants_box2", names(bean)[82:91], sep="_")
-
-names(bean)[170] <- paste0("climbing_beans_", names(bean)[170])
-names(bean)[177] <- paste0("bush_beans_", names(bean)[177])
-
-names(bean)[171] <- paste0("climbing_beans_", names(bean)[171])
-names(bean)[178] <- paste0("bush_beans_", names(bean)[178])
-
-names(bean)[173] <- paste0("climbing_beans_", names(bean)[173])
-names(bean)[180] <- paste0("bush_beans_", names(bean)[180])
-
-names(bean)[174] <- paste0("climbing_beans_", names(bean)[174])
-names(bean)[181] <- paste0("bush_beans_", names(bean)[181])
-
-names(bean)[211] <- paste0("bush_beans", names(bean)[211])
-names(bean)[221] <- paste0("maize_", names(bean)[221])
-```
-
-The best version of English names don't come from the data labels. They come from another portion of the output. I've extracted it here but a key point of feedback for Nathaniel will be to make certain that going forward variable labels are in the right places.
-
-### Match soil and yield
-
-It's probably safe to assume that if there isn't a soil code the data can be dropped. It's not clear how to match the yield data to the soil data. There might be a way to use the client id from the SHS data but I also don't know if that maps to the M&E data. I could try it if Nathaniel doesn't have a suggestion.
-
-```{r}
-#names(bean)[grep("soil",names(bean))]
-#names(bean)[grep("id",names(bean))]
-#table(bean$soil_code, useNA = 'ifany')
-pairedSoilDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_16b_paired_climbing", "4_predicted", "other_summaries"))
-pairedSoil <- read.csv(file=paste(pairedSoilDir, "combined-predictions-including-bad-ones.csv", sep = "/"))
-
-pSoilIdDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_16b_paired_climbing", "5_merged"))
-pSoilIds <- read.csv(file=paste(pSoilIdDir, "database.csv", sep = "/"))
-```
-
-### Clean soil ids
-
-Helpful links: [mutate_each](https://stackoverflow.com/questions/27027347/mutate-each-summarise-each-in-dplyr-how-do-i-select-certain-columns-and-give) and [var names to lower](https://stackoverflow.com/questions/29264028/dplyr-or-magrittr-tolower)
-
-```{r}
-psi <- pSoilIds %>% 
-  setNames(tolower(names(.))) %>%
-  mutate_each(funs(tolower), district, cell) %>%
-  rename(ssn = lab.ssn) %>% 
-  mutate(
-    idDups = duplicated(id) | duplicated(.[nrow(.):1, "id"])[nrow(.):1],
-    ssnDups = duplicated(ssn) | duplicated(.[nrow(.):1, "ssn"])[nrow(.):1]
-  )
-
-pairedSoil <- pairedSoil %>% 
-  setNames(tolower(names(.)))
-
-#table(psi$ssn %in% pairedSoil$ssn) # FALSE  TRUE  41   703 
-#table(pairedSoil$ssn %in% psi$ssn) # FALSE  TRUE  27   703 
-
-pairedSoil <- left_join(pairedSoil, psi, by="ssn") # keeps all paired soil values, no duplicated ids
-```
-
-And now check how many soil ids are duplicated in the bean data. Is there any hope of untangling which ones are suppoed to be which based on the info provided in the soil data?
-
-```{r}
-beanCheck <- bean %>% 
-  filter(!is.na(soil_code)) %>%
-  mutate(
-    idDups = duplicated(soil_code) | duplicated(.[nrow(.):1, "soil_code"])[nrow(.):1]
-  )
-
-beanCheck %>% 
-  filter(idDups==TRUE) %>%
-  arrange(soil_code) %>%
-  dplyr::select(district, cell, soil_code)
 
 ```
 
-And let's compare this to the ids in the soil data to see if we can find matches. If I can, I'll need to make a new unique id to match them.
+In the individual fixed effect model above, the naive model would only include a client indicator and individual fixed effects. If we add season, we lose significance on almost everything. I'd guess that as we add more likely controls we additionally lose signficance. 
 
 ```{r}
-#vector of duplicated ids in the bean data
-idComps <- unique(beanCheck$soil_code[beanCheck$idDups==TRUE])
-
-pairedSoil %>% 
-  filter(id %in% idComps) %>%
-  arrange(id) %>%
-  dplyr::select(district, cell, id)
-```
-
-Visually it doesn't seem that there are easy matches to be made. We obviously don't have any -88s or 0s in the id data. 
-
-* `24764` Gitega g doesn't exist. 
-* `44337` There are two murambi and we have no further distinguishing info.
-* `183004` the name is entirely different.
-* `1326301` kibyagira seems to be the best match!
-* `9050401` the names are the same.
-* `14160102` the names are the same.
-
-Fix the one duplicate we can, drop the others and merge the yield data with the soil data. 
-TODO - still waiting on Nathaniel for guidance on how to calculate climbing bean yield. I can take a look at this and see if I can guess.
-
-TODO - follow up with Nathaniel about the soil ids not matching.
-
-```{r}
-bean <- bean[-which(bean$soil_code==1326301 & bean$cell=="Gahira"),]
-```
-
-```{r}
-py <- bean %>% 
-  filter(!is.na(soil_code)) %>%
-  mutate(
-    idDups = duplicated(soil_code) | duplicated(.[nrow(.):1, "soil_code"])[nrow(.):1]
-  ) %>% 
-  filter(idDups==FALSE) %>%
-  rename(ns = id, # change the bean id to something else,  nonsense
-         id = soil_code) 
-```
-
-We lose `r dim(beanCheck)[1] - dim(py)[1]` obs to duplicated or useless ids.
-
-```{r}
-loss <- table(py$id %in% pairedSoil$id)[[1]]
-#py$id[!py$id %in% pairedSoil$id]
-#table(pairedSoil$id %in% py$id)
-```
-
-We then lose `r loss` to not having matches. We're not getting good value for our money here.
-
-```{r}
-toJoin <- names(pairedSoil)[c(2:22,25)]
-
-py <- py %>%
-  inner_join(., pairedSoil[,toJoin], by="id")
-
-```
-
-### Clean and construct vars
-
-I'm going to take a quick guess at how kg/m2 and t/ha yield calculations were made so that I can set up the analyses I want. I'm first incorporating chagnes to the data Alex Villec did in his .do file. See `cleans_harvest_16b.do` starting on line 85.
-
-```{r}
-py$box_length1 <- ifelse(py$d_box_lenght1!=7 & py$d_box_lenght1!=3, 5, py$d_box_lenght1)
-py$box_width1 <- ifelse(py$d_box_width1!=7 & py$d_box_width1!=3, 5, py$d_box_width1)
-
-py$box_length2 <- ifelse(py$d_box_length2!=7 & py$d_box_length2!=3, 5, py$d_box_length2)
-py$box_width2 <- ifelse(py$d_box_width2!=7 & py$d_box_width2!=3, 5, py$d_box_width2)
-
-```
-
-
-```{r}
-calculateYield <- function(bagA, bagB, lenA, lenB, widthA, widthB, df) {
-  
-  #convert to numeric
-  df[,c(bagA, bagB, lenA, lenB, widthA, widthB)] <- sapply(df[,c(bagA, bagB, lenA, lenB, widthA, widthB)], function(x){
-    as.numeric(as.character(x))
-  })
-  
-  # calculate box areas
-  df$boxAreaA <- df[,lenA] * df[,widthA]
-  df$boxAreaB <- df[,lenB] * df[,widthB]
-
-  df$yieldA <- df[,bagA] / df$boxAreaA
-  df$yieldB <- df[,bagB] / df$boxAreaB
-
-  df$yieldProbsA <- is.na(df$yieldA) | is.infinite(df$yieldA)
-  df$yieldProbsB <- is.na(df$yieldB) | is.infinite(df$yieldB)
-
-  df$yield <- (df[,bagA] + df[,bagB]) / (df$boxAreaA + df$boxAreaB)
-  
-  df$yield[!df$yieldProbsA & df$yieldProbsB] <- 
-    df$yieldA[!df$yieldProbsA & df$yieldProbsB]
-  df$yield[!df$yieldProbsB & df$yieldProbsA] <- 
-    df$yieldB[!df$yieldProbsB & df$yieldProbsA]
-  return(df)
-}
-
-py <- calculateYield("box_kg1", "box_kg2", "box_length1", "box_length2", "box_width1", "box_width2", py)
-
-respVar <- c(names(py)[which(names(py)=="ph"): which(names(py)=="x.total.nitrogen")], "yield")
-
-yr <- py[,names(py) %in% respVar]
-yr$tha <- yr$yield * 10
-
-soilVars <- names(yr)[which(names(yr)=="ph"):which(names(yr)=="x.total.nitrogen")]
-```
-
-```{r}
-soilYTab <- do.call(plyr::rbind.fill, lapply(soilVars, function(y){
-  #print(y)
-  res = iqr.check(yr, y)
-  #print(dim(res))
-  out = data.frame(var=rbind(y, paste(y, ".iqr", sep="")), res)
-  return(out)
-}))
-
-soilYTab[,2:length(soilYTab)] <- sapply(soilYTab[,2:length(soilYTab)], function(x){round(x,2)})
-```
-
-The outlier table summarizes the numeric variables with and without IQR outliers to show how the data changes based on this filter.
-
-```{r}
-knitr::kable(soilYTab, row.names = F, digits = 3, format = 'markdown')
-```
-
-Impose sensible constraints on soil variables
-
-**Ask Patrick and Step what those might be**. I've removed IQR outliers but that's probably a bit too crude. 
-
-```{r}
-check.3sd <- function(x) {
-  x = ifelse(is.infinite(x), NA, x)
-  mean = mean(x, na.rm=T)
-  sd = sd(x, na.rm=T)
-  mark = ifelse(x>(mean + (3*sd)) |
-        x<(mean - (3*sd)), NA, x)
-  return(mark)
-}
-
-
-sdSoilVals.py <- py %>%
-  dplyr::select(one_of(soilVars)) 
-
-sdCheck.py <- as.data.frame(apply(sdSoilVals.py, 2, function(x){
-  return(check.3sd(x))
-}))
-
-names(py)[which(names(py)=="ph"):which(names(py)=="x.total.nitrogen")] <- paste0(names(py)[which(names(py)=="ph"):which(names(py)=="x.total.nitrogen")], ".raw")
-
-py <- cbind(py, sdCheck.py)
-```
-
-```{r}
-mat <- sapply(yr[,soilVars], function(x){
-  q1 = summary(x)[[2]]
-  q3 = summary(x)[[5]] 
-  iqr = q3-q1
-  check  = ifelse(x < (q1 - (1.5*iqr)) | x > (q3 + (1.5*iqr)), NA,x)
-  return(check)
-})
-
-mat <- as.data.frame(mat)
-names(mat) <-paste0(soilVars, ".iqr")
-yr <- cbind(yr, mat)
-
-soilIqr <- names(yr)[which(names(yr)=="ph.iqr"):which(names(yr)=="x.total.nitrogen.iqr")]
-```
-
-
-### Yield response curves
-
-[Link to the diagPlot](https://rpubs.com/therimalaya/43190) and the [interpretation of linear diagnostics](http://strata.uga.edu/8370/rtips/regressionPlots.html) and guidance on [GridExtra](https://cran.r-project.org/web/packages/gridExtra/vignettes/tableGrob.html)
-```{r}
-diagPlot<-function(model){
-  
-    p1 <- ggplot(model, aes(.fitted, .resid)) + geom_point()
-    p1 <- p1 + stat_smooth(method="loess") + geom_hline(yintercept=0, col="red", linetype="dashed")
-    p1 <- p1 + xlab("Fitted values")+ylab("Residuals")
-    p1 <- p1 + ggtitle("Residual vs Fitted Plot")+theme_bw()
-    
-    
-    #p2Mod <- fortify(model)
-    p2 <- ggplot() + geom_qq(data=model, aes(sample=.stdresid))
-    p2<-p2+geom_abline()
-    p2<-p2+ggtitle("Normal Q-Q")+theme_bw()
-    
-    p3<-ggplot(model, aes(.fitted, sqrt(abs(.stdresid))))+geom_point(na.rm=TRUE)
-    p3<-p3+stat_smooth(method="loess", na.rm = TRUE)+xlab("Fitted Value")
-    p3<-p3+ylab(expression(sqrt("|Standardized residuals|")))
-    p3<-p3+ggtitle("Scale-Location")+theme_bw()
-    
-    # p4<-ggplot(model, aes(seq_along(.cooksd), .cooksd))+geom_bar(stat="identity", position="identity")
-    # p4<-p4+xlab("Obs. Number")+ylab("Cook's distance")
-    # p4<-p4+ggtitle("Cook's distance")+theme_bw()
-    
-    p5<-ggplot(model, aes(.hat, .stdresid))+geom_point(aes(size=.cooksd), na.rm=TRUE)
-    p5<-p5+stat_smooth(method="loess", na.rm=TRUE)
-    p5<-p5+xlab("Leverage")+ylab("Standardized Residuals")
-    p5<-p5+ggtitle("Residual vs Leverage Plot")
-    p5<-p5+scale_size_continuous("Cook's Distance", range=c(1,5))
-    p5<-p5+theme_bw()+theme(legend.position="bottom")
-    
-    # p6<-ggplot(model, aes(.hat, .cooksd))+geom_point(na.rm=TRUE)+stat_smooth(method="loess", na.rm=TRUE)
-    # p6<-p6+xlab("Leverage hii")+ylab("Cook's Distance")
-    # p6<-p6+ggtitle("Cook's dist vs Leverage hii/(1-hii)")
-    # p6<-p6+geom_abline(slope=seq(0,3,0.5), color="gray", linetype="dashed")
-    # p6<-p6+theme_bw()
-    
-    return(list(rvfPlot=p1, 
-                qqPlot=p2, 
-                sclLocPlot=p3, 
-                #cdPlot=p4, 
-                rvlevPlot=p5
-                #cvlPlot=p6
-                ))
-}
-```
-#### Individual soil models
-
-I'm not entirely certain how to best model yield as a function of soil properties. I'm going to run a handful of models and give some initial caveats. These model diagnositics still need to be incorporated into model use and interpretation. 
-
-##### Full values - individual
-
-**Obligatory disclaimer**: These summaries are intended to show if the regression models are reliable. We know already that the regressions are unable to be directly interpreted. We should try to find more established linear yield models to give our approach a firmer foundation in the literature.
-
-```{r}
-invisible(lapply(soilVars, function(x){
-  #print(paste0("Soil variable: ", x))
-  plm(lm(tha ~ yr[,x], data=yr))
-  
-}))
-```
-
-##### IQR values - individual
-```{r}
-invisible(lapply(soilIqr, function(x){
-  #print(paste0("Soil variable: ", x))
-  plm(lm(tha ~ yr[,x], data=yr))
-  
-}))
-```
-
-
-#### Individual soil curves
-
-**Obligatory disclaimer**: These curves are simplistic and can't be taken at face value. We only have soil chemistry data and it's noisy soil chemistry data. We should follow more established yield models to understand the contribution of individual featuers toward yield response.
-
-```{r}
-
-respCurve <- function(dat, yVar, xVar, yLab, xLab, gTitle){
-  lineSmooth <- ggplot(dat) + 
-	  stat_smooth(aes(x = dat[,xVar], y=dat[,yVar]), se=FALSE) + 
-	  theme_bw() + 
-    labs(x = xLab, y = yLab, title=paste0("Basic response curve: ", gTitle))
-  
-  dotGraph <- ggplot(dat) + 
-	  geom_point(aes(x = dat[,xVar], y=dat[,yVar]), se=FALSE) + 
-	  theme_bw() + 
-    labs(x = xLab, y = yLab, title=paste0("Scatter plot: ", gTitle))
-  
-  multiplot(lineSmooth, dotGraph)
-}
-
-```
-
-##### Full values - curves
-
-```{r}
-# response curves
-for(i in 1:length(soilVars)){
-    respCurve(yr, "tha", soilVars[i],"Yield (t/ha)", soilVars[i], gTitle = soilVars[i])
-  
-}
-
-```
-
-##### IQR values - curves
-
-```{r}
-# response curves
-for(i in 1:length(soilIqr)){
-    respCurve(yr, "tha", soilIqr[i],"Yield (t/ha)", soilIqr[i], gTitle = soilIqr[i])
-
-}
-
-```
-
-### Yield response tables
-
-The concept here was to show the yield values at discrete x-axis values but this begets the question of how to calculate that y-value. The stylized lines above aren't sufficiently vetted to present them in a table. 
-
-```{r}
-yTable <- function(dat, yVars, xVar){
-  
-  fit = lm(yVar ~ xVars, dat)
-  
-}
-
-
+kable(indFe, format="markdown")
 ```
 
 
