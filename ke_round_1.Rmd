@@ -1,0 +1,209 @@
+---
+title: "Kenya SHS Round 1"
+author: '[Matt Lowes](mailto:matt.lowes@oneacrefund.org)'
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  html_notebook:
+    number_sections: yes
+    code_folding: show
+    theme: flatly
+    toc: yes
+    toc_depth: 6
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Objective
+
+The objective of this analysis is to identify potential data quality issues with in coming Kenya soil health round 1 study data so that the enumeration team can address issues in the field and improve overall quality. This file will also serve as (1) an initial cleaning file and (2) an attrition and balance check to inform when to wrap up enumeration.
+
+# Key Takeaways
+
+> 1) We have likely outliers in the numeric data. Follow up with enumerators about these values.
+> 2) Many round 1 GPS points are not close to the baseline value. Follow up about plot continuity and GPS quality.
+
+```{r, message=F}
+source("../oaflib/commcareExport.R")
+library(ggplot2)
+library(readxl)
+library(dplyr)
+library(stringr)
+library(reshape2)
+library(readxl)
+library(sp)
+library(dismo)
+library(XML)
+library(leaflet)
+library(ggmap)
+suppressMessages(library(MASS))
+```
+
+# Data
+
+## Import Data
+
+I'm going to use the CommCare API created by [Robert On](robert.on@oneacrefund.org) to access the data directly from CommCare. This ensures that there are no changes to the data between the point of access and the point of cleaning and analysis
+
+```{r}
+forceUpdateAll = F
+forceUpdate = forceUpdateAll
+d <- getFormData("harvest", "Soil Sampling", "Soil Sampling 2017", forceUpdate)
+# add in force update to get latest report
+```
+
+## update variable names
+
+The variable names are out of control. In order to make the variable names more user friendly, I went to [CommCare](www.commcarehq.com) and downloaded the form contents that includes the variable name. I then wrote in a more user friendly variable name in the file. I import and overwrite the variable names here. Perhaps there's a better way to do this but it's easier to log the changes in excel than to write out all the code. The reference files will be on hand in case I accidentally mislabel a variable. The variable names in the excel file start with variable 11 from CommCare. The first 10 CommCare variables are meta data which we will keep.
+
+General TODO
+
+* import round 1 soil data
+* do some cleaning and checking of round 1 data
+* import baseline data
+* align baseline and round 1 data long 
+
+```{r, messages=F}
+newName <- read_excel("var_names.xlsx", sheet=1)
+```
+
+```{r}
+qTypes <- c("Multiple Choice", "Phone Number or Numeric ID", "Checkbox", "Text", "Decimal", "Image Capture", "Barcode Scan", "GPS", "Integer")
+
+newName <- newName %>% dplyr::select(1:4
+) %>% dplyr::filter(newName$Type %in% qTypes) %>% as.data.frame()
+newName <- newName %>% filter(new.var.name!="general.comment")
+```
+
+Keep the participation variable in `d` so we understand who agreed to participate. Make additional changes to `d` to prepare it to be combined with the meta information from CommCare.
+
+```{r}
+names(d)[26] <- "participation"
+names(d)[names(d)=="#form/id_base/Soil_Sample_Id"] <- "Soil_Sample_Id"
+names(d)[names(d)=="#form/id_2017new/Soil_Sample_Id"] <- "New_soil_sample_id"
+```
+
+Merge in variable names to check that they match and then replace `names()`. I'm subtracting two because the `Soil_Sample_Id` variables appear out of order.
+
+I'm also adding some variables to the new name vector as d now has a different variable length
+
+```{r}
+newNameVec <- c(newName$new.var.name[1], "agree", "interviewed.2016", "refusal", newName$new.var.name[2:(length(newName$new.var.name)-1)], "comment", newName$new.var.name[length(newName$new.var.name)])
+
+names(d)[11:(length(d)-3)] <- newNameVec
+
+# drop vars with drop
+d <- d[,-which(grepl("drop.", names(d)))]
+```
+
+Make new variables
+
+```{r}
+#convert acreage to m2 and then calculate fertilizer per acre
+d$plot.m2 <- d$plot.size*4046
+
+m2ToAcres <- function(input, meters) {
+  res <- (input/meters)*4046
+  return(res)
+}
+
+d$can.acre <- m2ToAcres(d$can.main, d$plot.m2)
+d$dap.acre <- m2ToAcres(d$dap.main,d$plot.m2)
+d$npk.acre <- m2ToAcres(d$npk.main,d$plot.m2)
+d$urea.acre <- m2ToAcres(d$urea.main,d$plot.m2)
+d$compost.acre <- m2ToAcres(d$compost.kgs,d$plot.m2)
+d$seed.acre <- m2ToAcres(d$seed.kgs,d$plot.m2)
+
+d$intercrop.seed.acre <- m2ToAcres(d$intercrop.seed.kgs, d$plot.m2)
+d$intercrop.dap.acre <- m2ToAcres(d$dap.intercrop, d$plot.m2)
+d$intercrop.can.acre <- m2ToAcres(d$can.intercrop, d$plot.m2)
+d$intercrop.npk.acre <- m2ToAcres(d$npk.intercrop, d$plot.m2)
+d$intercrop.urea.acre <- m2ToAcres(d$urea.intercrop, d$plot.m2)
+
+```
+
+Yield calculation - first let's confirm that when the `yield.unit` is NA that there isn't a yield value.
+
+```{r}
+table(d$yield[is.na(d$yield.unit)], useNA = 'ifany')
+```
+
+TODO - **Charles**: I assume a 0 yield is a true value. Or should it be NA? The code below converts all yield values associated with an NA unit to NA when in fact there should be some 0s.
+
+```{r}
+d$yield.kg <- ifelse(d$yield.unit=="100kg", d$yield*100, 
+              ifelse(d$yield.unit=="50kg", d$yield*50,
+              ifelse(d$yield.unit=="90kg", d$yield*90,
+              ifelse(d$yield.unit=="GG", d$yield*2, NA))))
+```
+
+### Import feedback
+
+Here I take the follow up responses from enumerators and update the values in the the full data. I only want the outlier checks to show values that we haven't already addressed through soliciting additional feedback from enumerators and farmers. This code assumes the data comes in with rows as farmers and columns as the questions that needed to be addressed. I've reshaped it to include 
+
+```{r}
+#updateDir <- paste(getwd(), "enum_summaries", sep = "/")
+updates <- read.csv("Phone calls survey.csv", header=T, stringsAsFactors = F) %>% rename(
+  Soil_Sample_Id = soil_sample_id,
+  age = Age.of.respondent,
+  can.intercrop = How.many.KGs.of.CAN.did.you.apply.to.the..intercrop.,
+  can.main = How.many.KGs.of.CAN.did.you.apply.to.the.main.crop.,
+  chickens = Number.of.chickens.How.many.chickens.do.you.own..chickens,
+  dap.intercrop = How.many.KGs.of.DAP.did.you.apply.to.the.intercrop.,
+  dap.main = How.many.KGs.of.DAP.did.you.apply.to.the.main.crop.,
+  hhsize = Number.of.people.in.this.Household.Include.respondent..,
+  intercrop.seed.kgs = How.many.kgs.of.seed.did.you.use.in.your.intercrop.,
+  lime.kgs = How.many.KGs.of.lime.did.you.use.on.this.plot.,
+  npk.main = How.many.KGs.of.NPK.did.you.apply.to.the.maincrop.,
+  plot.size = What.is.your.aproximate.plotsize,
+  seed.kgs = How.many.kgs.of.seed.did.you.use.in.the.Maincrop.,
+  sheep = How.many.sheep.do.you.own.,
+  urea.main = How.many.KGs.of.urea.did.you.apply.to.the.maincrop.,
+  yield = What.was.the.yield.for.this.plot.main.crop.
+) %>% mutate(
+  yield = ifelse(yield=="N/A", NA,  ifelse(grepl("Not", yield), NA, yield)),
+  yield = ifelse(yield=="32 bags of 90 kgs", "32 bags", yield)
+)
+
+updates$yield.unit <- sapply(updates$yield, function(x){ # separate out the unit
+  strsplit(x, " ")[[1]][2]})
+
+updates$yield.kg <- sapply(updates$yield, function(x){ # keep only the number
+  strsplit(x, " ")[[1]][1]})
+
+updates$yield.kg <- ifelse(grepl("bag",  updates$yield.unit), as.numeric(updates$yield)*90, ifelse(grepl("goro", updates$yield.unit),  as.numeric(updates$yield)*2.45, updates$yield))
+
+
+updates <- melt(updates, id.vars = c("Soil_Sample_Id", "Comments"), measure.vars = names(updates)[6:19])
+updates <- updates %>% filter(!is.na(value) | value!= " ")
+
+# check that this works:
+#print(updates[1,])
+```
+
+## Outlier check
+
+Check all numeric variables for outliers. First, it's probably safe to replace all -99s with NA
+
+```{r}
+d[d==-99] <- NA
+```
+
+TODO - 
+
+## Import baseline
+
+## Align baseline vars
+
+## 
+
+# Analysis
+
+The aim of the analysis is to: 
+
+1. Check variables of interest and check for odd values that we might want to investigate further
+2. Look at matches with the baseline and check GPS points
+3. Look at matches with baseline and check for attrition and balance.
+
