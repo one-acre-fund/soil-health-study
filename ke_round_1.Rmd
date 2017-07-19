@@ -26,24 +26,42 @@ The objective of this analysis is to identify potential data quality issues with
 > 2) Many round 1 GPS points are not close to the baseline value. Follow up about plot continuity and GPS quality.
 
 ```{r, message=F}
+rm(list = ls())
+cat("\014")
+
+## set up some global options
+# always set stringsAsFactors = F when loading data
+options(stringsAsFactors=FALSE)
+
+# show the code
+knitr::opts_chunk$set(echo = TRUE)
+
+# define all knitr tables to be html format
+options(knitr.table.format = 'html')
+
+# change code chunk default to not show warnings or messages
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+libs <- c("dplyr", "reshape2", "knitr", "ggplot2", "tibble", "readxl", 
+    "MASS", "gridExtra", "cowplot", "robustbase", "car", "RStata", "foreign",
+    "tidyr", "readxl", "stringr", "sp", "dismo", "leaflet", "XML", "ggmap", "knitr",
+    "MASS")
+lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F)
+
+#### define helpful functions
+# define function to adjust table widths
+html_table_width <- function(kable_output, width) {
+  width_html <- paste0(paste0('<col width="', width, '">'), collapse = "\n")
+  sub("<table>", paste0("<table>\n", width_html), kable_output)
+}
+
 source("../oaflib/commcareExport.R")
-library(ggplot2)
-library(readxl)
-library(dplyr)
-library(stringr)
-library(reshape2)
-library(readxl)
-library(sp)
-library(dismo)
-library(XML)
-library(leaflet)
-library(ggmap)
-suppressMessages(library(MASS))
+source("../oaflib/misc.R")
 ```
 
 # Data
 
-## Import Data
+## Import round 1 data
 
 I'm going to use the CommCare API created by [Robert On](robert.on@oneacrefund.org) to access the data directly from CommCare. This ensures that there are no changes to the data between the point of access and the point of cleaning and analysis
 
@@ -54,7 +72,15 @@ d <- getFormData("harvest", "Soil Sampling", "Soil Sampling 2017", forceUpdate)
 # add in force update to get latest report
 ```
 
-## update variable names
+## Import baseline
+
+```{r}
+baselineDir <- normalizePath(file.path("..", "ke_baseline", "data"))
+
+b <- read.csv(file=paste0(baselineDir, "/shs ke baseline.csv")) # obj d
+```
+
+## Update variable names
 
 The variable names are out of control. In order to make the variable names more user friendly, I went to [CommCare](www.commcarehq.com) and downloaded the form contents that includes the variable name. I then wrote in a more user friendly variable name in the file. I import and overwrite the variable names here. Perhaps there's a better way to do this but it's easier to log the changes in excel than to write out all the code. The reference files will be on hand in case I accidentally mislabel a variable. The variable names in the excel file start with variable 11 from CommCare. The first 10 CommCare variables are meta data which we will keep.
 
@@ -143,41 +169,43 @@ d$yield.kg <- ifelse(d$yield.unit=="100kg", d$yield*100,
 
 Here I take the follow up responses from enumerators and update the values in the the full data. I only want the outlier checks to show values that we haven't already addressed through soliciting additional feedback from enumerators and farmers. This code assumes the data comes in with rows as farmers and columns as the questions that needed to be addressed. I've reshaped it to include 
 
+TODO - come back and figure out how to quickly add in the phone data
+
 ```{r}
 #updateDir <- paste(getwd(), "enum_summaries", sep = "/")
-updates <- read.csv("Phone calls survey.csv", header=T, stringsAsFactors = F) %>% rename(
-  Soil_Sample_Id = soil_sample_id,
-  age = Age.of.respondent,
-  can.intercrop = How.many.KGs.of.CAN.did.you.apply.to.the..intercrop.,
-  can.main = How.many.KGs.of.CAN.did.you.apply.to.the.main.crop.,
-  chickens = Number.of.chickens.How.many.chickens.do.you.own..chickens,
-  dap.intercrop = How.many.KGs.of.DAP.did.you.apply.to.the.intercrop.,
-  dap.main = How.many.KGs.of.DAP.did.you.apply.to.the.main.crop.,
-  hhsize = Number.of.people.in.this.Household.Include.respondent..,
-  intercrop.seed.kgs = How.many.kgs.of.seed.did.you.use.in.your.intercrop.,
-  lime.kgs = How.many.KGs.of.lime.did.you.use.on.this.plot.,
-  npk.main = How.many.KGs.of.NPK.did.you.apply.to.the.maincrop.,
-  plot.size = What.is.your.aproximate.plotsize,
-  seed.kgs = How.many.kgs.of.seed.did.you.use.in.the.Maincrop.,
-  sheep = How.many.sheep.do.you.own.,
-  urea.main = How.many.KGs.of.urea.did.you.apply.to.the.maincrop.,
-  yield = What.was.the.yield.for.this.plot.main.crop.
-) %>% mutate(
-  yield = ifelse(yield=="N/A", NA,  ifelse(grepl("Not", yield), NA, yield)),
-  yield = ifelse(yield=="32 bags of 90 kgs", "32 bags", yield)
-)
-
-updates$yield.unit <- sapply(updates$yield, function(x){ # separate out the unit
-  strsplit(x, " ")[[1]][2]})
-
-updates$yield.kg <- sapply(updates$yield, function(x){ # keep only the number
-  strsplit(x, " ")[[1]][1]})
-
-updates$yield.kg <- ifelse(grepl("bag",  updates$yield.unit), as.numeric(updates$yield)*90, ifelse(grepl("goro", updates$yield.unit),  as.numeric(updates$yield)*2.45, updates$yield))
-
-
-updates <- melt(updates, id.vars = c("Soil_Sample_Id", "Comments"), measure.vars = names(updates)[6:19])
-updates <- updates %>% filter(!is.na(value) | value!= " ")
+# updates <- read.csv("Phone calls survey.csv", header=T, stringsAsFactors = F) %>% rename(
+#   Soil_Sample_Id = soil_sample_id,
+#   age = Age.of.respondent,
+#   can.intercrop = How.many.KGs.of.CAN.did.you.apply.to.the..intercrop.,
+#   can.main = How.many.KGs.of.CAN.did.you.apply.to.the.main.crop.,
+#   chickens = Number.of.chickens.How.many.chickens.do.you.own..chickens,
+#   dap.intercrop = How.many.KGs.of.DAP.did.you.apply.to.the.intercrop.,
+#   dap.main = How.many.KGs.of.DAP.did.you.apply.to.the.main.crop.,
+#   hhsize = Number.of.people.in.this.Household.Include.respondent..,
+#   intercrop.seed.kgs = How.many.kgs.of.seed.did.you.use.in.your.intercrop.,
+#   lime.kgs = How.many.KGs.of.lime.did.you.use.on.this.plot.,
+#   npk.main = How.many.KGs.of.NPK.did.you.apply.to.the.maincrop.,
+#   plot.size = What.is.your.aproximate.plotsize,
+#   seed.kgs = How.many.kgs.of.seed.did.you.use.in.the.Maincrop.,
+#   sheep = How.many.sheep.do.you.own.,
+#   urea.main = How.many.KGs.of.urea.did.you.apply.to.the.maincrop.,
+#   yield = What.was.the.yield.for.this.plot.main.crop.
+# ) %>% mutate(
+#   yield = ifelse(yield=="N/A", NA,  ifelse(grepl("Not", yield), NA, yield)),
+#   yield = ifelse(yield=="32 bags of 90 kgs", "32 bags", yield)
+# )
+# 
+# updates$yield.unit <- sapply(updates$yield, function(x){ # separate out the unit
+#   strsplit(x, " ")[[1]][2]})
+# 
+# updates$yield.kg <- sapply(updates$yield, function(x){ # keep only the number
+#   strsplit(x, " ")[[1]][1]})
+# 
+# updates$yield.kg <- ifelse(grepl("bag",  updates$yield.unit), as.numeric(updates$yield)*90, ifelse(grepl("goro", updates$yield.unit),  as.numeric(updates$yield)*2.45, updates$yield))
+# 
+# 
+# updates <- melt(updates, id.vars = c("Soil_Sample_Id", "Comments"), measure.vars = names(updates)[6:19])
+# updates <- updates %>% filter(!is.na(value) | value!= " ")
 
 # check that this works:
 #print(updates[1,])
@@ -187,23 +215,366 @@ updates <- updates %>% filter(!is.na(value) | value!= " ")
 
 Check all numeric variables for outliers. First, it's probably safe to replace all -99s with NA
 
+TODO - set up outlier checks
+
 ```{r}
-d[d==-99] <- NA
+catVars <- names(d)[sapply(d, function(x){
+  is.character(x)
+})]
+
+enumClean <- function(dat, x, toRemove){
+  dat[,x] <- ifelse(dat[,x] %in% toRemove, NA, dat[,x])
+  return(dat[,x])
+}
+
+strTable <- function(dat, x){
+  varName = x
+  tab = as.data.frame(table(dat[,x], useNA = 'ifany'))
+  tab = tab[order(tab$Freq, decreasing = T),]
+  end = ifelse(length(tab$Var1)<10, length(tab$Var1), 10)
+  repOrder = paste(tab$Var1[1:end], collapse=", ")
+  out = data.frame(variable = varName,
+                   responses = repOrder)
+  
+  return(out)
+}
+
+# clean up known values
+catEnumVals <- c("-99", "-88", "- 99", "-99.0", "88", "_88", "- 88", "0.88",
+                 "--88", "__88", "-88.0", "99.0")
+d[,catVars] <- sapply(catVars, function(y){
+  d[,y] <- enumClean(d,y, catEnumVals)
+})
+
+
+responseTable <- do.call(rbind, lapply(catVars, function(x){
+  strTable(d, x)
+}))
+
 ```
 
-TODO - 
+### Categorical response table
 
-## Import baseline
+A simple table to preview the values in the data. The values are ranked by frequency.
 
-## Align baseline vars
+```{r}
+kable(responseTable, format="markdown")
+```
 
-## 
+### Categorical response graphs
+```{r}
+repGraphs <- function(dat, x){
+  tab = as.data.frame(table(dat[,x], useNA = 'ifany'))
+  tab = tab[order(tab$Freq, decreasing = T),]
+  print(
+    ggplot(data=tab, aes(x=Var1, y=Freq)) + geom_bar(stat="identity") +
+      theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+      labs(title =paste0("Composition of variable: ", x))
+  )
+}
+
+adminVars <- c(names(d)[grep("meta", names(d))],"enum_name", "photo",  "participation", "refusal", "phone",  "comment", "gps", "Soil_Sample_Id", "sampling.barcode", "id", "domain", "date_header", "form.case.@case_id", "site", "district1", "site1", "plot.location", "New_soil_sample_id", "#form/Sampling2017_Complete", "AppFormId")
+nonAdminVars <- catVars[!catVars %in% adminVars]
+
+for(i in 1:length(nonAdminVars)){
+  repGraphs(d, nonAdminVars[i])
+}
+```
+
+## Numeric variables
+
+```{r}
+numVars <- names(d)[sapply(d, function(x){
+  is.numeric(x)
+})]
+```
+
+Basic cleaning of known issues like enumerator codes for DK, NWR, etc.
+```{r}
+enumVals <- c(-88,-85, -99)
+
+d[,numVars] <- sapply(numVars, function(y){
+  d[,y] <- enumClean(d,y, enumVals)
+})
+```
+
+### Numeric outlier table
+
+```{r}
+iqr.check <- function(dat, x) { 
+  q1 = summary(dat[,x])[[2]]
+  q3 = summary(dat[,x])[[5]] 
+  iqr = q3-q1
+  mark  = ifelse(dat[,x] < (q1 - (1.5*iqr)) | dat[,x] > (q3 + (1.5*iqr)), 1,0)
+  tab = rbind(
+    summary(dat[,x]),
+    summary(dat[mark==0, x])
+  )
+  return(tab)
+}
+
+# remove admin vars
+numAdminVars <- c("metadata.deviceID", "oafid")
+numVarsNotAdmin <- numVars[!numVars %in% numAdminVars]
+
+iqrTab <- do.call(plyr::rbind.fill, lapply(numVarsNotAdmin, function(y){
+  #print(y)
+  res = iqr.check(d, y)
+  #print(dim(res))
+  out = data.frame(var=rbind(y, paste(y, ".iqr", sep="")), res)
+  return(out)
+}))
+
+iqrTab[,2:8] <- sapply(iqrTab[,2:8], function(x){round(x,1)})
+```
+
+The outlier table summarizes the numeric variables with and without IQR outliers to show how the data changes based on this filter.
+
+TODO - check the composition of the fertilizer/acre variables.
+
+```{r}
+knitr::kable(iqrTab, row.names = F, digits = 0, format = 'markdown')
+```
+
+### Outlier Graphs
+
+```{r}
+# http://rforpublichealth.blogspot.com/2014/02/ggplot2-cheatsheet-for-visualizing.html
+for(i in 1:length(numVarsNotAdmin)){
+    base <- ggplot(d, aes(x=d[,numVarsNotAdmin[i]])) + labs(x = numVarsNotAdmin[i])
+    temp1 <- base + geom_density()
+    temp2 <- base + geom_histogram()
+    #temp2 <- boxplot(r[,numVars[i]],main=paste0("Variable: ", numVars[i]))
+    multiplot(temp1, temp2, cols = 2)
+}
+```
+
+## Merge in soil data
+
+Make round 1 ids lower case
+
+```{r}
+d <- d %>% mutate(
+  Soil_Sample_Id = tolower(Soil_Sample_Id)
+)
+```
+
+
+Here I access the soil predictions from the OAF soil lab. [Patrick Bell](mailto:patrick.bell@oneacrefund.org) manages the lab and [Mike Barber](mike.barber@oneacrefund.org) oversees the prediction scripts.
+
+TODO - get estimate on when the wet chem will be back for the Kenya SHS second round data
+
+```{r}
+# soilDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_second_round", "4_predicted", "other_summaries"))
+# soil <- read.csv(file=paste(soilDir, "combined-predictions-including-bad-ones.csv", sep = "/"))
+# 
+# idDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_second_round", "5_merged"))
+# Identifiers <- read_excel(paste(idDir,"database.xlsx",sep="/"), sheet=1)
+```
+
+## Check round 1 ids
+
+Check for unique ids in the round 1 data
+```{r}
+length(d$Soil_Sample_Id)==length(unique(d$Soil_Sample_Id))
+dups <- d$Soil_Sample_Id[duplicated(d$Soil_Sample_Id) & !is.na(d$Soil_Sample_Id)]
+```
+
+Let's use the baseline data to resolve these duplicated ids
+```{r}
+roundId <- d %>%
+  dplyr::select(district, site, Soil_Sample_Id) %>%
+  filter(d$Soil_Sample_Id %in% dups) %>%
+  filter(!is.na(district) & !is.na(Soil_Sample_Id))
+```
+
+The first one is marked as both OAF and not OAF in the follow up. The surveys happened on consecutive days. I'm going to keep the obersvation with the same phone number from the baseline.
+
+```{r}
+# duplicated id 1
+idCheck <- d[d$Soil_Sample_Id %in% dups[1],]
+
+bCheck <- b[b$Soil_Sample_Id %in% dups[1],]
+
+d <- d[-which(d$Soil_Sample_Id==dups[1] & d$phone!=724903366),]
+```
+
+I think the second survey more closely resembles the baseline version of this farmer in the data. I'm keeping the survey done by Lazarus.
+
+```{r}
+#duplicated id 2
+idCheck <- d[d$Soil_Sample_Id %in% dups[2],]
+
+bCheck <- b[b$Soil_Sample_Id %in% dups[2],]
+
+d <- d[-which(d$Soil_Sample_Id==dups[2] & d$metadata.username!="lazarus.m"),]
+
+```
+
+The age and the GPS coordinate indicate that the survey with the age of 54 is probably the right one.
+
+```{r}
+#duplicated id 3
+idCheck <- d[d$Soil_Sample_Id %in% dups[3],]
+
+bCheck <- b[b$Soil_Sample_Id %in% dups[3],]
+
+d <- d[-which(d$Soil_Sample_Id==dups[3] & d$age!=54),]
+
+```
+
+Quick check of the work. There are still `Soil_Sample_Id` that are missing. Most of them have a new soil sample id but not all. 
+
+TODO - check with Charles as to why someone might not have a `Soil_Sample_Id` from the baseline but would have a new `Soil_Sample_Id` in round 1. 
+
+There are not that many new soil sample ids so perhaps it was a way to add more farmers to the sample?
+```{r}
+length(d$Soil_Sample_Id)==length(unique(d$Soil_Sample_Id))
+table(is.na(d$Soil_Sample_Id))
+
+#d[is.na(d$Soil_Sample_Id),]
+```
+
+FOR THE TIME BEING: drop those missing a soil sample id in round 1.
+```{r}
+d <- d[-which(is.na(d$Soil_Sample_Id)),]
+```
+
+## Align baseline and round 1 vars
+
+I'll do a couple things:
+
+* Add season variable for eventual `rbind`
+* Variable names to lowercase
+* Change baseline variable names to match follow up.
+
+```{r}
+d$season <- "2016"
+b$season <- "2015"
+
+names(d) <- tolower(names(d))
+names(b) <- tolower(names(b))
+
+bUpdate <- b %>% rename(
+  region = regionname,
+  district = districtname,
+  site = sitename,
+  respondent.gender = gender, # check that this is correct
+  plot.location = field_location,
+  plot.size = field_size,
+  harvestcomp.2016 = yield_comparative,
+  main.crop = plot_information.maincrop,
+  main.crop.specify = plot_information.specify_other_main_crop,
+  seed.type = seedtype, 
+  seed.kgs = seedkgs,
+  intercrop = intercrop.intercrop,
+  intercrop.specify = intercrop.specify_other_main_crop,
+  intercrop.seed.type = intercrop.seedtype,
+  intercrop.seed.kgs = intercrop.seedkgs,
+  intercrop.harvestcomp = intercrop.yield_comparative,
+  fertilizer.main = inputs.input_maincrop,
+  dap.main = inputs.dap_kg,
+  can.main = inputs.can_kg,
+  npk.main = inputs.npk_kg,
+  urea.main = inputs.urea_kg,
+  fertilizer.intercrop = inputs.input_intercrop,
+  dap.intercrop = inputs.dap_kg_intercrop,
+  can.intercrop = inputs.can_kg_intercrop,
+  npk.intercrop = inputs.npk_kg_intercrop,
+  urea.intercrop = inputs.urea_kg_intercrop,
+  compost.kgs = inputs.compost,
+  compost.quality = inputs.compost_quality,
+  compost.type = inputs.compost_type,
+  lime = inputs.lime,
+  lime.kgs = inputs.lime_kg,
+  soil.type = soil_type,
+  soil.color = soil_color,
+  erosion = anti_erosion,
+  field.location = location,
+  seasons.oaf = seasons_oaf
+)
+
+# helper to know what else needs to be changed
+names(d)[!names(d) %in% names(bUpdate)]
+names(bUpdate)[!names(bUpdate) %in% names(d)]
+
+```
+
+The variables that remain to be aligned are the soil variables and any resulting calulations such as fertilizer per acre. These caculations can be redone once the data is combined.
+
+Make groups of variables to make them easier to find later
+
+```{r}
+historicalBaseline <- names(b)[which(names(b)=="chemical_fertilizer_5"):which(names(b)=="legum_intercrop_5")]
+baselineSoilVars <- names(b)[which(names(b)=="c.e.c"):which(names(b)=="total.n")]
+```
+
+## Combine baseline and round 1
+
+```{r}
+commonVars <- names(d)[names(d) %in% names(bUpdate)] 
+
+write.csv(commonVars, file="varNamesforM&E.csv")
+
+m2ToAcres <- function(input, meters) {
+  res <- (input/meters)*4046
+  return(res)
+}
+
+fieldDat <- rbind(bUpdate[,commonVars], d[,commonVars])
+
+fieldDat <- fieldDat %>% mutate(
+  plot.m2 = plot.size*4046,
+  can.acre = m2ToAcres(can.main, plot.m2),
+  dap.acre = m2ToAcres(dap.main,plot.m2),
+  npk.acre = m2ToAcres(npk.main,plot.m2),
+  urea.acre = m2ToAcres(urea.main,plot.m2),
+  compost.acre = m2ToAcres(compost.kgs,plot.m2),
+  seed.acre = m2ToAcres(seed.kgs,plot.m2),
+
+  intercrop.seed.acre = m2ToAcres(intercrop.seed.kgs, plot.m2),
+  intercrop.dap.acre = m2ToAcres(dap.intercrop, plot.m2),
+  intercrop.can.acre = m2ToAcres(can.intercrop, plot.m2),
+  intercrop.npk.acre = m2ToAcres(npk.intercrop, plot.m2),
+  intercrop.urea.acre = m2ToAcres(urea.intercrop, plot.m2)
+  
+)
+```
+
+Check that categorical variable responses align between the baseline and round 1.
+
+```{r}
+catVars <- names(fieldDat)[sapply(fieldDat, function(x){
+  is.character(x)
+})]
+
+
+
+for(i in 1:length(nonAdminVars)){
+  repGraphs(d, nonAdminVars[i])
+}
+
+```
+
+
+TODO
+
+* get Kenya soil data and include it
+* reality check the append
+* generate new output variables
+* reality check GPS
 
 # Analysis
 
 The aim of the analysis is to: 
 
-1. Check variables of interest and check for odd values that we might want to investigate further
-2. Look at matches with the baseline and check GPS points
-3. Look at matches with baseline and check for attrition and balance.
+TODO
+
+* Check movement in the sample
+* cut straight to the tables in the report ala Rwanda
+* 
+
+
+
+
 
