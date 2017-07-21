@@ -1438,6 +1438,9 @@ indFeList <- list("as.factor(d_client)",
 
 # run this in parallel to speed up the process
 # load the data and variables and packages into the cluster
+regFile <- "regFile.RData"
+#forceUpdate <- forceUpdateAll
+if(!file.exists(regFile) || forceUpdate) {
 library(parallel)
 no_cores <- detectCores() - 1
 
@@ -1449,29 +1452,47 @@ clusterExport(cl, "indFeList")
 
 indFeLoop <- parLapply(cl, indFeList, function(mod){
   lapply(keySoilVars, function(outcome){
-    form = plm(lm(reformulate(termlabels = mod, response = outcome), data=fieldSoilDat), "sample_id")
+    form = lm(reformulate(termlabels = mod, response = outcome), data=fieldSoilDat)
+    
+    pdf(file=paste("output/", paste0(outcome, paste(mod, collapse = "")), ".pdf", sep = "")) 
+    print(plot(form))
+    dev.off()
+    
+    form = plm(form, c("sample_id", "age", "age2"))
+    
+    rownames(form) = paste(rownames(form), outcome, sep = " ")
     return(form)
   })
   
 })
 stopCluster(cl)
+save(indFeLoop, file=regFile)
+} else {
+  load("regFile.RData")
+}
+```
 
-temp <- indFeLoop
+And combine model outputs into tables for each model
 
+```{r}
+modExport <- lapply(indFeLoop, function(models){
+  do.call(rbind, models)
+})
 
-
-
-
-
-write.csv(indFe, file="output/indFe.csv")
-
+for(i in 1:length(modExport)){
+  write.csv(modExport[i], file=paste0("output/","regOutput_", i, ".csv"), row.names = T)
+}
 
 ```
 
-In the individual fixed effect model above, the naive model would only include a client indicator and individual fixed effects. If we add season, we lose significance on almost everything. I'd guess that as we add more likely controls we additionally lose signficance. 
+In the individual fixed effect model above, the naive model would only include a client indicator and individual fixed effects. If we add season, we lose significance on almost everything. I'd guess that as we add more likely controls we additionally lose signficance. I've included age and age squared along the lines of [Hicks et.al](http://www.nber.org/papers/w23253).
+
 
 ```{r}
-kable(indFe, format="markdown")
+finalModel <- modExport[4]
+
+kable(finalModel, format="markdown")
+write.csv(finalModel, file="output/indFe.csv")
 ```
 
 
