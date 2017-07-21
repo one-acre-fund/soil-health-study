@@ -354,17 +354,21 @@ py <- cbind(py, sdCheck.py)
 
 ### Soil Quartiles
 
-Graphs to show the relationship between soil parameter and yield. We don't expect this relationships to be linear.
+Graphs to show the relationship between soil parameter and yield. We don't expect this relationships to be linear. A couple notes:
+
+* None seems to show any clear increasing or decreasing value across the spectrum of yield values.
+* Nitrogen has a bimodal appearance with the second hump at 0.25. Why do we not have support for the values between 0.2 and 0.25?
+* Magnesium seems to have a long right tail still. 
 
 ```{r}
 for(i in 1:length(keySoilVars)){
   print(
-  ggplot(py, aes(x = py[,soilVars[i]], y = tha)) + 
+  ggplot(py, aes(x = py[,keySoilVars[i]], y = tha)) + 
     geom_point() +
     stat_smooth() +
-    geom_vline(xintercept=summary(py[,soilVars[i]])[[2]], linetype="dashed") + 
-    geom_vline(xintercept=summary(py[,soilVars[i]])[[5]], linetype="dashed") + 
-    labs(title = soilVars[i], x= soilVars[i], y="Yield (t/ha)")
+    geom_vline(xintercept=summary(py[,keySoilVars[i]])[[2]], linetype="dashed") + 
+    geom_vline(xintercept=summary(py[,keySoilVars[i]])[[5]], linetype="dashed") + 
+    labs(title = keySoilVars[i], x= keySoilVars[i], y="Yield (t/ha)")
   )
 }
 ```
@@ -410,6 +414,55 @@ qTab$revenueA <- dollar(qTab$diff25to50 * marketValueT)
 qTab$revenueB <- dollar(qTab$diff50to75 * marketValueT)
 
 write.csv(qTab, file="output/quartileCalc.csv")
+```
+
+Programmatic value of moving 75% of farmers above minimum soil threshold. A couple notes:
+
+```{r}
+minThresh <- function(xVar, yVar, per.thold, thold, FarmerCount, marketValue, df){
+  # figure out where the threshold is in terms of percentile of xVar
+  # calculate value of moving farmers below that percentile above that perentile in terms of yield gain
+  
+  dist <- ecdf(df[,xVar])
+  perce <- dist(thold)
+  
+  # amount above thold
+  inClear <- 1-perce
+  remainToMove <- ifelse(per.thold-inClear>0, per.thold - inClear, 0)
+  remainToMoveFarmers <- FarmerCount*remainToMove
+  
+  startingPointX <- quantile(df[,xVar], c(perce - remainToMove), type=1, na.rm = T)[[1]]
+  
+  # yield value above threshold
+  above <- mean(df[,yVar][df[,xVar]>thold], na.rm = T) #this is the average for all above threshold
+  
+  #distance between farmers yield value and threshold yield value for farmers below threshold and within the percentile we want to move up.
+  
+  remaining <-subset(df, df[,xVar]>=startingPointX & df[,xVar]<=thold)
+  bump <- above - remaining[,yVar]
+  
+  marketValuetha <- marketValue*1000
+  
+  #average value add
+  res <-mean(bump, na.rm = T) * remainToMoveFarmers * marketValuetha
+  res <- paste(format(round(res / 1e6, 2), trim = TRUE), "M")  
+  
+  
+  return(res)
+}
+
+progImpactpH <- minThresh("ph", "tha", 0.75, 5.8, 282228, 0.52, py)
+progImpactN <- minThresh("x.total.nitrogen", "tha", 0.75, 0.1, 282228, 0.52, py)
+progImpactC <- minThresh("x.organic.carbon", "tha", 0.75, 2, 282228, 0.52, py)
+progImpactCa <- minThresh("calcium", "tha", 0.75, 1056, 282228, 0.52, py)
+progImpactMg <- minThresh("magnesium", "tha", 0.75, 148, 282228, 0.52, py)
+
+progObj <- ls()[grep("progImpact", ls())]
+  
+progImpTab <- do.call(rbind, lapply(progObj, function(x){get(x)}))
+progImpTab <- data.frame(var = progObj, value = progImpTab)
+
+write.csv(progImpTab, file=paste("output/", "rwandaThresholdTab.csv", sep=""), row.names = F)
 ```
 
 ### Yield response curves
@@ -469,7 +522,7 @@ I'm not entirely certain how to best model yield as a function of soil propertie
 **Obligatory disclaimer**: These summaries are intended to show if the regression models are reliable. We know already that the regressions are unable to be directly interpreted. We should try to find more established linear yield models to give our approach a firmer foundation in the literature.
 
 ```{r}
-invisible(lapply(soilVars, function(x){
+invisible(lapply(keySoilVars, function(x){
   #print(paste0("Soil variable: ", x))
   plm(lm(tha ~ yr[,x], data=yr))
   
