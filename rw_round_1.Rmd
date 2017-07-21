@@ -97,7 +97,7 @@ b <- baseVars
 
 ```{r}
 source("../oaflib/commcareExport.R")
-r <- getFormData("oafrwanda", "M&E", "16B Ubutaka (Soil)", forceUpdate = forceUpdateAll)
+r <- getFormData("oafrwanda", "M&E", "16B Ubutaka (Soil)", forceUpdate = F)
 write.csv(r, file="rawCcR1Data.csv", row.names = F)
 ```
 
@@ -166,18 +166,18 @@ It seems to line up okay (with some adjustments)! To incorporate Alex's cleaning
 This function will remove all strange outputs from the data from CommCare so that the STATA code works
 
 ```{r}
-charClean <- function(df){
-  
-  df <- as.data.frame(lapply(df, function(x){
-  x = gsub("'", '', x)
-  x = gsub("^b", '', x)
-  x = ifelse(grepl("map object", x)==T, NA, x)
-  return(x)
-  }))
-return(df)
-}
-
-r <- charClean(r)
+# charClean <- function(df){
+#   
+#   df <- as.data.frame(lapply(df, function(x){
+#   x = gsub("'", '', x)
+#   x = gsub("^b", '', x)
+#   x = ifelse(grepl("map object", x)==T, NA, x)
+#   return(x)
+#   }))
+# return(df)
+# }
+# 
+# r <- charClean(r)
 ```
 
 Here is where I actually update the names in `r` to match Alex's original data.
@@ -861,7 +861,9 @@ bDemo <- bUpdate %>%
 * **Put in variable here that marks whether the farmer retained their treatment status from the baseline**
 
 ```{r}
-commonVars <- names(rs)[names(rs) %in% names(bUpdate)] # using rs because i changed baseline names to rs names
+commonVars <- names(rs)[names(rs) %in% names(bUpdate)] # using rs because i changed the baseline names to match the rs names
+
+write.csv(commonVars, file="varNamesforM&E.csv")
 
 fieldDat <- rbind(bUpdate[,commonVars], rs[,commonVars]) # combine baseline and round 1
 
@@ -880,6 +882,9 @@ fieldSoilDat <- fieldDat %>%
   filter(season!="16a")
 ```
 
+`fieldDat` is all seasons including 16a for which we don't have separate soil observations
+`fieldSoilDat` is only 15b and 16b for which we have soil observations.
+
 ## Create new variables
 
 ### Field variables
@@ -887,93 +892,93 @@ fieldSoilDat <- fieldDat %>%
 I originally made these new outcomes for just the round 1 data but I really want to have common outputs for plots by seasons that I can then turn into longitudinal outcomes. 
 
 ```{r}
-fieldDat$dim <- fieldDat$field_length * fieldDat$field_width
-fieldDat$are <- fieldDat$dim/100
+fieldSoilDat$dim <- fieldSoilDat$field_length * fieldSoilDat$field_width
+fieldSoilDat$are <- fieldSoilDat$dim/100
 
 
-inputVars <- names(fieldDat)[grep("fert_|quality_compost|type_compost|which_crop|which_maize", names(fieldDat))]
+inputVars <- names(fieldSoilDat)[grep("fert_|quality_compost|type_compost|which_crop|which_maize", names(fieldSoilDat))]
 
-fieldDat[,inputVars] <- sapply(fieldDat[, inputVars], tolower)
+fieldSoilDat[,inputVars] <- sapply(fieldSoilDat[, inputVars], tolower)
 
 # input quanitites
-fieldDat$fert_kg_urea1 <- ifelse(fieldDat$fert_type1=="urea", fieldDat$fert_kg1, NA)
-fieldDat$fert_kg_urea2 <- ifelse(fieldDat$fert_type2=="urea", fieldDat$fert_kg2, NA)
-fieldDat$fert_total_urea <- apply(fieldDat[, grep("(urea.)", names(fieldDat))], 1, function(x){
+fieldSoilDat$fert_kg_urea1 <- ifelse(fieldSoilDat$fert_type1=="urea", fieldSoilDat$fert_kg1, NA)
+fieldSoilDat$fert_kg_urea2 <- ifelse(fieldSoilDat$fert_type2=="urea", fieldSoilDat$fert_kg2, NA)
+fieldSoilDat$fert_total_urea <- apply(fieldSoilDat[, grep("(urea.)", names(fieldSoilDat))], 1, function(x){
   sum(as.numeric(x), na.rm=T)})
 
 
 
-fieldDat$fert_kg_dap1 <- ifelse(fieldDat$fert_type1=="dap", fieldDat$fert_kg1, NA)
-fieldDat$fert_kg_dap2 <- ifelse(fieldDat$fert_type2=="dap", fieldDat$fert_kg2, NA)
-fieldDat$fert_total_dap <- apply(fieldDat[, grep("(dap.)", names(fieldDat))], 1, function(x){
+fieldSoilDat$fert_kg_dap1 <- ifelse(fieldSoilDat$fert_type1=="dap", fieldSoilDat$fert_kg1, NA)
+fieldSoilDat$fert_kg_dap2 <- ifelse(fieldSoilDat$fert_type2=="dap", fieldSoilDat$fert_kg2, NA)
+fieldSoilDat$fert_total_dap <- apply(fieldSoilDat[, grep("(dap.)", names(fieldSoilDat))], 1, function(x){
   sum(as.numeric(x), na.rm=T)})
 
 
 
-fieldDat$fert_kg_17npk1 <- ifelse(fieldDat$fert_type1=="npk-17", fieldDat$fert_kg1, NA)
-fieldDat$fert_kg_17npk2 <- ifelse(fieldDat$fert_type2=="npk-17", fieldDat$fert_kg2, NA)
-fieldDat$fert_total_17npk <- apply(fieldDat[, grep("(17npk.)", names(fieldDat))], 1, function(x){
+fieldSoilDat$fert_kg_17npk1 <- ifelse(fieldSoilDat$fert_type1=="npk-17", fieldSoilDat$fert_kg1, NA)
+fieldSoilDat$fert_kg_17npk2 <- ifelse(fieldSoilDat$fert_type2=="npk-17", fieldSoilDat$fert_kg2, NA)
+fieldSoilDat$fert_total_17npk <- apply(fieldSoilDat[, grep("(17npk.)", names(fieldSoilDat))], 1, function(x){
   sum(as.numeric(x), na.rm=T)})
 
 
 
-fieldDat$fert_kg_22npk1 <- ifelse(fieldDat$fert_type1=="npk-22", fieldDat$fert_kg1, NA)
-fieldDat$fert_kg_22npk2 <- ifelse(fieldDat$fert_type2=="npk-22", fieldDat$fert_kg2, NA)
-fieldDat$fert_total_22npk <- apply(fieldDat[, grep("(22npk.)", names(fieldDat))], 1, function(x){
+fieldSoilDat$fert_kg_22npk1 <- ifelse(fieldSoilDat$fert_type1=="npk-22", fieldSoilDat$fert_kg1, NA)
+fieldSoilDat$fert_kg_22npk2 <- ifelse(fieldSoilDat$fert_type2=="npk-22", fieldSoilDat$fert_kg2, NA)
+fieldSoilDat$fert_total_22npk <- apply(fieldSoilDat[, grep("(22npk.)", names(fieldSoilDat))], 1, function(x){
   sum(as.numeric(x), na.rm=T)})
 
 
 
-fieldDat$fert_kg_2555npk1 <- ifelse(fieldDat$fert_type1=="npk2555", fieldDat$fert_kg1, NA)
-fieldDat$fert_kg_2555npk2 <- ifelse(fieldDat$fert_type2=="npk2555", fieldDat$fert_kg2, NA)
-fieldDat$fert_total_2555npk <- apply(fieldDat[, grep("(2555npk.)", names(fieldDat))], 1, function(x){
+fieldSoilDat$fert_kg_2555npk1 <- ifelse(fieldSoilDat$fert_type1=="npk2555", fieldSoilDat$fert_kg1, NA)
+fieldSoilDat$fert_kg_2555npk2 <- ifelse(fieldSoilDat$fert_type2=="npk2555", fieldSoilDat$fert_kg2, NA)
+fieldSoilDat$fert_total_2555npk <- apply(fieldSoilDat[, grep("(2555npk.)", names(fieldSoilDat))], 1, function(x){
   sum(as.numeric(x), na.rm=T)})
 
 
 #lime
-fieldDat$lime_outside <- ifelse(fieldDat$d_lime=="lime_outside", fieldDat$kg_lime, NA)
-fieldDat$lime_tubura <- ifelse(fieldDat$d_lime=="lime_tubura", fieldDat$kg_lime, NA)
-fieldDat$lime_both <- ifelse(fieldDat$d_lime=="both_tubura_non_tubura", fieldDat$kg_lime, NA)
+fieldSoilDat$lime_outside <- ifelse(fieldSoilDat$d_lime=="lime_outside", fieldSoilDat$kg_lime, NA)
+fieldSoilDat$lime_tubura <- ifelse(fieldSoilDat$d_lime=="lime_tubura", fieldSoilDat$kg_lime, NA)
+fieldSoilDat$lime_both <- ifelse(fieldSoilDat$d_lime=="both_tubura_non_tubura", fieldSoilDat$kg_lime, NA)
 
-inputVars <- names(fieldDat)[grep("field_length|field_width|dim|fert_kg_|fert_total_|lime_", names(fieldDat))]
+inputVars <- names(fieldSoilDat)[grep("field_length|field_width|dim|fert_kg_|fert_total_|lime_", names(fieldSoilDat))]
 
-fieldDat[,inputVars] <-sapply(fieldDat[,inputVars], as.numeric)
+fieldSoilDat[,inputVars] <-sapply(fieldSoilDat[,inputVars], as.numeric)
 
 
 #urea
-fieldDat$fert_kgare_urea1 <- fieldDat$fert_kg_urea1/fieldDat$are
-fieldDat$fert_kgare_urea2 <- fieldDat$fert_kg_urea2/fieldDat$are
-fieldDat$fert_kgare_urea_total <- fieldDat$fert_total_urea/fieldDat$are
+fieldSoilDat$fert_kgare_urea1 <- fieldSoilDat$fert_kg_urea1/fieldSoilDat$are
+fieldSoilDat$fert_kgare_urea2 <- fieldSoilDat$fert_kg_urea2/fieldSoilDat$are
+fieldSoilDat$fert_kgare_urea_total <- fieldSoilDat$fert_total_urea/fieldSoilDat$are
 
 #dap
-fieldDat$fert_kgare_dap1 <- fieldDat$fert_kg_dap1/fieldDat$are
-fieldDat$fert_kgare_dap2 <- fieldDat$fert_kg_dap2/fieldDat$are
-fieldDat$fert_kgare_dap_total <- fieldDat$fert_total_dap/fieldDat$are
+fieldSoilDat$fert_kgare_dap1 <- fieldSoilDat$fert_kg_dap1/fieldSoilDat$are
+fieldSoilDat$fert_kgare_dap2 <- fieldSoilDat$fert_kg_dap2/fieldSoilDat$are
+fieldSoilDat$fert_kgare_dap_total <- fieldSoilDat$fert_total_dap/fieldSoilDat$are
 
 #npk17
-fieldDat$fert_kgare_17npk1 <- fieldDat$fert_kg_17npk1/fieldDat$are
-fieldDat$fert_kgare_17npk2 <- fieldDat$fert_kg_17npk2/fieldDat$are
-fieldDat$fert_kgare_17npk_total <- fieldDat$fert_total_17npk/fieldDat$are
+fieldSoilDat$fert_kgare_17npk1 <- fieldSoilDat$fert_kg_17npk1/fieldSoilDat$are
+fieldSoilDat$fert_kgare_17npk2 <- fieldSoilDat$fert_kg_17npk2/fieldSoilDat$are
+fieldSoilDat$fert_kgare_17npk_total <- fieldSoilDat$fert_total_17npk/fieldSoilDat$are
 
 #npk22
-fieldDat$fert_kgare_22npk1 <- fieldDat$fert_kg_22npk1/fieldDat$are
-fieldDat$fert_kgare_22npk2 <- fieldDat$fert_kg_22npk2/fieldDat$are
-fieldDat$fert_kgare_22npk_total <- fieldDat$fert_total_22npk/fieldDat$are
+fieldSoilDat$fert_kgare_22npk1 <- fieldSoilDat$fert_kg_22npk1/fieldSoilDat$are
+fieldSoilDat$fert_kgare_22npk2 <- fieldSoilDat$fert_kg_22npk2/fieldSoilDat$are
+fieldSoilDat$fert_kgare_22npk_total <- fieldSoilDat$fert_total_22npk/fieldSoilDat$are
 
 #2555 npk
-fieldDat$fert_kgare_2555npk1 <- fieldDat$fert_kg_2555npk1/fieldDat$are
-fieldDat$fert_kgare_2555npk2 <- fieldDat$fert_kg_2555npk2/fieldDat$are
-fieldDat$fert_kgare_2555npk_total <- fieldDat$fert_total_2555npk/fieldDat$are
+fieldSoilDat$fert_kgare_2555npk1 <- fieldSoilDat$fert_kg_2555npk1/fieldSoilDat$are
+fieldSoilDat$fert_kgare_2555npk2 <- fieldSoilDat$fert_kg_2555npk2/fieldSoilDat$are
+fieldSoilDat$fert_kgare_2555npk_total <- fieldSoilDat$fert_total_2555npk/fieldSoilDat$are
 ```
 
 ### Visualize field variables
 
 ```{r}
-fieldInputVars <- names(fieldDat)[grep("field_length|field_width|dim|fert_kgare_", names(fieldDat))]
+fieldInputVars <- names(fieldSoilDat)[grep("field_length|field_width|dim|fert_kgare_", names(fieldSoilDat))]
 
 
 for(i in 1:length(fieldInputVars)){
-    base <- ggplot(fieldDat, aes(x=fieldDat[,fieldInputVars[i]])) + labs(x = fieldInputVars[i], title=fieldInputVars[i])
+    base <- ggplot(fieldSoilDat, aes(x=fieldSoilDat[,fieldInputVars[i]])) + labs(x = fieldInputVars[i], title=fieldInputVars[i])
     temp1 <- base + geom_density()
     temp2 <- base + geom_histogram()
     #temp2 <- boxplot(r[,numVars[i]],main=paste0("Variable: ", numVars[i]))
@@ -993,7 +998,7 @@ TODO: make certain I do some checking of these values above and if not above, he
 Check field dimensions:
 
 ```{r}
-ggplot(fieldDat, aes(x=field_width, y=field_length)) + 
+ggplot(fieldSoilDat, aes(x=field_width, y=field_length)) + 
   geom_point() +
   labs(title= "Field dimensions", x = "Width (m)", y= "Length (m)")
 ```
@@ -1063,12 +1068,16 @@ Same as the baseline analysis but with two seasons of data
 
 TODO: confirm that `d_client` is reflecting the right status as a farmer in the data. Is it baseline? Is it round 1? Is it a combo of the two?
 
-## Identifier variables
+## Demographic summary
+
+### Identifier variables
 
 Create a record of how many farmers are joining and leaving Tubura between the baseline and the first follow up round.
 
+Using `fieldDat` to have 16a counts
+
 ```{r}
-#table(fieldDat$d_client, fieldDat$season)
+#table(fieldSoilDat$d_client, fieldSoilDat$season)
 fieldDat %>% 
   dplyr::select(sample_id, season, d_client) %>%
   group_by(sample_id) %>%
@@ -1096,6 +1105,9 @@ fieldDat %>%
 ```
 
 ### Client count
+
+Using `fieldDat` to have 16a counts
+
 ```{r}
 clientCount <- fieldDat %>% 
   dplyr::select(sample_id, season, d_client) %>%
@@ -1136,8 +1148,6 @@ sameStatusCount <- table(sameStatus$d_client)/2
 write.csv(sameStatusCount, file="output/sameStatusCount.csv")
 #sameStatusfs <- soilDat[soilDat$sample_id %in% sameStatusVec$sample_id,] #
 ```
-
-## Demographic summary
 
 ## Soil summary
 
@@ -1309,7 +1319,7 @@ soilLineGraph %>%
 ```
 
 
-### Initial regressions
+### Regressions
 
 See [sketch of SHS report](https://docs.google.com/document/d/1koNsKzx97_3rpkGeJI6PnPdYNMdV9q4e-cPQxAWDeDk/edit).  Remember that `sameStatus` are the farmers that kept their status between baseline and endline. The two models of interest are:
 
@@ -1389,7 +1399,7 @@ clientVnonMod <- do.call(rbind, lapply(keySoilVars, function(x){
 write.csv(clientVnonMod, file="output/clientVnon.csv")
 ```
 
-* Individual fixed effects account for things specicic to farmeer that don't change over time
+* Individual fixed effects account for things specicic to farmer that don't change over time
 * can control for unobserved sources of heterogeneity over time, very sensitive to model 
 * add in other data points that do change over time
 * so add in things that change over time that plausibly affect our outcome
@@ -1398,13 +1408,46 @@ write.csv(clientVnonMod, file="output/clientVnon.csv")
  + one with oaf 
  + one with oaf and fertilizer
 * things like slope are collinear
-
 * individual fixed effects makes more sense than using PSM now that we have multiple years.
 * means by directional changes
-
 * papers using fixed effects by miguel on whether changes to rural to urban areas and income
 
+
+Consider including:
+
+* time FEs
+* age and a squared age term
+* gender (absorbed by fixed effects)
+* years of education (absorbed by fixed effects)
+* bootstrapped st. errors / robust standard errors
+
 ```{r}
+fieldSoilDat <- fieldSoilDat %>%
+  mutate(
+    age2 = age^2
+  )
+
+
+indFeList <- list("as.factor(d_client)", 
+                  c("as.factor(d_client)", "as.factor(sample_id)"),
+                  c("as.factor(d_client)", "as.factor(sample_id)", "as.factor(season)"),
+                  c("as.factor(d_client)", "as.factor(sample_id)", "as.factor(season)", "age", "age2"))
+
+
+
+indFeLoop <- lapply(indFeList, function(mod){
+  lapply(keySoilVars, function(outcome){
+    form = lm(reformulate(termlabels = mod, response = outcome), data=fieldSoilDat)
+    
+    rownames(form) = paste(rownames(form), outcome, sep = " ")
+    
+  })
+  
+})
+
+
+
+
 indFe <- do.call(rbind, lapply(keySoilVars, function(x){
   mod = plm(lm(as.formula(fieldSoilDat[,x] ~ as.factor(d_client) + as.factor(sample_id) + as.factor(season)),data=fieldSoilDat), c("sample_id", "season"))
   #mod = lm(as.formula(sameRegBr[,x] ~ as.factor(season)), data=sameRegBr)
