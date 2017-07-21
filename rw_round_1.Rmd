@@ -1437,39 +1437,32 @@ indFeList <- list("as.factor(d_client)",
 
 
 # run this in parallel to speed up the process
+# load the data and variables and packages into the cluster
 library(parallel)
 no_cores <- detectCores() - 1
 
-cl <- makeCluster(no_cores)
+cl <- makeCluster(no_cores, type="FORK")
+clusterEvalQ(cl, "plm")
+clusterExport(cl, "fieldSoilDat")
+clusterExport(cl, "keySoilVars")
+clusterExport(cl, "indFeList")
 
-indFeLoop <- lapply(indFeList, function(mod){
+indFeLoop <- parLapply(cl, indFeList, function(mod){
   lapply(keySoilVars, function(outcome){
     form = plm(lm(reformulate(termlabels = mod, response = outcome), data=fieldSoilDat), "sample_id")
     return(form)
   })
   
 })
+stopCluster(cl)
 
 temp <- indFeLoop
 
-indFeLoop <- lapply(indFeList, function(mod){
-  lapply(keySoilVars, function(outcome){
-    form = plm(lm(reformulate(termlabels = mod, response = outcome), data=fieldSoilDat), "sample_id")
-    return(form)
-  })
-  
-})
 
 
-indFe <- do.call(rbind, lapply(keySoilVars, function(x){
-  mod = plm(lm(as.formula(fieldSoilDat[,x] ~ as.factor(d_client) + as.factor(sample_id) + as.factor(season)),data=fieldSoilDat), c("sample_id", "season"))
-  #mod = lm(as.formula(sameRegBr[,x] ~ as.factor(season)), data=sameRegBr)
-  #mod.cluster <- coeftest(mod, clust.se(mod, sameRegBr$sample_id))
-  
-  rownames(mod) = paste(rownames(mod), x, sep = " ")
-  
-  return(mod)
-}))
+
+
+
 write.csv(indFe, file="output/indFe.csv")
 
 
