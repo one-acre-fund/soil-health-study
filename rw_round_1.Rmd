@@ -1421,6 +1421,8 @@ Consider including:
 * years of education (absorbed by fixed effects)
 * bootstrapped st. errors / robust standard errors
 
+[Helpful link](https://www.r-bloggers.com/how-to-go-parallel-in-r-basics-tips/) for executing code in parallel
+
 ```{r}
 fieldSoilDat <- fieldSoilDat %>%
   mutate(
@@ -1434,18 +1436,29 @@ indFeList <- list("as.factor(d_client)",
                   c("as.factor(d_client)", "as.factor(sample_id)", "as.factor(season)", "age", "age2"))
 
 
+# run this in parallel to speed up the process
+library(parallel)
+no_cores <- detectCores() - 1
+
+cl <- makeCluster(no_cores)
 
 indFeLoop <- lapply(indFeList, function(mod){
   lapply(keySoilVars, function(outcome){
-    form = lm(reformulate(termlabels = mod, response = outcome), data=fieldSoilDat)
-    
-    rownames(form) = paste(rownames(form), outcome, sep = " ")
-    
+    form = plm(lm(reformulate(termlabels = mod, response = outcome), data=fieldSoilDat), "sample_id")
+    return(form)
   })
   
 })
 
+temp <- indFeLoop
 
+indFeLoop <- lapply(indFeList, function(mod){
+  lapply(keySoilVars, function(outcome){
+    form = plm(lm(reformulate(termlabels = mod, response = outcome), data=fieldSoilDat), "sample_id")
+    return(form)
+  })
+  
+})
 
 
 indFe <- do.call(rbind, lapply(keySoilVars, function(x){
