@@ -352,7 +352,7 @@ names(py)[which(names(py)=="ph"):which(names(py)=="x.total.nitrogen")] <- paste0
 py <- cbind(py, sdCheck.py)
 ```
 
-### Soil Quartiles
+# Soil Quartiles
 
 Graphs to show the relationship between soil parameter and yield. We don't expect this relationships to be linear. A couple notes:
 
@@ -416,6 +416,8 @@ qTab$revenueB <- dollar(qTab$diff50to75 * marketValueT)
 write.csv(qTab, file="output/quartileCalc.csv")
 ```
 
+## Minimum Threshold
+
 Programmatic value of moving 75% of farmers above minimum soil threshold. A couple notes:
 
 ```{r}
@@ -465,134 +467,29 @@ progImpTab <- data.frame(var = progObj, value = progImpTab)
 write.csv(progImpTab, file=paste("output/", "rwandaThresholdTab.csv", sep=""), row.names = F)
 ```
 
-### Yield response curves
+## Point of diminishing returns
 
-[Link to the diagPlot](https://rpubs.com/therimalaya/43190) and the [interpretation of linear diagnostics](http://strata.uga.edu/8370/rtips/regressionPlots.html) and guidance on [GridExtra](https://cran.r-project.org/web/packages/gridExtra/vignettes/tableGrob.html)
-```{r}
-diagPlot<-function(model){
-  
-    p1 <- ggplot(model, aes(.fitted, .resid)) + geom_point()
-    p1 <- p1 + stat_smooth(method="loess") + geom_hline(yintercept=0, col="red", linetype="dashed")
-    p1 <- p1 + xlab("Fitted values")+ylab("Residuals")
-    p1 <- p1 + ggtitle("Residual vs Fitted Plot")+theme_bw()
-    
-    
-    #p2Mod <- fortify(model)
-    p2 <- ggplot() + geom_qq(data=model, aes(sample=.stdresid))
-    p2<-p2+geom_abline()
-    p2<-p2+ggtitle("Normal Q-Q")+theme_bw()
-    
-    p3<-ggplot(model, aes(.fitted, sqrt(abs(.stdresid))))+geom_point(na.rm=TRUE)
-    p3<-p3+stat_smooth(method="loess", na.rm = TRUE)+xlab("Fitted Value")
-    p3<-p3+ylab(expression(sqrt("|Standardized residuals|")))
-    p3<-p3+ggtitle("Scale-Location")+theme_bw()
-    
-    # p4<-ggplot(model, aes(seq_along(.cooksd), .cooksd))+geom_bar(stat="identity", position="identity")
-    # p4<-p4+xlab("Obs. Number")+ylab("Cook's distance")
-    # p4<-p4+ggtitle("Cook's distance")+theme_bw()
-    
-    p5<-ggplot(model, aes(.hat, .stdresid))+geom_point(aes(size=.cooksd), na.rm=TRUE)
-    p5<-p5+stat_smooth(method="loess", na.rm=TRUE)
-    p5<-p5+xlab("Leverage")+ylab("Standardized Residuals")
-    p5<-p5+ggtitle("Residual vs Leverage Plot")
-    p5<-p5+scale_size_continuous("Cook's Distance", range=c(1,5))
-    p5<-p5+theme_bw()+theme(legend.position="bottom")
-    
-    # p6<-ggplot(model, aes(.hat, .cooksd))+geom_point(na.rm=TRUE)+stat_smooth(method="loess", na.rm=TRUE)
-    # p6<-p6+xlab("Leverage hii")+ylab("Cook's Distance")
-    # p6<-p6+ggtitle("Cook's dist vs Leverage hii/(1-hii)")
-    # p6<-p6+geom_abline(slope=seq(0,3,0.5), color="gray", linetype="dashed")
-    # p6<-p6+theme_bw()
-    
-    return(list(rvfPlot=p1, 
-                qqPlot=p2, 
-                sclLocPlot=p3, 
-                #cdPlot=p4, 
-                rvlevPlot=p5
-                #cvlPlot=p6
-                ))
-}
-```
-#### Individual soil models
+Try to calculate the point of diminishing returns for soil chemical values. The naive model would identify the point at which yield diminishes for just one soil parameter. A more advanced approach will use soil profiles. Let's start with a naive model and then sort out what this might look like 
 
-I'm not entirely certain how to best model yield as a function of soil properties. I'm going to run a handful of models and give some initial caveats. These model diagnositics still need to be incorporated into model use and interpretation. 
-
-##### Full values - individual
-
-**Obligatory disclaimer**: These summaries are intended to show if the regression models are reliable. We know already that the regressions are unable to be directly interpreted. We should try to find more established linear yield models to give our approach a firmer foundation in the literature.
 
 ```{r}
-invisible(lapply(keySoilVars, function(x){
-  #print(paste0("Soil variable: ", x))
-  plm(lm(tha ~ yr[,x], data=yr))
-  
-}))
-```
+py$ph2 <- py$ph^2
 
-##### IQR values - individual
-```{r}
-invisible(lapply(soilIqr, function(x){
-  #print(paste0("Soil variable: ", x))
-  plm(lm(tha ~ yr[,x], data=yr))
-  
-}))
-```
+test <- lm(tha ~ ph + ph2, data=py)
 
+toGraph <- data.frame(resid = test$residuals, soil = py$ph[!is.na(py$ph)])
 
-#### Individual soil curves
+# looks just like the yield vs. ph plot
+ggplot(toGraph, aes(x=soil, y=resid)) + 
+  geom_point() + 
+  stat_smooth(method="loess")
 
-**Obligatory disclaimer**: These curves are simplistic and can't be taken at face value. We only have soil chemistry data and it's noisy soil chemistry data. We should follow more established yield models to understand the contribution of individual featuers toward yield response.
+prime <- diff(py$tha)/diff(py$ph)
+primeG <- data.frame(var1=c(NA,prime), var2=py$ph)
 
-```{r}
-
-respCurve <- function(dat, yVar, xVar, yLab, xLab, gTitle){
-  lineSmooth <- ggplot(dat) + 
-	  stat_smooth(aes(x = dat[,xVar], y=dat[,yVar]), se=FALSE) + 
-	  theme_bw() + 
-    labs(x = xLab, y = yLab, title=paste0("Basic response curve: ", gTitle))
-  
-  dotGraph <- ggplot(dat) + 
-	  geom_point(aes(x = dat[,xVar], y=dat[,yVar]), se=FALSE) + 
-	  theme_bw() + 
-    labs(x = xLab, y = yLab, title=paste0("Scatter plot: ", gTitle))
-  
-  multiplot(lineSmooth, dotGraph)
-}
-
-```
-
-##### Full values - curves
-
-```{r}
-# response curves
-for(i in 1:length(soilVars)){
-    respCurve(yr, "tha", soilVars[i],"Yield (t/ha)", soilVars[i], gTitle = soilVars[i])
-  
-}
-
-```
-
-##### IQR values - curves
-
-```{r}
-# response curves
-for(i in 1:length(soilIqr)){
-    respCurve(yr, "tha", soilIqr[i],"Yield (t/ha)", soilIqr[i], gTitle = soilIqr[i])
-
-}
-
-```
-
-### Yield response tables
-
-The concept here was to show the yield values at discrete x-axis values but this begets the question of how to calculate that y-value. The stylized lines above aren't sufficiently vetted to present them in a table. 
-
-```{r}
-yTable <- function(dat, yVars, xVar){
-  
-  fit = lm(yVar ~ xVars, dat)
-  
-}
+ggplot(primeG, aes(x=var2, y=var1)) + 
+  geom_point() + 
+  stat_smooth(method="loess")
 
 
 ```
