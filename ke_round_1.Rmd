@@ -23,7 +23,7 @@ The objective of this analysis is to identify potential data quality issues with
 # Key Takeaways
 
 > 1) We have likely outliers in the numeric data. Follow up with enumerators about these values.
-> 2) Many round 1 GPS points are not close to the baseline value. Follow up about plot continuity and GPS quality.
+> 2) Many round 1 GPS points are not close to the baseline value. Follow up about plot continuity and GPS quality. (see Kenya round 1 data check)
 
 ```{r, message=F}
 rm(list = ls())
@@ -447,6 +447,32 @@ I'll do a couple things:
 * Add season variable for eventual `rbind`
 * Variable names to lowercase
 * Change baseline variable names to match follow up.
+* resolve duplicates in the baseline data (where'd the come from?)
+
+### Baseline duplicates
+```{r}
+length(b$Soil_Sample_Id)==length(unique(b$Soil_Sample_Id))
+dups <- b$Soil_Sample_Id[duplicated(b$Soil_Sample_Id) & !is.na(b$Soil_Sample_Id)]
+
+```
+
+Resolve them here. They all appear to be control values that were used twice. Can I assign them a new control value? Probably not. See who they followed up with the first round to know which one to keep.
+```{r}
+#b[b$soil_sample_id=="c330",] # not clear
+#b[b$soil_sample_id=="c384",] # it's exactly the same, drop one
+#b[b$soil_sample_id=="c1129",] # it's exactly the same, drop one
+#b[b$soil_sample_id=="c626",] # not clear
+#b[b$soil_sample_id=="c856",] # it's exactly the same, drop one
+
+dropOne <- c("c384", "c1129", "c856")
+b$n <- ave(1:length(b$Soil_Sample_Id), b$Soil_Sample_Id, FUN = seq_along)
+b$drop <- ifelse(b$n==2 & b$Soil_Sample_Id %in% dropOne, 1, 0)
+b <- b[-which(b$drop==1),]
+  
+dropForNow <- c("c330", "c626") # see below
+``` 
+
+
 
 ```{r}
 d$season <- "2016"
@@ -537,8 +563,14 @@ fieldDat <- fieldDat %>% mutate(
   intercrop.can.acre = m2ToAcres(can.intercrop, plot.m2),
   intercrop.npk.acre = m2ToAcres(npk.intercrop, plot.m2),
   intercrop.urea.acre = m2ToAcres(urea.intercrop, plot.m2)
-  
+) %>% rename(
+  d_client = oaf,
+  sample_id = soil_sample_id
 )
+
+# drop the ids that are duplicates
+fieldDat <- fieldDat[!fieldDat$sample_id %in% dropForNow,]
+
 ```
 
 Check that categorical variable responses align between the baseline and round 1.
@@ -548,12 +580,16 @@ catVars <- names(fieldDat)[sapply(fieldDat, function(x){
   is.character(x)
 })]
 
+fieldNonAdmin <- catVars[!catVars %in% c("plot.location", "gps", "sample_id", "main.crop.specify", "intercrop.specify", "photo", "site")]
 
-
-for(i in 1:length(nonAdminVars)){
-  repGraphs(d, nonAdminVars[i])
+for(i in 1:length(fieldNonAdmin)){
+  repGraphs(fieldDat, fieldNonAdmin[i])
 }
 
+```
+
+```{r}
+fieldDat$region <- ifelse(grepl("nyan", tolower(fieldDat$region)), "Nyanza", "Western")
 ```
 
 
@@ -561,7 +597,6 @@ TODO
 
 * get Kenya soil data and include it
 * reality check the append
-* generate new output variables
 * reality check GPS
 
 # Analysis
@@ -571,8 +606,174 @@ The aim of the analysis is to:
 TODO
 
 * Check movement in the sample
+* resolve duplicates in the baseline (see below!)
 * cut straight to the tables in the report ala Rwanda
-* 
+
+## Client movement
+
+```{r}
+fieldDat %>%
+  dplyr::select(sample_id, season, d_client) %>%
+  group_by(sample_id) %>%
+  spread(., season, d_client) %>%
+  rename(
+    client15 = `2015`,
+    client16 = `2016`
+  ) %>%
+  mutate(
+    becameClient = ifelse(client15==0 & client16==1, 1, 0),
+    becameControl = ifelse(client15==1 & client16==0, 1, 0),
+    stayedClient = ifelse(client15==1 & client16==1, 1, 0),
+    stayedControl = ifelse(client15==0 & client16==0, 1, 0)
+  ) %>% 
+  ungroup() %>%
+  dplyr::summarize_each(
+    funs(mean= mean(., na.rm=T)), -c(sample_id, client15, client16)
+  ) %>% 
+  mutate_each(
+    funs(paste0(round(.,2)*100, "%"))
+  ) %>%
+  kable(caption="Movement in Sample", format='markdown')
+
+```
+
+## Client counts
+
+```{r}
+clientCount <- fieldDat %>%
+  dplyr::select(sample_id, season, d_client) %>%
+  group_by(sample_id) %>%
+  spread(., season, d_client) %>%
+  rename(
+    client15 = `2015`,
+    client16 = `2016`
+  )
+
+
+clientCountTab <- cbind(
+  as.data.frame(table(clientCount$client15)),
+  as.data.frame(table(clientCount$client16)))
+
+clientCountTab <- clientCountTab[,-3]
+names(clientCountTab) <- c("Treatment", "Clients 2015", "Clients 2016")
+write.csv(clientCountTab, file=paste0("output/", "clientCountTab.csv"), row.names = F)
+```
+
+
+### Regressions
+
+See [sketch of SHS report](https://docs.google.com/document/d/1koNsKzx97_3rpkGeJI6PnPdYNMdV9q4e-cPQxAWDeDk/edit).  
+
+TODO - START HERE
+
+* add in soil data
+* check out soil values
+* merge those in with baseline values (should work directly)
+* run regression
+* bring in yield values, merge soil vales, follow the other template
+* produce remaining tables
+
+
+* Individual fixed effects account for things specicic to farmer that don't change over time
+* can control for unobserved sources of heterogeneity over time, very sensitive to model 
+* add in other data points that do change over time
+* so add in things that change over time that plausibly affect our outcome
+* fertilizer and seed use are synoymous with being a client or not, highly endogenous
+* run two regs
+ + one with oaf 
+ + one with oaf and fertilizer
+* things like slope are collinear
+* individual fixed effects makes more sense than using PSM now that we have multiple years.
+* means by directional changes
+* papers using fixed effects by miguel on whether changes to rural to urban areas and income
+
+
+Consider including:
+
+* time FEs
+* age and a squared age term
+* gender (absorbed by fixed effects)
+* years of education (absorbed by fixed effects)
+* bootstrapped st. errors / robust standard errors
+
+[Helpful link](https://www.r-bloggers.com/how-to-go-parallel-in-r-basics-tips/) for executing code in parallel
+
+```{r}
+fieldSoilDat <- fieldSoilDat %>%
+  mutate(
+    age2 = age^2
+  )
+
+
+indFeList <- list("as.factor(d_client)", 
+                  c("as.factor(d_client)", "as.factor(sample_id)"),
+                  c("as.factor(d_client)", "as.factor(sample_id)", "as.factor(season)"),
+                  c("as.factor(d_client)", "as.factor(sample_id)", "as.factor(season)", "age", "age2"))
+
+
+# run this in parallel to speed up the process
+# load the data and variables and packages into the cluster
+regFile <- "regFile.RData"
+#forceUpdate <- forceUpdateAll
+if(!file.exists(regFile) || forceUpdate) {
+library(parallel)
+no_cores <- detectCores() - 1
+
+cl <- makeCluster(no_cores, type="FORK")
+clusterEvalQ(cl, "plm")
+clusterExport(cl, "fieldSoilDat")
+clusterExport(cl, "keySoilVars")
+clusterExport(cl, "indFeList")
+
+indFeLoop <- parLapply(cl, indFeList, function(mod){
+  lapply(keySoilVars, function(outcome){
+    form = lm(reformulate(termlabels = mod, response = outcome), data=fieldSoilDat)
+    
+    pdf(file=paste("output/", paste0(outcome, paste(mod, collapse = "")), ".pdf", sep = "")) 
+    print(plot(form))
+    dev.off()
+    
+    form = plm(form, c("sample_id", "age", "age2"))
+    
+    rownames(form) = paste(rownames(form), outcome, sep = " ")
+    return(form)
+  })
+  
+})
+stopCluster(cl)
+save(indFeLoop, file=regFile)
+} else {
+  load("regFile.RData")
+}
+```
+
+And combine model outputs into tables for each model
+
+```{r}
+modExport <- lapply(indFeLoop, function(models){
+  do.call(rbind, models)
+})
+
+for(i in 1:length(modExport)){
+  write.csv(modExport[i], file=paste0("output/","regOutput_", i, ".csv"), row.names = T)
+}
+
+```
+
+In the individual fixed effect model above, the naive model would only include a client indicator and individual fixed effects. If we add season, we lose significance on almost everything. I'd guess that as we add more likely controls we additionally lose signficance. I've included age and age squared along the lines of [Hicks et.al](http://www.nber.org/papers/w23253).
+
+
+```{r}
+finalModel <- modExport[4]
+
+kable(finalModel, format="markdown")
+write.csv(finalModel, file="output/indFe.csv")
+```
+
+
+# Summary
+
+# Appendix
 
 
 
