@@ -1323,82 +1323,6 @@ soilLineGraph %>%
 
 See [sketch of SHS report](https://docs.google.com/document/d/1koNsKzx97_3rpkGeJI6PnPdYNMdV9q4e-cPQxAWDeDk/edit).  Remember that `sameStatus` are the farmers that kept their status between baseline and endline. The two models of interest are:
 
-* Client Y0 vs. client Y1
-* Client Y1 vs. non-client Y1
-
-TODO - follow up with Maya about how to match over time or if there's a better inference strategy.
-
-```{r}
-clust.se <- function(mod, clus) {
-        # basic parameters
-        m <- length(clus)
-        n <- length(unique(clus))
-        k <- mod$rank
-        df <- (n / (n - 1)) * ((m - 1) / (m - k))
-        # calculate our summed error terms
-u <- apply(estfun(mod), 2, function(x) {tapply(x, clus, sum)})
-        # calculate var/covar matrix
-        ans <- df * sandwich(mod, meat = (t(u) %*% u) / m)
-return(ans) 
-}
-
-#m1.cluster <- coeftest(m1, clust.se(m1, d$cluster))
-```
-
-```{r}
-library(sandwich)
-library(lmtest)
-source("../oaflib/plm.R")
-
-regVars <- c(keySoilVars, "sample_id", "d_client", "season", "district")
-
-# function to get baseline client vs. Y1 client for specified variables
-baseVr1 <- function(df, variables) {
- return(
-   df <- df %>%
-      dplyr::select(one_of(variables)) %>%
-      filter(d_client==1)
- )
-}
-
-# function to get y1 client vs. y1 non-client for specified variables
-clientVnon <- function(df, variables){ 
-  return(
-   df <- df %>%
-      dplyr::select(one_of(variables)) %>%
-      filter(season=="16b")
- )
-} 
-
-# allReg is all observations, BR is baseline vs. R1, Co is client only
-sameRegBr <- baseVr1(fieldSoilDat, regVars)
-
-baseVr1Mod <- do.call(rbind, lapply(keySoilVars, function(x){
-  mod = plm(lm(as.formula(sameRegBr[,x] ~ as.factor(season)), data=sameRegBr), "sample_id")
-  #mod = lm(as.formula(sameRegBr[,x] ~ as.factor(season)), data=sameRegBr)
-  #mod.cluster <- coeftest(mod, clust.se(mod, sameRegBr$sample_id))
-  
-  rownames(mod) = paste(rownames(mod), x, "same", sep = " ")
-  
-  return(mod)
-}))
-write.csv(baseVr1Mod, file="output/clientBaseVR1.csv")
-
-
-# sameReg is only farmers that kept their status
-sameRegCo <- clientVnon(fieldSoilDat, regVars)
-# models of interest are baseline vs. round 1
-# model 2 is client vs. non client
-
-clientVnonMod <- do.call(rbind, lapply(keySoilVars, function(x){
-  mod = plm(lm(as.formula(sameRegCo[,x] ~ as.factor(d_client) + as.factor(district)), data=sameRegCo), "district")
-  rownames(mod) = paste(rownames(mod), x, "same", sep = " ")
-  
-  return(mod)
-}))
-write.csv(clientVnonMod, file="output/clientVnon.csv")
-```
-
 * Individual fixed effects account for things specicic to farmer that don't change over time
 * can control for unobserved sources of heterogeneity over time, very sensitive to model 
 * add in other data points that do change over time
@@ -1494,9 +1418,6 @@ finalModel <- modExport[4]
 kable(finalModel, format="markdown")
 write.csv(finalModel, file="output/indFe.csv")
 ```
-
-
-# Summary
 
 # Appendix
 
