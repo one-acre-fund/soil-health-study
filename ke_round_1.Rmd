@@ -80,6 +80,31 @@ baselineDir <- normalizePath(file.path("..", "ke_baseline", "data"))
 b <- read.csv(file=paste0(baselineDir, "/shs ke baseline.csv")) # obj d
 ```
 
+## Import soil data
+
+Here I access the soil predictions from the OAF soil lab. [Patrick Bell](mailto:patrick.bell@oneacrefund.org) manages the lab and [Mike Barber](mike.barber@oneacrefund.org) oversees the prediction scripts.
+
+```{r}
+soilDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "ke_shs_17", "4_predicted", "other_summaries"))
+soil <- read.csv(file=paste(soilDir, "combined-predictions-including-bad-ones.csv", sep = "/"))
+
+idDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "ke_shs_17", "5_merged"))
+Identifiers <- read_excel(paste(idDir,"Soil Sampling - Sample reception 2017 - Sample reception 20172017-04-12 (1).xlsx",sep="/"), sheet=1) %>%
+  mutate(
+    reception_barcode = gsub("_", "", reception_barcode)
+  )
+
+soil$SSN[!soil$SSN %in% Identifiers$reception_barcode]
+Identifiers$reception_barcode[!Identifiers$reception_barcode %in% soil$SSN]
+```
+
+It seems to be the case that one barcode is not matching due to the number of zeros. Correct and update.
+```{r}
+soil$SSN[soil$SSN=="oafke002126"] <- "oafke0002126"
+```
+
+There's one record in the Identifiers that doesn't appear in the data. An extra sample without a survey? Seems odd.
+
 ## Update variable names
 
 The variable names are out of control. In order to make the variable names more user friendly, I went to [CommCare](www.commcarehq.com) and downloaded the form contents that includes the variable name. I then wrote in a more user friendly variable name in the file. I import and overwrite the variable names here. Perhaps there's a better way to do this but it's easier to log the changes in excel than to write out all the code. The reference files will be on hand in case I accidentally mislabel a variable. The variable names in the excel file start with variable 11 from CommCare. The first 10 CommCare variables are meta data which we will keep.
@@ -211,6 +236,19 @@ TODO - come back and figure out how to quickly add in the phone data
 #print(updates[1,])
 ```
 
+## Merge soil into data
+
+TODO - check into how many merges we're not getting. Finalize merge report.
+
+```{r}
+d$sampling.barcode <- gsub("_", "", d$sampling.barcode)
+names(soil)[names(soil)=="SSN"] <- "sampling.barcode"
+
+d <- left_join(d, soil, by="sampling.barcode")
+
+soilVars <- names(soil)[2:21]
+```
+
 ## Outlier check
 
 Check all numeric variables for outliers. First, it's probably safe to replace all -99s with NA
@@ -314,7 +352,7 @@ iqr.check <- function(dat, x) {
 }
 
 # remove admin vars
-numAdminVars <- c("metadata.deviceID", "oafid")
+numAdminVars <- c("metadata.deviceID", "oafid", "X")
 numVarsNotAdmin <- numVars[!numVars %in% numAdminVars]
 
 iqrTab <- do.call(plyr::rbind.fill, lapply(numVarsNotAdmin, function(y){
@@ -349,27 +387,45 @@ for(i in 1:length(numVarsNotAdmin)){
 }
 ```
 
-## Merge in soil data
+### Clean soil values
 
-Make round 1 ids lower case
+Before aligning them with the baseline soil values
 
 ```{r}
-d <- d %>% mutate(
-  Soil_Sample_Id = tolower(Soil_Sample_Id)
-)
+check.3sd <- function(x) {
+  x = ifelse(is.infinite(x), NA, x)
+  mean = mean(x, na.rm=T)
+  sd = sd(x, na.rm=T)
+  mark = ifelse(x>(mean + (3*sd)) |
+        x<(mean - (3*sd)), NA, x)
+  return(mark)
+}
+
+
+sdSoilVals <- d %>%
+  dplyr::select(pH:X.Total.Nitrogen) 
+
+sdCheck <- as.data.frame(apply(sdSoilVals, 2, function(x){
+  return(check.3sd(x))
+}))
 ```
 
+```{r}
+for(i in 1:length(soilVars)){
+  print(ggplot(data=sdCheck, aes(x=sdCheck[,soilVars[i]])) + 
+    geom_density() + 
+    labs(x=soilVars[i])
+  )
+}
 
-Here I access the soil predictions from the OAF soil lab. [Patrick Bell](mailto:patrick.bell@oneacrefund.org) manages the lab and [Mike Barber](mike.barber@oneacrefund.org) oversees the prediction scripts.
+```
 
-TODO - get estimate on when the wet chem will be back for the Kenya SHS second round data
+**Important note**: I'm going to add the adjusted values to the `r` data frame giving the previous variables the extension `.raw` so I can distinguish between the original and modified data.
 
 ```{r}
-# soilDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_second_round", "4_predicted", "other_summaries"))
-# soil <- read.csv(file=paste(soilDir, "combined-predictions-including-bad-ones.csv", sep = "/"))
-# 
-# idDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_second_round", "5_merged"))
-# Identifiers <- read_excel(paste(idDir,"database.xlsx",sep="/"), sheet=1)
+names(d)[which(names(d)=="pH"):which(names(d)=="X.Total.Nitrogen")] <- paste0(names(d)[which(names(d)=="pH"):which(names(d)=="X.Total.Nitrogen")], ".raw")
+
+d <- cbind(d, sdCheck)
 ```
 
 ## Check round 1 ids
@@ -472,7 +528,7 @@ b <- b[-which(b$drop==1),]
 dropForNow <- c("c330", "c626") # see below
 ``` 
 
-
+TODO - confirm the data cleaning process at the baseline so that the soil data variables are being treated the same way in the baseline and round 1. They should probably be cleaned separately but should be treated the same way.
 
 ```{r}
 d$season <- "2016"
@@ -517,7 +573,25 @@ bUpdate <- b %>% rename(
   soil.color = soil_color,
   erosion = anti_erosion,
   field.location = location,
-  seasons.oaf = seasons_oaf
+  seasons.oaf = seasons_oaf,
+  x.c.e.c = c.e.c,
+  copper = cu,
+  x.ec..salts. = ec,
+  #x.exchangeable.aluminum = exch.al,
+  x.phosphorus.sorption.index..psi. = psi,
+  potassium = k,
+  magnesium = mg,
+  manganese = mn,
+  boron = b,
+  calcium = ca,
+  iron = fe,
+  x.sodium = na,
+  phosphorus = p, 
+  sulphur = s,
+  zinc = zn,
+  x.organic.carbon = total.c,
+  x.total.nitrogen = total.n,
+  x.exchangeable.aluminium = exch.al
 )
 
 # helper to know what else needs to be changed
@@ -538,6 +612,11 @@ baselineSoilVars <- names(b)[which(names(b)=="c.e.c"):which(names(b)=="total.n")
 ## Combine baseline and round 1
 
 ```{r}
+d <- d %>%
+  mutate(
+    soil_sample_id = tolower(gsub(" ", "", soil_sample_id))
+  )
+
 commonVars <- names(d)[names(d) %in% names(bUpdate)] 
 
 write.csv(commonVars, file="varNamesforM&E.csv")
@@ -546,6 +625,13 @@ m2ToAcres <- function(input, meters) {
   res <- (input/meters)*4046
   return(res)
 }
+
+# check soil sample id matches before rbind
+table(d$soil_sample_id %in% bUpdate$soil_sample_id)
+d$soil_sample_id[!d$soil_sample_id %in% bUpdate$soil_sample_id]
+
+table(bUpdate$soil_sample_id %in% d$soil_sample_id)
+bUpdate$soil_sample_id[!bUpdate$soil_sample_id %in% d$soil_sample_id]
 
 fieldDat <- rbind(bUpdate[,commonVars], d[,commonVars])
 
@@ -582,20 +668,18 @@ catVars <- names(fieldDat)[sapply(fieldDat, function(x){
 
 fieldNonAdmin <- catVars[!catVars %in% c("plot.location", "gps", "sample_id", "main.crop.specify", "intercrop.specify", "photo", "site")]
 
+fieldDat$region <- ifelse(grepl("nyan", tolower(fieldDat$region)), "Nyanza", "Western")
+
+
 for(i in 1:length(fieldNonAdmin)){
   repGraphs(fieldDat, fieldNonAdmin[i])
 }
 
 ```
 
-```{r}
-fieldDat$region <- ifelse(grepl("nyan", tolower(fieldDat$region)), "Nyanza", "Western")
-```
-
-
 TODO
 
-* get Kenya soil data and include it
+* reality check the data cleaning and management process between baseline and round 1, make sure they're the same.
 * reality check the append
 * reality check GPS
 
@@ -666,27 +750,9 @@ See [sketch of SHS report](https://docs.google.com/document/d/1koNsKzx97_3rpkGeJ
 
 TODO - START HERE
 
-* add in soil data
-* check out soil values
-* merge those in with baseline values (should work directly)
 * run regression
 * bring in yield values, merge soil vales, follow the other template
 * produce remaining tables
-
-
-* Individual fixed effects account for things specicic to farmer that don't change over time
-* can control for unobserved sources of heterogeneity over time, very sensitive to model 
-* add in other data points that do change over time
-* so add in things that change over time that plausibly affect our outcome
-* fertilizer and seed use are synoymous with being a client or not, highly endogenous
-* run two regs
- + one with oaf 
- + one with oaf and fertilizer
-* things like slope are collinear
-* individual fixed effects makes more sense than using PSM now that we have multiple years.
-* means by directional changes
-* papers using fixed effects by miguel on whether changes to rural to urban areas and income
-
 
 Consider including:
 
@@ -699,7 +765,7 @@ Consider including:
 [Helpful link](https://www.r-bloggers.com/how-to-go-parallel-in-r-basics-tips/) for executing code in parallel
 
 ```{r}
-fieldSoilDat <- fieldSoilDat %>%
+fieldSoilDat <- fieldDat %>%
   mutate(
     age2 = age^2
   )
