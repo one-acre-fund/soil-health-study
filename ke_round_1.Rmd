@@ -765,11 +765,13 @@ Consider including:
 [Helpful link](https://www.r-bloggers.com/how-to-go-parallel-in-r-basics-tips/) for executing code in parallel
 
 ```{r}
+source("../oaflib/plm.R")
 fieldSoilDat <- fieldDat %>%
   mutate(
     age2 = age^2
   )
 
+keySoilVars <- c("ph", "calcium", "magnesium", "x.organic.carbon", "x.total.nitrogen")
 
 indFeList <- list("as.factor(d_client)", 
                   c("as.factor(d_client)", "as.factor(sample_id)"),
