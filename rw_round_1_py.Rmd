@@ -352,13 +352,21 @@ names(py)[which(names(py)=="ph"):which(names(py)=="x.total.nitrogen")] <- paste0
 py <- cbind(py, sdCheck.py)
 ```
 
-# Soil Quartiles
+# Point of diminishing returns
+
+The best option would be to identify it visually. However, we are not seeing a clear point of diminishing returns visually suggesting that our data doesn't support this hypothesis of a point of diminishing returns despite there being an accepted theoretical point.
+
+## Pure one to one
 
 Graphs to show the relationship between soil parameter and yield. We don't expect this relationships to be linear. A couple notes:
 
 * None seems to show any clear increasing or decreasing value across the spectrum of yield values.
 * Nitrogen has a bimodal appearance with the second hump at 0.25. Why do we not have support for the values between 0.2 and 0.25?
 * Magnesium seems to have a long right tail still. 
+
+**The goal is to identify the point of diminishing returns for the simplistic soil parameter yield model** 
+
+The actual relationship is likely more complex but defining that model is outside the scope of this research. If we were to include other parameters in the model, we'd have to run simluations to determine the global minimum for ph based all values of calcium, magnesium, and whatever else we add in the model. If we had multiple additional coefficients, it gets hugely complicated.
 
 ```{r}
 for(i in 1:length(keySoilVars)){
@@ -373,7 +381,119 @@ for(i in 1:length(keySoilVars)){
 }
 ```
 
-Yield response table by quartile
+* For each soil parameter, first write out the theoretical model, for instance quadradic relationship between ph and yield
+* solve for where ph2 cancels out ph coefficient
+* timing is not great as these are taken at harvest as opposed 
+* Try aggregating to a higher geographic level, average ph on average yield
+
+## Log response
+
+```{r}
+for(i in 1:length(keySoilVars)){
+  print(
+  ggplot(py, aes(x = py[,keySoilVars[i]], y = log10(tha))) + 
+    geom_point() +
+    stat_smooth() +
+    #geom_vline(xintercept=summary(py[,keySoilVars[i]])[[2]], linetype="dashed") + 
+    #geom_vline(xintercept=summary(py[,keySoilVars[i]])[[5]], linetype="dashed") + 
+    labs(title = keySoilVars[i], x= keySoilVars[i], y="Yield (t/ha)")
+  )
+}
+```
+
+## Cell level model
+
+```{r}
+py$cell <- tolower(py$cell)
+
+aggCell <- py %>%
+  group_by(cell) %>%
+  summarize_each(funs(mean(., na.rm=T)), c(tha, ph, x.organic.carbon, x.total.nitrogen, calcium, magnesium)) %>%
+  as.data.frame()
+```
+
+```{r}
+for(i in 1:length(keySoilVars)){
+  print(
+  ggplot(aggCell, aes(x = aggCell[,keySoilVars[i]], y = tha)) + 
+    geom_point() +
+    stat_smooth() +
+    #stat_smooth(method="lm", color="red")+
+    labs(title = keySoilVars[i], x= keySoilVars[i], y="Yield (t/ha)")
+  )
+}
+```
+
+The cell level results seem a bit more useable (??? big question mark). I'll try to fit the expected relationship to these data and see where the coefficients cancel each other out
+
+```{r}
+aggCell$ph2 <- aggCell$ph^2
+
+theoryPh <- lm(tha ~ ph + ph2, data=aggCell)
+
+```
+
+* For this to work we need ph2 to be negative and ph to be positive so that low ph values so that at low ph values the ph term dominates the quadratic term. 
+* as ph increases, the quadratic term becomes more important
+* other papers estimate quadratic funciton and see where they cancel out
+
+### Carbon quadratic
+
+```{r}
+aggCell$c2 <- aggCell$x.organic.carbon^2
+theoryC <- lm(tha ~ x.organic.carbon + c2, data=aggCell)
+summary(theoryC)
+
+beta1 <- summary(theoryC)$coeff[2]
+beta2 <- summary(theoryC)$coeff[3]
+
+keyPoint <- (-beta1)/(2*beta2)
+
+ggplot(aggCell, aes(x = x.organic.carbon, y = tha)) + 
+    geom_point() +
+    #stat_smooth() +
+    stat_function(fun=function(x) log(x)) + 
+    geom_vline(xintercept=keyPoint) + 
+    #stat_smooth(method="lm", color="red")+
+    labs(title = "Carbon", x = "Carbon", y="Yield (t/ha)")
+```
+
+### Carbon logrithmic
+
+Scrap as there isn't a clear way to fit a linear model and get diminishing returns without a quadratic ceofficient. The logrithimic never actually reaches zero so there isn't a true point at which it decreases to zero.
+
+```{r}
+theoryCLog <- lm(log10(tha) ~ x.organic.carbon, data=subset(aggCell, aggCell$tha>1))
+summary(theoryCLog)
+
+beta1 <- summary(theoryC)$coeff[2]
+#beta2 <- summary(theoryC)$coeff[3]
+
+keyPoint <- (-beta1)/(2*beta2)
+
+ggplot(aggCell, aes(x = x.organic.carbon, y = tha)) + 
+    geom_point() +
+    #stat_smooth() +
+    stat_function(fun=function(x) log(x)) + 
+    geom_vline(xintercept=keyPoint) + 
+    #stat_smooth(method="lm", color="red")+
+    labs(title = "Carbon", x = "Carbon", y="Yield (t/ha)")
+```
+
+### Generalized formulas (test)
+
+You can kind of estimate log with quadratic assuming that the squared term is negative
+
+```{r}
+ggplot(data.frame(x = c(-4, 4)), aes(x = x)) +
+        stat_function(fun = function(x) x - x^2)
+
+
+ggplot(data.frame(x = c(-4, 4)), aes(x = x)) +
+        stat_function(fun = function(x) log(x))
+```
+
+# Soil quartile
 
 ```{r}
 yQuartiles <- function(yVar, xVar, df){
@@ -467,29 +587,3 @@ progImpTab <- data.frame(var = progObj, value = progImpTab)
 write.csv(progImpTab, file=paste("output/", "rwandaThresholdTab.csv", sep=""), row.names = F)
 ```
 
-## Point of diminishing returns
-
-Try to calculate the point of diminishing returns for soil chemical values. The naive model would identify the point at which yield diminishes for just one soil parameter. A more advanced approach will use soil profiles. Let's start with a naive model and then sort out what this might look like 
-
-
-```{r}
-py$ph2 <- py$ph^2
-
-test <- lm(tha ~ ph + ph2, data=py)
-
-toGraph <- data.frame(resid = test$residuals, soil = py$ph[!is.na(py$ph)])
-
-# looks just like the yield vs. ph plot
-ggplot(toGraph, aes(x=soil, y=resid)) + 
-  geom_point() + 
-  stat_smooth(method="loess")
-
-prime <- diff(py$tha)/diff(py$ph)
-primeG <- data.frame(var1=c(NA,prime), var2=py$ph)
-
-ggplot(primeG, aes(x=var2, y=var1)) + 
-  geom_point() + 
-  stat_smooth(method="loess")
-
-
-```
