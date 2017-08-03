@@ -104,7 +104,7 @@ newNames <- do.call(rbind, lapply(onlyVarName, function(x){
   return(x[[length(x)]])
 }))
 
-names(bean)[10:length(names(bean))] <- newNames
+names(bean)[11:length(names(bean))] <- newNames #had to change this to 11 on 8/2 due to come CC API update?
 
 #names(bean)[duplicated(names(bean))]
 
@@ -126,6 +126,9 @@ names(bean)[181] <- paste0("bush_beans_", names(bean)[181])
 
 names(bean)[211] <- paste0("bush_beans", names(bean)[211])
 names(bean)[221] <- paste0("maize_", names(bean)[221])
+
+#deal with duplicated variable names
+names(bean)[duplicated(names(bean))] <- paste0(names(bean)[duplicated(names(bean))],"_1")
 ```
 
 The best version of English names don't come from the data labels. They come from another portion of the output. I've extracted it here but a key point of feedback for Nathaniel will be to make certain that going forward variable labels are in the right places.
@@ -480,6 +483,8 @@ ggplot(aggCell, aes(x = x.organic.carbon, y = tha)) +
     labs(title = "Carbon", x = "Carbon", y="Yield (t/ha)")
 ```
 
+This analysis concludes that the point of diminishing returns for carbon is at `r round(keyPoint,2)`. 
+
 ### Generalized formulas (test)
 
 You can kind of estimate log with quadratic assuming that the squared term is negative
@@ -487,11 +492,96 @@ You can kind of estimate log with quadratic assuming that the squared term is ne
 ```{r}
 ggplot(data.frame(x = c(-4, 4)), aes(x = x)) +
         stat_function(fun = function(x) x - x^2)
+```
 
-
+```{r}
 ggplot(data.frame(x = c(-4, 4)), aes(x = x)) +
         stat_function(fun = function(x) log(x))
 ```
+
+### Wet chem only
+
+Try looking at these relationships with only wet chemistry data to minimize prediction noise. Start with the simple scatter plot and then progress to quadratic formula if 
+
+```{r}
+pairedWetDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_16b_paired_climbing", "3_wet_chem"))
+pairedWet <- read.csv(file=paste(pairedWetDir, "wet_chem.csv", sep = "/"))
+
+pSoilIdDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_16b_paired_climbing", "5_merged"))
+pSoilIds <- read.csv(file=paste(pSoilIdDir, "database.csv", sep = "/"))
+
+
+pairedWet <- pairedWet %>%
+  mutate(
+    Field.Name = tolower(Field.Name)
+  ) %>%
+  rename(
+    LAB.SSN = Field.Name
+  ) %>%
+  filter(LAB.SSN!="") %>%
+  left_join(., pSoilIds, by="LAB.SSN") %>% 
+  rename(
+    ssn = LAB.SSN
+  ) %>%
+  left_join(., py[,c("tha", "ssn")], by="ssn")
+
+names(pairedWet) <- tolower(names(pairedWet))
+```
+
+Check out what is not merging. Visually we just don't seem to have full matches. I don't understand how that's possible though given that we used these wet chem values to predict the soil values.
+
+```{r}
+# pairedWet$ssn[is.na(pairedWet$tha)]
+# 
+# pairedWet$ssn[!pairedWet$ssn %in% py$ssn]
+# sort(py$ssn[!py$ssn %in% pairedWet$ssn])
+
+#py$ssn[grep("35", py$ssn)]
+```
+```{r}
+for(i in 1:length(keySoilVars)){
+  print(
+  ggplot(pairedWet, aes(x = pairedWet[,keySoilVars[i]], y = tha)) + 
+    geom_point() +
+    stat_smooth() +
+    #stat_smooth(method="lm", color="red")+
+    labs(title = keySoilVars[i], x= keySoilVars[i], y="Yield (t/ha)")
+  )
+}
+```
+
+Quick overview:
+
+* pH again doesn't make much sense
+* Carbon looks alright. Let's take a closer look
+* Nitrogen looks useable as well.
+* Calcium looks really odd
+* Magnesium looks like calcium; really odd.
+
+```{r}
+pairedWet$c2 <- pairedWet$x.organic.carbon^2
+theoryWC <- lm(tha ~ x.organic.carbon + c2, data=pairedWet)
+#summary(theoryWC)
+
+beta1 <- summary(theoryWC)$coeff[2]
+beta2 <- summary(theoryWC)$coeff[3]
+
+keyPoint <- (-beta1)/(2*beta2)
+
+ggplot(pairedWet, aes(x = x.organic.carbon, y = tha)) + 
+    geom_point() +
+    #stat_smooth() +
+    stat_function(fun=function(x) log(x)) + 
+    geom_vline(xintercept=keyPoint) + 
+    #stat_smooth(method="lm", color="red")+
+    labs(title = "Carbon", x = "Carbon", y="Yield (t/ha)")
+```
+This analysis concludes that the point of diminishing returns for carbon is at `r round(keyPoint,2)`. 
+
+### PDP
+
+Try looking at partial dependence plots to have a clear functional form to eyeball a tipping point in changes in pH on yield. This would likely be pretty difficult because pH may not be important in the ranked importance plots and it might not a functional form that fits with what we expect. 
+
 
 # Soil quartile
 
