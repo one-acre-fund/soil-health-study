@@ -613,12 +613,12 @@ qTab <- cbind(qTab,
                   yQChange(x,2,3)}))
 ```
 
-Add in revenue calculation. Assume that farmers are earning 25c a kg so $250/ton and we're moving the bottom quarter of our sample to the 75th percentile.
+Add in revenue calculation. Assume farmers are making 52 cents a kg
 
 ```{r}
 library(scales)
 # add revenue
-marketValueT <- 250
+marketValueT <- 500
 numFarmersRw <- 164500/4
 qTab$revenueA <- dollar(qTab$diff25to50 * marketValueT)
 qTab$revenueB <- dollar(qTab$diff50to75 * marketValueT)
@@ -663,11 +663,11 @@ minThresh <- function(xVar, yVar, per.thold, thold, FarmerCount, marketValue, df
   return(res)
 }
 
-progImpactpH <- minThresh("ph", "tha", 0.75, 5.8, 282228, 0.52, py)
-progImpactN <- minThresh("x.total.nitrogen", "tha", 0.75, 0.1, 282228, 0.52, py)
-progImpactC <- minThresh("x.organic.carbon", "tha", 0.75, 2, 282228, 0.52, py)
-progImpactCa <- minThresh("calcium", "tha", 0.75, 1056, 282228, 0.52, py)
-progImpactMg <- minThresh("magnesium", "tha", 0.75, 148, 282228, 0.52, py)
+progImpactpH <- minThresh("ph", "tha", 0.75, 5.8, 282228, 0.50, py)
+progImpactN <- minThresh("x.total.nitrogen", "tha", 0.75, 0.1, 282228, 0.50, py)
+progImpactC <- minThresh("x.organic.carbon", "tha", 0.75, 2, 282228, 0.50, py)
+progImpactCa <- minThresh("calcium", "tha", 0.75, 1056, 282228, 0.50, py)
+progImpactMg <- minThresh("magnesium", "tha", 0.75, 148, 282228, 0.50, py)
 
 progObj <- ls()[grep("progImpact", ls())]
   
