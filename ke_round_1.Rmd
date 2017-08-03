@@ -735,8 +735,8 @@ clientCount <- fieldDat %>%
 
 
 clientCountTab <- cbind(
-  as.data.frame(table(clientCount$client15)),
-  as.data.frame(table(clientCount$client16)))
+  as.data.frame(table(clientCount$client15, useNA = 'ifany')),
+  as.data.frame(table(clientCount$client16, useNA = 'ifany')))
 
 clientCountTab <- clientCountTab[,-3]
 names(clientCountTab) <- c("Treatment", "Clients 2015", "Clients 2016")
@@ -841,7 +841,6 @@ write.csv(finalModel, file="output/indFe.csv")
 
 # Summary
 
-# Appendix
 
 
 
