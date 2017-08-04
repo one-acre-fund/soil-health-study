@@ -1,17 +1,20 @@
 ---
 title: "Rwanda Soil Health Study - Round 2 Check"
 author: "[Matt Lowes](mailto:matt.lowes@oneacrefund.org)"
-date: "`r format(Sys.time(), '%d %B, %Y')`"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
 output:
   html_notebook:
+    number_sections: yes
+    code_folding: hide
     fig_caption: yes
     fig_height: 6
+    theme: flatly
     toc: yes
-    toc_depth: 4
+    toc_depth: 6
     toc_float: yes
 subtitle: "On-going data check"
 ---
-```{r}
+```{r, message=F}
 #### set up
 ## clear environment and console
 rm(list = ls())
@@ -57,6 +60,9 @@ html_table_width <- function(kable_output, width) {
 
 Perform basic data checks on Rwanda round soil health study data to provide real time feedback to Nathaniel and enumeration teams to maximize the value of the teams in the field.
 
+# Key takeaways
+
+> More to come here
 
 # Data
 
@@ -166,10 +172,6 @@ names(yt)[58] <- "crop2_yield_comparison_17a"
 
 ## Categorical variables
 
-* reality check key agronomic values
-* summarize odd values by enumerator
-* look for high NA rates in variables
-
 ```{r}
 catVars <- names(yt)[sapply(yt, function(x){
   is.character(x)
@@ -207,12 +209,13 @@ responseTable <- do.call(rbind, lapply(catVars, function(x){
 }))
 ```
 
-## Table of categorical responses
+### Table of categorical responses
 
 ```{r}
 kable(responseTable, format="markdown")
 ```
 
+### Categorical var graphs
 
 ```{r}
 repGraphs <- function(dat, x){
@@ -250,43 +253,7 @@ yt[,numVars] <- sapply(numVars, function(y){
 })
 ```
 
-### Numeric outlier table
-
-```{r}
-iqr.check <- function(dat, x) { 
-  q1 = summary(dat[,x])[[2]]
-  q3 = ifelse(exists(summary(dat[,x])[[5]]), summary(dat[,x])[[5]], 0) 
-  iqr = q3-q1
-  mark  = ifelse(dat[,x] < (q1 - (1.5*iqr)) | dat[,x] > (q3 + (1.5*iqr)), 1,0)
-  tab = rbind(
-    summary(dat[,x]),
-    summary(dat[mark==0, x])
-  )
-  return(tab)
-}
-
-# remove admin vars
-numAdminVars <- c("metadata.deviceID", "oafid", "X", "found", "")
-numVarsNotAdmin <- numVars[!numVars %in% numAdminVars]
-
-# iqrTab <- do.call(plyr::rbind.fill, lapply(numVarsNotAdmin, function(y){
-#   #print(y)
-#   res = iqr.check(yt, y)
-#   #print(dim(res))
-#   out = data.frame(var=rbind(y, paste(y, ".iqr", sep="")), res)
-#   return(out)
-# }))
-# 
-# iqrTab[,2:8] <- sapply(iqrTab[,2:8], function(x){round(x,1)})
-```
-
-The outlier table summarizes the numeric variables with and without IQR outliers to show how the data changes based on this filter.
-
-TODO - check the composition of the fertilizer/acre variables.
-
-```{r}
-#knitr::kable(iqrTab, row.names = F, digits = 0, format = 'markdown')
-```
+### Numeric var graphs
 
 ```{r}
 for(i in 1:length(numVarsNotAdmin)){
