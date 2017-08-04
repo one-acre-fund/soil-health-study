@@ -1,0 +1,311 @@
+---
+title: "Rwanda Soil Health Study - Round 2 Check"
+author: "[Matt Lowes](mailto:matt.lowes@oneacrefund.org)"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_notebook:
+    fig_caption: yes
+    fig_height: 6
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+subtitle: "On-going data check"
+---
+```{r}
+#### set up
+## clear environment and console
+rm(list = ls())
+cat("\014")
+
+## set up some global options
+# always set stringsAsFactors = F when loading data
+options(stringsAsFactors=FALSE)
+
+# show the code
+knitr::opts_chunk$set(echo = TRUE)
+
+# define all knitr tables to be html format
+options(knitr.table.format = 'html')
+
+# change code chunk default to not show warnings or messages
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+## load libraries
+# dplyr and tibble are for working with tables
+# reshape is for easy table transformation
+# knitr is to make pretty tables at the end
+# ggplot2 is for making graphs
+# readxl is for reading in Excel files
+# MASS is for running boxcox tests
+# gridExtra is for arranging plots
+# cowplot is for adding subtitles to plots
+# robustbase is to run robust regressions to compensate for outliers
+# car is for performing logit transformations
+libs <- c("dplyr", "reshape2", "knitr", "ggplot2", "tibble", "readxl", 
+    "MASS", "gridExtra", "cowplot", "robustbase", "car", "knitr")
+lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F)
+
+#### define helpful functions
+# define function to adjust table widths
+html_table_width <- function(kable_output, width) {
+  width_html <- paste0(paste0('<col width="', width, '">'), collapse = "\n")
+  sub("<table>", paste0("<table>\n", width_html), kable_output)
+}
+```
+
+# Objective
+
+Perform basic data checks on Rwanda round soil health study data to provide real time feedback to Nathaniel and enumeration teams to maximize the value of the teams in the field.
+
+
+# Data
+
+## Baseline and round 1
+
+```{r}
+load("../rw_round_1/fieldDat_final.Rdata")
+```
+
+## Round 2 data
+Load data and make variable names nice. `ytwo` is the complete data. `yt` is the data I'll be manipulating.
+```{r loading data, message=FALSE}
+dataDir <- normalizePath(file.path("..", "..", "data"))
+source("../oaflib/commcareExport.R")
+source("../oaflib/misc.R")
+#source("../oaflib/ccSluthing.R")
+
+#r <- getFormData("oafrwanda", "M&E", "16B Ubutaka (Soil)", forceUpdate = T)
+
+ytwo <- getFormData("oafrwanda", "M&E", "17B Ubutaka (Soil)", forceUpdate=F)
+
+names(ytwo) <- tolower(make.names(names(ytwo)))
+
+yt <- ytwo %>%
+  setNames(gsub("x.form.", "", names(.))) %>%
+  mutate(sample_id = tolower(sample_id))
+```
+
+# Observation count
+
+## Missing data
+Reality check some observations. Are they completely missing? 
+```{r}
+blankRow <- apply(yt, 1, function(x){
+  sum(x=="" | is.na(x))
+})
+
+naRow <- data.frame(table(round(blankRow/dim(yt)[2],2)*100)) %>%
+  mutate(Var1 = as.numeric(as.character(Var1))) %>%
+  filter(Var1>=25) %>%
+  mutate(Var1 = paste0(Var1, "%"))
+kable(naRow, col.names = c("% of columns missing values", "Freq"),format="markdown")
+```
+
+Some observations have `r as.character(naRow$Var1[nrow(naRow)])` of observations missing. What's going on with these? I'm only showing rows with greater than 25% missing. It's somewhat arbitrary but to not have data for a fourth of the survey seems odd.
+
+## Matches with previous rounds
+
+```{r}
+#table(yt$sample_id %in% unique(fieldDat$sample_id))
+```
+
+> Through 8/4 we have one soil sample id in round 2 that doesn't exist in previous rounds. It is sample_id `r yt$sample_id[!yt$sample_id %in% unique(fieldDat$sample_id)]`.
+
+What is up with that observation?
+
+## Completion rates
+
+```{r}
+baseComplete <- fieldDat %>%
+  filter(season =="15b") %>%
+  dplyr::select(sample_id) 
+
+compB <- round(prop.table(table(baseComplete$sample_id %in% yt$sample_id)),2)
+
+r1Complete <- fieldDat %>%
+  filter(season =="16b") %>%
+  dplyr::select(sample_id) 
+
+
+compR1 <- round(prop.table(table(r1Complete$sample_id %in% yt$sample_id)),2)
+```
+
+> Through 8/4 we've found `r compB[[2]]*100`% of baseline farmers. We have `r nrow(baseComplete)-table(baseComplete$sample_id %in% yt$sample_id)[[2]]` to go.
+
+> Through 8/4 we've found `r compR1[[2]]*100`% of round 1 farmers. We have `r nrow(r1Complete)-table(r1Complete$sample_id %in% yt$sample_id)[[2]]` to go.
+
+As we get closer to the end of enumeration I will produce a report of sample_ids that have not yet been surveyed so we can understand precisely why some farmers were not found again.
+
+
+# Data reality check
+
+The variable names are not great. I think it's due to the CommCare API export. I'm going to see if there's an easier way to have uesable variable names. I've creaetd a CC export titled "M&E - Soil Health Study - 17B Ubutaka (Soil)" on August 8th. I'm only using it to get more usable variable names quickly. Ideally there'd be away to get that info directly from CommCare.
+
+```{r}
+varNames <- read_csv("M&E - Soil Health Study - 17B Ubutaka (Soil) (2017-08-04) 2017-08-04.csv") %>% 
+  setNames(gsub("form.", "", names(.))) %>%
+  setNames(gsub("farmer.", "", names(.))) %>%
+  setNames(gsub("prim_17a_.", "", names(.))) %>%
+  setNames(gsub("sec_17a_.", "", names(.))) %>%
+  setNames(gsub("prim_17b_.", "", names(.))) %>%
+  setNames(gsub("sec_17b_.", "", names(.))) %>%
+  setNames(gsub("ammend_17a_.", "", names(.))) %>%
+  setNames(gsub("ammend_17b_.", "", names(.))) %>% 
+  as.data.frame()
+
+
+names(yt)[11:112] <- names(varNames)[3:104]
+# rename one variable to remove duplicates
+names(yt)[31] <- "nameOne"
+names(yt) <- tolower(names(yt))
+# manually fix a couple other names
+names(yt)[53] <- "crop1_yield_comparison_17a"
+names(yt)[58] <- "crop2_yield_comparison_17a"
+
+```
+
+## Categorical variables
+
+* reality check key agronomic values
+* summarize odd values by enumerator
+* look for high NA rates in variables
+
+```{r}
+catVars <- names(yt)[sapply(yt, function(x){
+  is.character(x)
+})]
+
+enumClean <- function(dat, x, toRemove){
+  dat[,x] <- ifelse(dat[,x] %in% toRemove, NA, dat[,x])
+  return(dat[,x])
+}
+
+strTable <- function(dat, x){
+  varName = x
+  tab = as.data.frame(table(dat[,x], useNA = 'ifany'))
+  tab = tab[order(tab$Freq, decreasing = T),]
+  end = ifelse(length(tab$Var1)<10, length(tab$Var1), 10)
+  repOrder = paste(tab$Var1[1:end], collapse=", ")
+  out = data.frame(variable = varName,
+                   responses = repOrder)
+  
+  return(out)
+}
+
+# clean up known values
+catEnumVals <- c("-99", "-88", "- 99", "-99.0", "88", "_88", "- 88", "0.88",
+                 "--88", "__88", "-88.0", "99.0")
+yt[,catVars] <- sapply(catVars, function(y){
+  yt[,y] <- enumClean(yt,y, catEnumVals)
+})
+
+# put all categorical values in lower
+yt[,catVars] <- sapply(yt[,catVars], function(x) tolower(x))
+
+responseTable <- do.call(rbind, lapply(catVars, function(x){
+  strTable(yt, x)
+}))
+```
+
+## Table of categorical responses
+
+```{r}
+kable(responseTable, format="markdown")
+```
+
+
+```{r}
+repGraphs <- function(dat, x){
+  tab = as.data.frame(table(dat[,x], useNA = 'ifany'))
+  tab = tab[order(tab$Freq, decreasing = T),]
+  print(
+    ggplot(data=tab, aes(x=Var1, y=Freq)) + geom_bar(stat="identity") +
+      theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+      labs(title =paste0("Composition of variable: ", x))
+  )
+}
+
+adminVars <- tolower(c(names(yt)[grep("meta", names(yt))],"enum_name", "text_final.photo",  "participation", "refusal", "phone",  "comment", "gps", "sample_id", "sampling.barcode", "id", "domain", "date_header", "form.case..case_id", "site", "district1", "site1", "plot.location", "New_soil_sample_id", "#form/Sampling2017_Complete", "appformid",names(yt)[grep("soil_id", names(yt))], "nameOne", "tel", "tel_respondent", "neighbor_tel", "finish_time", "other_comments", "Description", "neighor_or_voisin_phone", "name", "cell_field_17b", "name_respondent","respondent_in_16b","gps_hidden", "farmer_phone", "respondent_phone", "village", "cell", names(yt)[grep("enumerator", names(yt))], "start_time", "village_17b", "cell_input_17b"))
+nonAdminVars <- catVars[!catVars %in% adminVars]
+
+for(i in 1:length(nonAdminVars)){
+  repGraphs(yt, nonAdminVars[i])
+}
+```
+## Numeric variables
+
+```{r}
+numVars <- names(yt)[sapply(yt, function(x){
+  is.numeric(x)
+})]
+```
+
+Basic cleaning of known issues like enumerator codes for DK, NWR, etc.
+```{r}
+enumVals <- c(-88,-85, -99)
+
+yt[,numVars] <- sapply(numVars, function(y){
+  yt[,y] <- enumClean(yt,y, enumVals)
+  yt[,y] <- as.numeric(yt[,y])
+})
+```
+
+### Numeric outlier table
+
+```{r}
+iqr.check <- function(dat, x) { 
+  q1 = summary(dat[,x])[[2]]
+  q3 = ifelse(exists(summary(dat[,x])[[5]]), summary(dat[,x])[[5]], 0) 
+  iqr = q3-q1
+  mark  = ifelse(dat[,x] < (q1 - (1.5*iqr)) | dat[,x] > (q3 + (1.5*iqr)), 1,0)
+  tab = rbind(
+    summary(dat[,x]),
+    summary(dat[mark==0, x])
+  )
+  return(tab)
+}
+
+# remove admin vars
+numAdminVars <- c("metadata.deviceID", "oafid", "X", "found", "")
+numVarsNotAdmin <- numVars[!numVars %in% numAdminVars]
+
+# iqrTab <- do.call(plyr::rbind.fill, lapply(numVarsNotAdmin, function(y){
+#   #print(y)
+#   res = iqr.check(yt, y)
+#   #print(dim(res))
+#   out = data.frame(var=rbind(y, paste(y, ".iqr", sep="")), res)
+#   return(out)
+# }))
+# 
+# iqrTab[,2:8] <- sapply(iqrTab[,2:8], function(x){round(x,1)})
+```
+
+The outlier table summarizes the numeric variables with and without IQR outliers to show how the data changes based on this filter.
+
+TODO - check the composition of the fertilizer/acre variables.
+
+```{r}
+#knitr::kable(iqrTab, row.names = F, digits = 0, format = 'markdown')
+```
+
+```{r}
+for(i in 1:length(numVarsNotAdmin)){
+    if(length(unique(yt[,numVarsNotAdmin[i]]))>10){
+      print(ggplot(data=yt, aes(x=yt[,numVarsNotAdmin[i]])) +  
+              geom_density() + 
+              theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1)) + 
+              labs(x = numVarsNotAdmin[i])
+            )
+    } else{
+    print(ggplot(data=yt, aes(x=yt[,numVarsNotAdmin[i]])) + 
+            geom_histogram(stat="count") + 
+            theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+            labs(x = numVarsNotAdmin[i])
+      )
+    }
+    #multiplot(temp1, temp2, cols = 2
+}
+```
+
+
+
