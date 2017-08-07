@@ -555,6 +555,17 @@ minThresh <- function(xVar, yVar, per.thold, thold, FarmerCount, marketValue, df
 progImpactpH <- minThresh("ph", "tha", 0.75, 5.8, 217000, 0.34, py)
 progImpactN <- minThresh("x.total.nitrogen", "tha", 0.75, 0.1, 217000, 0.34, py)
 progImpactC <- minThresh("x.organic.carbon", "tha", 0.75, 2, 217000, 0.34, py)
+
+pdf(file=paste("output", "carbon graph.pdf", sep="/"), width=11, height=8.5)
+ggplot(py, aes(x=x.organic.carbon, y=tha)) + 
+  geom_point() + 
+  geom_vline(xintercept = summary(py$x.organic.carbon)[[2]]) + 
+  geom_vline(xintercept = summary(py$x.organic.carbon)[[5]]) + 
+  stat_smooth(method="lm") + 
+  labs(x = "Carbon", y = "Yield (t/ha)", title = "75% threshold looks weird because of farmers doing well at low C values",
+       subtitle = "We can trim those values but then we're basically shaping the data to our story")
+dev.off()
+
 progImpactCa <- minThresh("calcium", "tha", 0.75, 1056, 217000, 0.34, py)
 progImpactMg <- minThresh("magnesium", "tha", 0.75, 148, 217000, 0.34, py)
 
