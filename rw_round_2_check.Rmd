@@ -5,7 +5,7 @@ date: "`r format(Sys.time(), '%B %d, %Y')`"
 output:
   html_notebook:
     number_sections: yes
-    code_folding: hide
+    code_folding: show
     fig_caption: yes
     fig_height: 6
     theme: flatly
@@ -14,7 +14,7 @@ output:
     toc_float: yes
 subtitle: "On-going data check"
 ---
-```{r, message=F}
+```{r echo=F}
 #### set up
 ## clear environment and console
 rm(list = ls())
@@ -62,7 +62,7 @@ Perform basic data checks on Rwanda round soil health study data to provide real
 
 # Key takeaways
 
-> More to come here
+> See [follow up](#follow-up)
 
 # Data
 
@@ -79,8 +79,6 @@ dataDir <- normalizePath(file.path("..", "..", "data"))
 source("../oaflib/commcareExport.R")
 source("../oaflib/misc.R")
 #source("../oaflib/ccSluthing.R")
-
-#r <- getFormData("oafrwanda", "M&E", "16B Ubutaka (Soil)", forceUpdate = T)
 
 ytwo <- getFormData("oafrwanda", "M&E", "17B Ubutaka (Soil)", forceUpdate=F)
 
@@ -256,23 +254,107 @@ yt[,numVars] <- sapply(numVars, function(y){
 ### Numeric var graphs
 
 ```{r}
-for(i in 1:length(numVarsNotAdmin)){
-    if(length(unique(yt[,numVarsNotAdmin[i]]))>10){
-      print(ggplot(data=yt, aes(x=yt[,numVarsNotAdmin[i]])) +  
+temp <- numVars
+
+
+noNeed <- c("intro.intro", "text_final.d_photo", "text_final.d_soilsample")
+numVars <- numVars[!numVars %in% noNeed]
+# remove variables that are entirely missing
+totallyMissing <- sapply(yt[,numVars], function(x){
+  all(is.na(x))
+  })
+
+numVars <- numVars[totallyMissing==F]
+
+
+for(i in 1:length(numVars)){
+    if(length(unique(yt[,numVars[i]]))>10){
+      print(ggplot(data=yt, aes(x=yt[,numVars[i]])) +  
               geom_density() + 
               theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1)) + 
-              labs(x = numVarsNotAdmin[i])
+              labs(x = numVars[i])
             )
     } else{
-    print(ggplot(data=yt, aes(x=yt[,numVarsNotAdmin[i]])) + 
+    print(ggplot(data=yt, aes(x=yt[,numVars[i]])) + 
             geom_histogram(stat="count") + 
             theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
-            labs(x = numVarsNotAdmin[i])
+            labs(x = numVars[i])
       )
     }
     #multiplot(temp1, temp2, cols = 2
 }
 ```
 
+# Follow up
+
+```{r message=F}
+detectOutlier <- function(dat, x){
+
+# function checks distribution and if lognormal, coverts and outputs
+# outliers from log normal distribution. have to remove 0s to check
+  fits <- list(
+ no = fitdistr(dat[,x][complete.cases(dat[,x])],"normal"),
+ lo = fitdistr((dat[,x])[complete.cases(dat[,x]) & dat[,x]!=0 & dat[,x]>0],"log-normal")
+ #ca = fitdistr(dat[,x][complete.cases(dat[,x])],"cauchy"),
+ #we = fitdistr(dat[,x][complete.cases(dat[,x])], "weibull")
+ )
+# get the logliks for each model...
+fitCheck <- sapply(fits, function(i) i$loglik)
+bestFit <-names(which.max(fitCheck))
+
+trans <- sapply(dat[,x], function(y){
+  ifelse(bestFit=="lo", log10(y+1), y)
+})
+  
+  
+  q1 = summary(trans)[[2]]
+  q3 = summary(trans)[[5]] 
+  iqr = q3-q1
+  mark  = ifelse(trans < (q1 - (1.5*iqr)) | trans > (q3 + (1.5*iqr)), 1,0)
+  # tab = rbind(
+  #   summary(d[,x]),
+  #   summary(d[mark==0, x])
+  # )
+  out = dat[mark==1, c("district", "cell", "enumerator", "sample_id", "farmer_phone", x)]
+  out = melt(out, measure.vars = x)
+  out = out[!is.na(out$district),]
+  
+  return(out)
+
+}
+
+printIQR <- do.call(rbind, lapply(numVars, function(y){
+  #print(y)
+  return(detectOutlier(yt, y))
+}))
+
+printIQR <- printIQR[order(printIQR$enumerator,printIQR$cell, printIQR$sample_id),]
+```
+
+The initial output might still be showing values that the M&E team feels are reasonable values in reality despite being flagged as statistical outliers. 
+
+I've included a couple examples of how we can filter the data through the code to arrive at a well documented list of values to investigate.
+
+* `compost_17a` many farmers list 0. It's plausible but perhaps worth a general follow up?
+
+```{r}
+modifyOutlierOutput <- function(dat, varname, vals){
+  dat = dplyr::filter(dat, variable!=varname & (!value %in% vals))
+  return(dat)
+}
+
+printIQR <- modifyOutlierOutput(printIQR, "found", 1)
+printIQR <- modifyOutlierOutput(printIQR, "compost", 1)
+printIQR <- modifyOutlierOutput(printIQR, "compost_17a", 0)
+printIQR <- modifyOutlierOutput(printIQR, "n_chickens", 2:7)
 
 
+```
+
+```{r}
+kable(printIQR, format="markdown")
+```
+
+```{r}
+write.csv(printIQR, file=paste0("output/", "rw_shs_r2 vars to check update.csv"), row.names = F)
+```
