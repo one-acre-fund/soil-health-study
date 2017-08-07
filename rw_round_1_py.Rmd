@@ -410,11 +410,11 @@ pdrFunction <- function(dat, var, outcome){
 ```
 
 ```{r}
-indPrdTab <- do.call(rbind, lapply(keySoilVars, function(x){
+indPdrTab <- do.call(rbind, lapply(keySoilVars, function(x){
   pdrFunction(py, x, py$tha)
 }))
 
-kable(indPrdTab, format="markdown")
+kable(indPdrTab, format="markdown")
 ```
 
 ## Log response
@@ -544,6 +544,19 @@ kable(wetPdrTab, format="markdown")
 Try looking at partial dependence plots to have a clear functional form to eyeball a tipping point in changes in pH on yield. This would likely be pretty difficult because pH may not be important in the ranked importance plots and it might not a functional form that fits with what we expect. 
 
 **Don't do this as I don't think this is an appropriate application of PDPs**
+
+## Summary
+```{r}
+
+sourceTab <- c("aggTab", "indPdrTab", "wetPdrTab")
+pdrTab <- do.call(rbind, lapply(sourceTab, function(x){
+  tab = get(x)
+  return(data.frame(cbind(source = x, tab)))
+  }))
+
+
+kable(pdrTab, format="markdown")
+```
 
 
 # Soil quartile
