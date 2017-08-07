@@ -389,7 +389,37 @@ for(i in 1:length(keySoilVars)){
 * timing is not great as these are taken at harvest as opposed 
 * Try aggregating to a higher geographic level, average ph on average yield
 
+```{r}
+pdrFunction <- function(dat, var, outcome){
+  powerVar = dat[,var]^2
+  
+  mod = lm(outcome ~ dat[,var] + powerVar, data=dat)
+  
+  if(summary(mod)$coeff[3]<0){
+    beta1 <- summary(mod)$coeff[2]
+    beta2 <- summary(mod)$coeff[3]
+
+    keyPoint <- round((-beta1)/(2*beta2),2)
+    tab = data.frame(var = var, result = keyPoint)
+    return(tab)
+  }else{
+    return(data.frame(var = var, result= "NR"))
+  }
+  
+}
+```
+
+```{r}
+indPrdTab <- do.call(rbind, lapply(keySoilVars, function(x){
+  pdrFunction(py, x, py$tha)
+}))
+
+kable(indPrdTab, format="markdown")
+```
+
 ## Log response
+
+Try a log response to see if visually we get a better fit. We don't really seem to.
 
 ```{r}
 for(i in 1:length(keySoilVars)){
@@ -405,6 +435,8 @@ for(i in 1:length(keySoilVars)){
 ```
 
 ## Cell level model
+
+Aggregate data to the cell level to hopefully tame some of the noise in the individual measurement.
 
 ```{r}
 py$cell <- tolower(py$cell)
@@ -430,78 +462,16 @@ for(i in 1:length(keySoilVars)){
 The cell level results seem a bit more useable (??? big question mark). I'll try to fit the expected relationship to these data and see where the coefficients cancel each other out
 
 ```{r}
-aggCell$ph2 <- aggCell$ph^2
+aggTab <- do.call(rbind, lapply(keySoilVars, function(x){
+  pdrFunction(aggCell, x, aggCell$tha)
+}))
 
-theoryPh <- lm(tha ~ ph + ph2, data=aggCell)
-
+kable(aggTab, format="markdown")
 ```
 
-* For this to work we need ph2 to be negative and ph to be positive so that low ph values so that at low ph values the ph term dominates the quadratic term. 
-* as ph increases, the quadratic term becomes more important
-* other papers estimate quadratic funciton and see where they cancel out
+## Wet chem only
 
-### Carbon quadratic
-
-```{r}
-aggCell$c2 <- aggCell$x.organic.carbon^2
-theoryC <- lm(tha ~ x.organic.carbon + c2, data=aggCell)
-summary(theoryC)
-
-beta1 <- summary(theoryC)$coeff[2]
-beta2 <- summary(theoryC)$coeff[3]
-
-keyPoint <- (-beta1)/(2*beta2)
-
-ggplot(aggCell, aes(x = x.organic.carbon, y = tha)) + 
-    geom_point() +
-    #stat_smooth() +
-    stat_function(fun=function(x) log(x)) + 
-    geom_vline(xintercept=keyPoint) + 
-    #stat_smooth(method="lm", color="red")+
-    labs(title = "Carbon", x = "Carbon", y="Yield (t/ha)")
-```
-
-### Carbon logrithmic
-
-Scrap as there isn't a clear way to fit a linear model and get diminishing returns without a quadratic ceofficient. The logrithimic never actually reaches zero so there isn't a true point at which it decreases to zero.
-
-```{r}
-theoryCLog <- lm(log10(tha) ~ x.organic.carbon, data=subset(aggCell, aggCell$tha>1))
-summary(theoryCLog)
-
-beta1 <- summary(theoryC)$coeff[2]
-#beta2 <- summary(theoryC)$coeff[3]
-
-keyPoint <- (-beta1)/(2*beta2)
-
-ggplot(aggCell, aes(x = x.organic.carbon, y = tha)) + 
-    geom_point() +
-    #stat_smooth() +
-    stat_function(fun=function(x) log(x)) + 
-    geom_vline(xintercept=keyPoint) + 
-    #stat_smooth(method="lm", color="red")+
-    labs(title = "Carbon", x = "Carbon", y="Yield (t/ha)")
-```
-
-This analysis concludes that the point of diminishing returns for carbon is at `r round(keyPoint,2)`. 
-
-### Generalized formulas (test)
-
-You can kind of estimate log with quadratic assuming that the squared term is negative
-
-```{r}
-ggplot(data.frame(x = c(-4, 4)), aes(x = x)) +
-        stat_function(fun = function(x) x - x^2)
-```
-
-```{r}
-ggplot(data.frame(x = c(-4, 4)), aes(x = x)) +
-        stat_function(fun = function(x) log(x))
-```
-
-### Wet chem only
-
-Try looking at these relationships with only wet chemistry data to minimize prediction noise. Start with the simple scatter plot and then progress to quadratic formula if 
+Try looking at these relationships with only wet chemistry data to minimize prediction noise. Start with the simple scatter plot and then progress to quadratic formula. **I'm keeping the data aggregated to the cell level**
 
 ```{r}
 pairedWetDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_16b_paired_climbing", "3_wet_chem"))
@@ -538,6 +508,7 @@ Check out what is not merging. Visually we just don't seem to have full matches.
 
 #py$ssn[grep("35", py$ssn)]
 ```
+
 ```{r}
 for(i in 1:length(keySoilVars)){
   print(
@@ -552,6 +523,8 @@ for(i in 1:length(keySoilVars)){
 
 Quick overview:
 
+**Reminder**: the curves on these models is a loess curve. Loess takes a local average to derive a line of best fit. This line is by design very responsive to the data and not the model we're using to detect the point of diminishing returns. It's a good first check to see if it's worth investigating. 
+
 * pH again doesn't make much sense
 * Carbon looks alright. Let's take a closer look
 * Nitrogen looks useable as well.
@@ -559,28 +532,18 @@ Quick overview:
 * Magnesium looks like calcium; really odd.
 
 ```{r}
-pairedWet$c2 <- pairedWet$x.organic.carbon^2
-theoryWC <- lm(tha ~ x.organic.carbon + c2, data=pairedWet)
-#summary(theoryWC)
+wetPdrTab <- do.call(rbind, lapply(keySoilVars, function(x){
+  pdrFunction(pairedWet, x, pairedWet$tha)
+}))
 
-beta1 <- summary(theoryWC)$coeff[2]
-beta2 <- summary(theoryWC)$coeff[3]
-
-keyPoint <- (-beta1)/(2*beta2)
-
-ggplot(pairedWet, aes(x = x.organic.carbon, y = tha)) + 
-    geom_point() +
-    #stat_smooth() +
-    stat_function(fun=function(x) log(x)) + 
-    geom_vline(xintercept=keyPoint) + 
-    #stat_smooth(method="lm", color="red")+
-    labs(title = "Carbon", x = "Carbon", y="Yield (t/ha)")
+kable(wetPdrTab, format="markdown")
 ```
-This analysis concludes that the point of diminishing returns for carbon is at `r round(keyPoint,2)`. 
 
-### PDP
+## Random Forest / PDP
 
 Try looking at partial dependence plots to have a clear functional form to eyeball a tipping point in changes in pH on yield. This would likely be pretty difficult because pH may not be important in the ranked importance plots and it might not a functional form that fits with what we expect. 
+
+**Don't do this as I don't think this is an appropriate application of PDPs**
 
 
 # Soil quartile
@@ -618,7 +581,7 @@ Add in revenue calculation. Assume farmers are making 52 cents a kg
 ```{r}
 library(scales)
 # add revenue
-marketValueT <- 500
+marketValueT <- 520
 numFarmersRw <- 164500/4
 qTab$revenueA <- dollar(qTab$diff25to50 * marketValueT)
 qTab$revenueB <- dollar(qTab$diff50to75 * marketValueT)
@@ -663,11 +626,11 @@ minThresh <- function(xVar, yVar, per.thold, thold, FarmerCount, marketValue, df
   return(res)
 }
 
-progImpactpH <- minThresh("ph", "tha", 0.75, 5.8, 282228, 0.50, py)
-progImpactN <- minThresh("x.total.nitrogen", "tha", 0.75, 0.1, 282228, 0.50, py)
-progImpactC <- minThresh("x.organic.carbon", "tha", 0.75, 2, 282228, 0.50, py)
-progImpactCa <- minThresh("calcium", "tha", 0.75, 1056, 282228, 0.50, py)
-progImpactMg <- minThresh("magnesium", "tha", 0.75, 148, 282228, 0.50, py)
+progImpactpH <- minThresh("ph", "tha", 0.75, 5.8, 282228, 0.52, py)
+progImpactN <- minThresh("x.total.nitrogen", "tha", 0.75, 0.1, 282228, 0.52, py)
+progImpactC <- minThresh("x.organic.carbon", "tha", 0.75, 2, 282228, 0.52, py)
+progImpactCa <- minThresh("calcium", "tha", 0.75, 1056, 282228, 0.52, py)
+progImpactMg <- minThresh("magnesium", "tha", 0.75, 148, 282228, 0.52, py)
 
 progObj <- ls()[grep("progImpact", ls())]
   
