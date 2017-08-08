@@ -1,0 +1,42 @@
+"district","cell","enumerator","sample_id","farmer_phone","variable","value"
+"nyamasheke","jarama","byiringiro  louis  jesus","826",".","soil_field.field_area_17b",32
+"nyamasheke","mubumbano","constance nyiranjamahoro","916",".","kg_compost_17b",800
+"nyamasheke","mubumbano","constance nyiranjamahoro","929","725619072","hh_n",11
+"mugonero","gisoke a","dusabimana pricille","1725","786233088","yield_crop2_17b",200
+"mugonero","nyagatare b","kwizera denyse","1925c",".","yield_crop2_17a",160
+"gatsibo_nlwh","butiruka","mukeshimana christine","2632c","782443072","kg_seed_crop1_17b",100
+"gatsibo_nlwh","butiruka","mukeshimana christine","2636",".","yield_crop1_17a",650
+"gatsibo_nlwh","nyabisindu a","mukeshimana christine","2718","781050880","hh_n",11
+"gatsibo_nlwh","nyabisindu a","mukeshimana christine","2719",".","kg_seed_crop2_17b",10
+"gatsibo_nlwh","nyabisindu a","mukeshimana christine","2719",".","yield_crop2_17b",150
+"gatsibo_lwh","busetsa","niyidufasha nathanael","2479c",".","kg_seed_crop2_17b",10
+"gatsibo_lwh","busetsa","niyidufasha nathanael","2489","788820096","kg_seed_crop1_17a",50
+"mugonero","butare","niyongabo faustin","1666","784386688","kg_seed_crop1_17a",100
+"mugonero","butare","niyongabo faustin","1666c",".","kg_compost_17b",10
+"mugonero","butare","niyongabo faustin","1679","785352512","kg_lime_17a",100
+"huye","kamwambi","niyonsenga joel","165c",".","kg_compost_17a",2000
+"gatsibo_nlwh","bukomane a","nshimiyerugira","2607",".","kg_compost_17a",3600
+"karongi","mucyimba","nshimiyimana clement","1485","723382976","yield_crop2_17b",150
+"huye","gahana","ntabirangira jean pierre","34","786248384","kg_seed_crop2_17a",10
+"huye","gahana","ntabirangira jean pierre","41",".","kg_seed_crop1_17a",30
+"huye","sazange a","ntabirangira jean pierre","234c",".","yield_crop2_17a",200
+"nyamasheke","kigarama a","ntamabyariri daniel","874","784500288","soil_field.field_area_17b",33.6
+"nyamasheke","kigarama a","ntamabyariro  daniel","871","786938176","kg_compost_17a",1600
+"nyamasheke","kigarama a","ntamabyariro  daniel","880","786260864","hh_n",11
+"nyamasheke","kigarama a","ntamabyariro  daniel","880","786260864","yield_crop1_17a",1500
+"nyamasheke","kigarama a","ntamabyariro  daniel","880","786260864","kg_compost_17b",1500
+"nyamasheke","kigarama a","ntamabyariro daniel","877c",".","yield_crop1_17b",800
+"nyamasheke","kigarama b","ntamabyariro daniel","892","731096192","yield_crop2_17a",300
+"nyamasheke","kigarama b","ntamabyariro daniel","892","731096192","yield_crop1_17b",1000
+"nyamasheke","kigarama b","ntamabyariro daniel","892","731096192","kg_compost_17b",1000
+"huye","gatobotobo b","nyirantabaruye adalie","66c",".","kg_compost_17a",15
+"huye","kimuna a","nyirantabaruye adalie","180c",".","kg_seed_crop2_17b",7.5
+"huye","shanga k","rurangirwa emmanuel","257","728125440","kg_compost_17b",15
+"huye","shanga m b","rurangirwa emmanuel","286",".","kg_compost_17b",800
+"huye","gatobotobo a","twagirayezu vital","51c","726504640","kg_compost_17a",10
+"mugonero","nyagatovu","uzamukunda jacqueline","1940","728574848","soil_field.field_area_17b",49.68
+"mugonero","nyagatovu","uzamukunda jacqueline","1949c",".","kg_compost_17a",15
+"gatsibo_nlwh","bukomane a",NA,"2596","785101952","soil_field.width_17b",104
+"gatsibo_nlwh","bukomane a",NA,"2596","785101952","soil_field.field_ares",35.36
+"gatsibo_nlwh","bukomane a",NA,"2596","785101952","soil_field.field_area_17b",3536
+"gatsibo_nlwh","bukomane b",NA,"2617c",".","kg_compost_17a",3200

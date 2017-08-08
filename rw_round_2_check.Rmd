@@ -62,7 +62,11 @@ Perform basic data checks on Rwanda round soil health study data to provide real
 
 # Key takeaways
 
-> See [follow up](#follow-up)
+> See [categorical graphs](#categorical-var-graphs)
+
+> See [numerical variable graphs](#numeric-var-graphs)
+
+> See [variables for follow up](#follow-up)
 
 # Data
 
