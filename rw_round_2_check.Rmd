@@ -45,7 +45,7 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 # robustbase is to run robust regressions to compensate for outliers
 # car is for performing logit transformations
 libs <- c("dplyr", "reshape2", "knitr", "ggplot2", "tibble", "readxl", 
-    "MASS", "gridExtra", "cowplot", "robustbase", "car", "knitr")
+    "MASS", "gridExtra", "cowplot", "robustbase", "car", "knitr", "DT")
 lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F)
 
 #### define helpful functions
@@ -356,7 +356,7 @@ printIQR <- modifyOutlierOutput(printIQR, "n_chickens", 2:7)
 ```
 
 ```{r}
-kable(printIQR, format="markdown")
+datatable(printIQR)
 ```
 
 ```{r}
