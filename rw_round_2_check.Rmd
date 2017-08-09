@@ -230,7 +230,7 @@ repGraphs <- function(dat, x){
   )
 }
 
-adminVars <- tolower(c(names(yt)[grep("meta", names(yt))],"enum_name", "text_final.photo",  "participation", "refusal", "phone",  "comment", "gps", "sample_id", "sampling.barcode", "id", "domain", "date_header", "form.case..case_id", "site", "district1", "site1", "plot.location", "New_soil_sample_id", "#form/Sampling2017_Complete", "appformid",names(yt)[grep("soil_id", names(yt))], "nameOne", "tel", "tel_respondent", "neighbor_tel", "finish_time", "other_comments", "Description", "neighor_or_voisin_phone", "name", "cell_field_17b", "name_respondent","respondent_in_16b","gps_hidden", "farmer_phone", "respondent_phone", "village", "cell", names(yt)[grep("enumerator", names(yt))], "start_time", "village_17b", "cell_input_17b"))
+adminVars <- tolower(c(names(yt)[grep("meta", names(yt))],"enum_name", "text_final.photo",  "participation", "refusal", "phone",  "comment", "gps", "sample_id", "sampling.barcode", "id", "domain", "date_header", "form.case..case_id", "site", "district1", "site1", "plot.location", "New_soil_sample_id", "#form/Sampling2017_Complete", "appformid",names(yt)[grep("soil_id", names(yt))], "nameOne", "tel", "tel_respondent", "neighbor_tel", "finish_time", "other_comments", "Description", "neighbor_or_voisin_phone", "name", "cell_field_17b", "name_respondent","respondent_in_16b","gps_hidden", "farmer_phone", "respondent_phone", "village", "cell", names(yt)[grep("enumerator", names(yt))], "start_time", "village_17b", "cell_input_17b", "not_find_why_other", "compost_other_17a"))
 nonAdminVars <- catVars[!catVars %in% adminVars]
 
 for(i in 1:length(nonAdminVars)){
@@ -340,6 +340,7 @@ The initial output might still be showing values that the M&E team feels are rea
 I've included a couple examples of how we can filter the data through the code to arrive at a well documented list of values to investigate.
 
 * `compost_17a` many farmers list 0. It's plausible but perhaps worth a general follow up?
+* `kg_seed_crop2_17a` appears so often because I think most farmers said 0 because they have only one crop. If the values are sensible then we can let it go. With a bit more work I could look at only non-zero values.
 
 ```{r}
 modifyOutlierOutput <- function(dat, varname, vals){
@@ -354,6 +355,8 @@ printIQR <- modifyOutlierOutput(printIQR, "n_chickens", 2:7)
 
 
 ```
+
+**Read the values in this table with the above histograms and density plots in mind. Not all the values listed in the table will be impossible values but they were flagged for being far from the central mass of values we have on that data point**
 
 ```{r}
 datatable(printIQR)
