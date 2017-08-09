@@ -363,5 +363,15 @@ datatable(printIQR)
 ```
 
 ```{r}
-write.csv(printIQR, file=paste0("output/", "rw_shs_r2 vars to check update.csv"), row.names = F)
+write.csv(printIQR, file=paste0("output/", "rw_shs_r2 vars to check update",format(Sys.time(), '%B %d %Y'),  ".csv"), row.names = F)
+
+for(i in 1:length(unique(printIQR$enumerator))){
+  outSheet <- printIQR[printIQR$enumerator==unique(printIQR$enumerator)[i], ]
+  write.csv(outSheet, file=paste("output",
+          paste("rw_shs_r2 vars to check ", unique(printIQR$enumerator)[i], ".csv", sep = ""), sep = "/"))
+  
+}
+
+
+
 ```
