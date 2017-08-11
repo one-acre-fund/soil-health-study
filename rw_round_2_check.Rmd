@@ -14,7 +14,7 @@ output:
     toc_float: yes
 subtitle: "On-going data check"
 ---
-```{r echo=F}
+```{r echo=F, message=FALSE}
 #### set up
 ## clear environment and console
 rm(list = ls())
@@ -66,7 +66,7 @@ Perform basic data checks on Rwanda round soil health study data to provide real
 
 > See [numerical variable graphs](#numeric-var-graphs)
 
-> See [variables for follow up](#follow-up)
+> See [variables for follow up](#specific-points)
 
 # Data
 
@@ -138,9 +138,9 @@ r1Complete <- fieldDat %>%
 compR1 <- round(prop.table(table(r1Complete$sample_id %in% yt$sample_id)),2)
 ```
 
-> Through 8/4 we've found `r compB[[2]]*100`% of baseline farmers. We have `r nrow(baseComplete)-table(baseComplete$sample_id %in% yt$sample_id)[[2]]` to go.
+> Through `r format(Sys.time(), '%B %d, %Y')` we've found `r compB[[2]]*100`% of baseline farmers. We have `r nrow(baseComplete)-table(baseComplete$sample_id %in% yt$sample_id)[[2]]` to go.
 
-> Through 8/4 we've found `r compR1[[2]]*100`% of round 1 farmers. We have `r nrow(r1Complete)-table(r1Complete$sample_id %in% yt$sample_id)[[2]]` to go.
+> Through `r format(Sys.time(), '%B %d, %Y')` we've found `r compR1[[2]]*100`% of round 1 farmers. We have `r nrow(r1Complete)-table(r1Complete$sample_id %in% yt$sample_id)[[2]]` to go.
 
 As we get closer to the end of enumeration I will produce a report of sample_ids that have not yet been surveyed so we can understand precisely why some farmers were not found again.
 
@@ -247,7 +247,7 @@ numVars <- names(yt)[sapply(yt, function(x){
 
 Basic cleaning of known issues like enumerator codes for DK, NWR, etc.
 ```{r}
-enumVals <- c(-88,-85, -99)
+enumVals <- c(-88,-85, -99, -9)
 
 yt[,numVars] <- sapply(numVars, function(y){
   yt[,y] <- enumClean(yt,y, enumVals)
@@ -335,12 +335,18 @@ printIQR <- do.call(rbind, lapply(numVars, function(y){
 printIQR <- printIQR[order(printIQR$enumerator,printIQR$cell, printIQR$sample_id),]
 ```
 
+## Specific points
+
 The initial output might still be showing values that the M&E team feels are reasonable values in reality despite being flagged as statistical outliers. 
 
 I've included a couple examples of how we can filter the data through the code to arrive at a well documented list of values to investigate.
 
 * `compost_17a` many farmers list 0. It's plausible but perhaps worth a general follow up?
+Although the key here should be if farmers are not applying, it should be NA. If they are applying, are they really only applying small quantities? Look into this.
 * `kg_seed_crop2_17a` appears so often because I think most farmers said 0 because they have only one crop. If the values are sensible then we can let it go. With a bit more work I could look at only non-zero values.
+* `field_area_17b` has some large values. I think these were misentered. Clarify with the enumerator and we can just fix them here.
+* Large kg_seed values? These are probably better reality checked as kg/are. I can convert to field sizes
+* 22 goats?
 
 ```{r}
 modifyOutlierOutput <- function(dat, varname, vals){
