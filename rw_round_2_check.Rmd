@@ -219,6 +219,8 @@ kable(responseTable, format="markdown")
 
 ### Categorical var graphs
 
+* district_17b names are spelled wrong. How is that possible? Do we care?
+
 ```{r}
 repGraphs <- function(dat, x){
   tab = as.data.frame(table(dat[,x], useNA = 'ifany'))
@@ -347,6 +349,7 @@ Although the key here should be if farmers are not applying, it should be NA. If
 * `field_area_17b` has some large values. I think these were misentered. Clarify with the enumerator and we can just fix them here.
 * Large kg_seed values? These are probably better reality checked as kg/are. I can convert to field sizes
 * 22 goats?
+* yield variable seems quite high as well. What constraints are currently in place? Do we have enumerators falling outside them? Can we tighten them down?
 
 ```{r}
 modifyOutlierOutput <- function(dat, varname, vals){
