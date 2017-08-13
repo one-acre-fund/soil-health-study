@@ -84,7 +84,7 @@ source("../oaflib/commcareExport.R")
 source("../oaflib/misc.R")
 #source("../oaflib/ccSluthing.R")
 
-ytwo <- getFormData("oafrwanda", "M&E", "17B Ubutaka (Soil)", forceUpdate=F)
+ytwo <- getFormData("oafrwanda", "M&E", "17B Ubutaka (Soil)", forceUpdate=T)
 
 names(ytwo) <- tolower(make.names(names(ytwo)))
 
@@ -117,7 +117,7 @@ Some observations have `r as.character(naRow$Var1[nrow(naRow)])` of observations
 #table(yt$sample_id %in% unique(fieldDat$sample_id))
 ```
 
-> Through 8/4 we have one soil sample id in round 2 that doesn't exist in previous rounds. It is sample_id `r yt$sample_id[!yt$sample_id %in% unique(fieldDat$sample_id)]`.
+> Through `r format(Sys.time(), '%B %d, %Y')` we have one soil sample id in round 2 that doesn't exist in previous rounds. It is sample_id `r yt$sample_id[!yt$sample_id %in% unique(fieldDat$sample_id)]`.
 
 What is up with that observation?
 
@@ -377,7 +377,4 @@ for(i in 1:length(unique(printIQR$enumerator))){
           paste("rw_shs_r2 vars to check ", unique(printIQR$enumerator)[i], ".csv", sep = ""), sep = "/"))
   
 }
-
-
-
 ```
