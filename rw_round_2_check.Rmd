@@ -84,7 +84,7 @@ source("../oaflib/commcareExport.R")
 source("../oaflib/misc.R")
 #source("../oaflib/ccSluthing.R")
 
-ytwo <- getFormData("oafrwanda", "M&E", "17B Ubutaka (Soil)", forceUpdate=T)
+ytwo <- getFormData("oafrwanda", "M&E", "17B Ubutaka (Soil)", forceUpdate=F)
 
 names(ytwo) <- tolower(make.names(names(ytwo)))
 
@@ -143,6 +143,49 @@ compR1 <- round(prop.table(table(r1Complete$sample_id %in% yt$sample_id)),2)
 > Through `r format(Sys.time(), '%B %d, %Y')` we've found `r compR1[[2]]*100`% of round 1 farmers. We have `r nrow(r1Complete)-table(r1Complete$sample_id %in% yt$sample_id)[[2]]` to go.
 
 As we get closer to the end of enumeration I will produce a report of sample_ids that have not yet been surveyed so we can understand precisely why some farmers were not found again.
+
+## Attrition summary
+
+```{r}
+# code to check merge match before match is performed
+# the code should show you how many overlaps you have in your merge variable
+# and a summary of the values that don't match
+
+# tested using ke_round_1_py
+
+vecFiller <- function(vec){
+  vec[2] = ifelse(is.na(vec[2]), 0, vec[2])
+  return(vec)
+}
+
+
+mergeReport <- function(master, using){
+  
+  # dat1 into dat2
+  
+  c1 <- vecFiller(table(master %in% using))
+  c2 <- vecFiller(table(using %in% master))
+  
+  notMatch1 <- master[!master %in% using]
+  notMatch2 <- using[!using %in% master]
+  
+  tab <- data.frame(rbind(c1, c2))
+  rownames(tab) <- c("Master in using", "Using in Master")
+  
+  outList <- list(tab, notMatch1, notMatch2)
+  names(outList) <- c("matching.table", "missing.from.using", "missing.from.master")
+  
+  return(
+    outList
+  )
+  
+  
+}
+
+attReport <- mergeReport(baseComplete$sample_id, yt$sample_id)
+```
+
+We currently have `r length(attReport$missing.from.using)` more surveys to complete. The complete list of missing farmer ids will be shared once we're down to a more reasonable number.
 
 
 # Data reality check
