@@ -84,7 +84,7 @@ source("../oaflib/commcareExport.R")
 source("../oaflib/misc.R")
 #source("../oaflib/ccSluthing.R")
 
-ytwo <- getFormData("oafrwanda", "M&E", "17B Ubutaka (Soil)", forceUpdate=F)
+ytwo <- getFormData("oafrwanda", "M&E", "17B Ubutaka (Soil)", forceUpdate=T)
 
 names(ytwo) <- tolower(make.names(names(ytwo)))
 
