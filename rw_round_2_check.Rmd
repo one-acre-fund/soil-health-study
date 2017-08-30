@@ -84,7 +84,7 @@ source("../oaflib/commcareExport.R")
 source("../oaflib/misc.R")
 #source("../oaflib/ccSluthing.R")
 
-ytwo <- getFormData("oafrwanda", "M&E", "17B Ubutaka (Soil)", forceUpdate=T)
+ytwo <- getFormData("oafrwanda", "M&E", "17B Ubutaka (Soil)", forceUpdate=F)
 
 names(ytwo) <- tolower(make.names(names(ytwo)))
 
@@ -107,6 +107,14 @@ naRow <- data.frame(table(round(blankRow/dim(yt)[2],2)*100)) %>%
   filter(Var1>=25) %>%
   mutate(Var1 = paste0(Var1, "%"))
 kable(naRow, col.names = c("% of columns missing values", "Freq"),format="markdown")
+
+# identify which rows have the most missing values
+mostMissing <- ifelse(blankRow > 80, TRUE, FALSE)
+
+missingTab <- yt %>%
+  filter(mostMissing==T) %>%
+  dplyr::select(district, enumerator_in_16b, village, sample_id, name)
+kable(missingTab, format='markdown', caption="Obs with over 80 missing values")
 ```
 
 Some observations have `r as.character(naRow$Var1[nrow(naRow)])` of observations missing. What's going on with these? I'm only showing rows with greater than 25% missing. It's somewhat arbitrary but to not have data for a fourth of the survey seems odd.
@@ -382,17 +390,12 @@ printIQR <- printIQR[order(printIQR$enumerator,printIQR$cell, printIQR$sample_id
 
 ## Specific points
 
-The initial output might still be showing values that the M&E team feels are reasonable values in reality despite being flagged as statistical outliers. 
+Compost application and quantity
 
-I've included a couple examples of how we can filter the data through the code to arrive at a well documented list of values to investigate.
-
-* `compost_17a` many farmers list 0. It's plausible but perhaps worth a general follow up?
-Although the key here should be if farmers are not applying, it should be NA. If they are applying, are they really only applying small quantities? Look into this.
-* `kg_seed_crop2_17a` appears so often because I think most farmers said 0 because they have only one crop. If the values are sensible then we can let it go. With a bit more work I could look at only non-zero values.
-* `field_area_17b` has some large values. I think these were misentered. Clarify with the enumerator and we can just fix them here.
-* Large kg_seed values? These are probably better reality checked as kg/are. I can convert to field sizes
-* 22 goats?
-* yield variable seems quite high as well. What constraints are currently in place? Do we have enumerators falling outside them? Can we tighten them down?
+This appears to be odded coded. Some "I didn't use compost" are 0s while others are NA. 
+```{r}
+table(yt$kg_compost_17a, yt$compost_17a, useNA = 'ifany')[c(1:10),]
+```
 
 ```{r}
 modifyOutlierOutput <- function(dat, varname, vals){
