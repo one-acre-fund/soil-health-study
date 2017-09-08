@@ -46,7 +46,7 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 # car is for performing logit transformations
 libs <- c("dplyr", "reshape2", "knitr", "ggplot2", "tibble", "readxl", 
     "MASS", "gridExtra", "cowplot", "robustbase", "car", "knitr", "DT")
-lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F)
+invisible(lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F))
 
 #### define helpful functions
 # define function to adjust table widths
@@ -61,6 +61,8 @@ html_table_width <- function(kable_output, width) {
 Perform basic data checks on Rwanda round soil health study data to provide real time feedback to Nathaniel and enumeration teams to maximize the value of the teams in the field.
 
 # Key takeaways
+
+> See [farmers remaining to be surveyed](#attrition-farmer-list)
 
 > See [categorical graphs](#categorical-var-graphs)
 
@@ -178,7 +180,7 @@ mergeReport <- function(master, using){
   notMatch2 <- using[!using %in% master]
   
   tab <- data.frame(rbind(c1, c2))
-  rownames(tab) <- c("Master in using", "Using in Master")
+  rownames(tab) <- c("Master in Using", "Using in Master")
   
   outList <- list(tab, notMatch1, notMatch2)
   names(outList) <- c("matching.table", "missing.from.using", "missing.from.master")
@@ -193,7 +195,29 @@ mergeReport <- function(master, using){
 attReport <- mergeReport(baseComplete$sample_id, yt$sample_id)
 ```
 
-We currently have `r length(attReport$missing.from.using)` more surveys to complete. The complete list of missing farmer ids will be shared once we're down to a more reasonable number.
+We currently have `r length(attReport$missing.from.using)` more surveys to complete *from the baseline*. The complete list of missing farmer ids will be shared once we're down to a more reasonable number.
+
+### Attrition farmer list
+```{r}
+attOut <- fieldDat %>%
+  filter(season =="15b") %>%
+  filter(sample_id %in% attReport$missing.from.using) %>%
+  dplyr::select(sample_id, district, village)
+
+
+#load the baseline data
+load("../rw_round_1/rawBaselineWithIdentifers.Rdata")
+attritionTab <- d %>% 
+  dplyr::select(district, selected_cell, umudugudu,  sample_id, farmer_name) %>%
+  mutate(sample_id = tolower(sample_id)) %>%
+  filter(sample_id %in% attOut$sample_id)
+
+attritionTab <- attritionTab[,c(4,1,2,3,5)]
+# find the farmer name in the original baseline data?
+
+datatable(attritionTab)
+```
+
 
 
 # Data reality check
