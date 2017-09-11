@@ -45,7 +45,7 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 # robustbase is to run robust regressions to compensate for outliers
 # car is for performing logit transformations
 libs <- c("dplyr", "reshape2", "knitr", "ggplot2", "tibble", "readxl", 
-    "MASS", "gridExtra", "cowplot", "robustbase", "car", "knitr", "DT")
+    "MASS", "gridExtra", "cowplot", "robustbase", "car", "knitr", "DT", "readr")
 invisible(lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F))
 
 #### define helpful functions
@@ -213,6 +213,25 @@ attritionTab <- d %>%
   filter(sample_id %in% attOut$sample_id)
 
 attritionTab <- attritionTab[,c(4,1,2,3,5)]
+
+write.csv(attritionTab, file=paste0("attritionTabs/attrition table", format(Sys.time(), '%Y %m %d')))
+
+# bring in info from M&E team, merge reasons with current table and only show the farmers for which we are still missing an explanation
+
+test <- read_xlsx("Farmer not find for SHS survey 7.9.2017.xlsx", sheet=2) %>%
+  rename(sample_id = `Soil ID`) %>%
+  mutate(sample_id = tolower(sample_id))
+
+table(test$sample_id %in% attritionTab$sample_id) # do they appear among the missing?
+table(test$sample_id %in% subset(fieldDat, fieldDat$season=="15b")$sample_id) # they are farmers but I've found them
+
+  # dplyr::select(`Reason not found`, `Reason not found other`, District, Cell, Village, `Cell field`, `Respondent name`, `Farmer tel`, `Respondent tel`, `Neighbor tel`, sample_id) %>%
+  # left_join(., attritionTab, by="sample_id") %>%
+  # as.data.frame()
+
+
+
+
 # find the farmer name in the original baseline data?
 
 datatable(attritionTab)
