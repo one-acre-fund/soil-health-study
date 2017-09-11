@@ -209,12 +209,58 @@ attOut <- fieldDat %>%
 load("../rw_round_1/rawBaselineWithIdentifers.Rdata")
 attritionTab <- d %>% 
   dplyr::select(district, selected_cell, umudugudu,  sample_id, farmer_name) %>%
-  mutate(sample_id = tolower(sample_id)) %>%
-  filter(sample_id %in% attOut$sample_id)
+  mutate(sample_id = tolower(sample_id),
+         found = ifelse(sample_id %in% attOut$sample_id, FALSE, TRUE)) # because we're makring those not found
 
-attritionTab <- attritionTab[,c(4,1,2,3,5)]
+attritionTab <- attritionTab[,c(4,1,2,3,5,6)]
+#length(attritionTab$sample_id)==length(unique(attritionTab$sample_id))
 
-write.csv(attritionTab, file=paste0("attritionTabs/attrition table", format(Sys.time(), '%Y %m %d')))
+
+# load data from Eric J on 9/11 - combine my missingn with those without a sample and update the googlesheet
+ejDat1 <- read_xlsx("attrition table2017 09 11_EJ.xlsx", sheet=1) %>% 
+  dplyr::select(sample_id, `sample collected (from tracker)?`, `reason (from tracker)`) %>%
+  rename(sample_collected = `sample collected (from tracker)?`,
+         reason = `reason (from tracker)`)
+
+ejDat2 <- read_xlsx("attrition table2017 09 11_EJ.xlsx", sheet=2) %>% 
+  dplyr::select(sample_id, `sample collected?`, reason) %>%
+  rename(sample_collected = `sample collected?`) %>%
+  rbind(., ejDat1)
+
+#length(ejDat2$sample_id)==length(unique(ejDat$sample_id)) # duplicates in the missing data
+
+# report missing values in the duplicates
+dups <- ejDat2[duplicated(ejDat2$sample_id), "sample_id"] %>% 
+  filter(!is.na(sample_id))
+
+# show all the farmers for which we have multiple reasons listed:
+ejDat2 %>%
+  filter(ejDat2$sample_id %in% dups$sample_id) %>%
+  arrange(sample_id) %>%
+  kable(., format='markdown')
+```
+
+**Eric**, there isn't clarity in Jeannette's form about what has and has not been collected. Can she make a master database instead of two separate ones? Add a second column if you want to indicate the issue. For the time being I'm not going to add this into the `rwR2Attrition` google sheet until we have a definitive answer on what the status is.
+
+```{r}
+# now put this information with the attrition Tab
+attritionTab <- left_join(attritionTab, ejDat2, by="sample_id")
+  
+
+write.csv(attritionTab, file=paste0("attritionTabs/attrition table", format(Sys.time(), '%Y %m %d'), ".csv"), row.names=F)
+
+
+
+# also update a googlesheet to make collaborating on this possible:
+library(googlesheets)
+
+# first uploading of the data
+# test <- gs_upload(file=paste0("attritionTabs/attrition table", format(Sys.time(), '%Y %m %d'), ".csv"), "rwR2Attrition", overwrite=T)
+
+# now I want to only edit certain rows:
+test <- test %>% 
+  gs_edit_cells(input = attritionTab$found,
+                anchor = "F2", byrow=FALSE)
 
 # bring in info from M&E team, merge reasons with current table and only show the farmers for which we are still missing an explanation
 
@@ -236,8 +282,6 @@ table(test$sample_id %in% subset(fieldDat, fieldDat$season=="15b")$sample_id) # 
 
 datatable(attritionTab)
 ```
-
-
 
 # Data reality check
 
