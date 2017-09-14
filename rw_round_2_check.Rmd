@@ -86,7 +86,7 @@ source("../oaflib/commcareExport.R")
 source("../oaflib/misc.R")
 #source("../oaflib/ccSluthing.R")
 
-ytwo <- getFormData("oafrwanda", "M&E", "17B Ubutaka (Soil)", forceUpdate=F)
+ytwo <- getFormData("oafrwanda", "M&E", "17B Ubutaka (Soil)", forceUpdate=T)
 
 names(ytwo) <- tolower(make.names(names(ytwo)))
 
@@ -198,6 +198,8 @@ attReport <- mergeReport(baseComplete$sample_id, yt$sample_id)
 We currently have `r length(attReport$missing.from.using)` more surveys to complete *from the baseline*. The complete list of missing farmer ids will be shared once we're down to a more reasonable number.
 
 ### Attrition farmer list
+`attOut` is the list of baseline farmers not found during the second survey round. `attReport` are those farmers that are missing
+
 ```{r}
 attOut <- fieldDat %>%
   filter(season =="15b") %>%
@@ -209,10 +211,13 @@ attOut <- fieldDat %>%
 load("../rw_round_1/rawBaselineWithIdentifers.Rdata")
 attritionTab <- d %>% 
   dplyr::select(district, selected_cell, umudugudu,  sample_id, farmer_name) %>%
-  mutate(sample_id = tolower(sample_id),
-         found = ifelse(sample_id %in% attOut$sample_id, FALSE, TRUE)) # because we're makring those not found
+  mutate(sample_id = tolower(sample_id), # because we're makring those not found
+         found = ifelse(sample_id %in% attOut$sample_id, FALSE, TRUE)) %>%
+  left_join(., ytwo[, c("x18a.farmer.name", "x18b.name.of.the.respondent", "x19a.farmer.phone.number", "x.form.sample_id",
+                        "x20.in.case.we.can.not.reach.the.client.directly..please.provide.a.neighbor.s.phone.number",
+                        "x14a.were..you.a.tubura.client.17a.", "x14b.are.you.a.tubura.client.17b.","x14c.are.you.a.tubura.client.in.18a.")], by=c("sample_id"= "x.form.sample_id"))
 
-attritionTab <- attritionTab[,c(4,1,2,3,5,6)]
+attritionTab <- attritionTab[,c(4,1,2,3,5,6, 7:13)]
 #length(attritionTab$sample_id)==length(unique(attritionTab$sample_id))
 
 
@@ -234,17 +239,17 @@ dups <- ejDat2[duplicated(ejDat2$sample_id), "sample_id"] %>%
   filter(!is.na(sample_id))
 
 # show all the farmers for which we have multiple reasons listed:
-ejDat2 %>%
-  filter(ejDat2$sample_id %in% dups$sample_id) %>%
-  arrange(sample_id) %>%
-  kable(., format='markdown')
+# ejDat2 %>%
+#   filter(ejDat2$sample_id %in% dups$sample_id) %>%
+#   arrange(sample_id) %>%
+#   kable(., format='markdown')
 ```
 
 **Eric**, there isn't clarity in Jeannette's form about what has and has not been collected. Can she make a master database instead of two separate ones? Add a second column if you want to indicate the issue. For the time being I'm not going to add this into the `rwR2Attrition` google sheet until we have a definitive answer on what the status is.
 
 ```{r}
 # now put this information with the attrition Tab
-attritionTab <- left_join(attritionTab, ejDat2, by="sample_id")
+#attritionTab <- left_join(attritionTab, ejDat2, by="sample_id")
   
 
 write.csv(attritionTab, file=paste0("attritionTabs/attrition table", format(Sys.time(), '%Y %m %d'), ".csv"), row.names=F)
@@ -258,18 +263,18 @@ library(googlesheets)
 # test <- gs_upload(file=paste0("attritionTabs/attrition table", format(Sys.time(), '%Y %m %d'), ".csv"), "rwR2Attrition", overwrite=T)
 
 # now I want to only edit certain rows:
-test <- test %>% 
-  gs_edit_cells(input = attritionTab$found,
-                anchor = "F2", byrow=FALSE)
+# test <- test %>% 
+#   gs_edit_cells(input = attritionTab$found,
+#                 anchor = "F2", byrow=FALSE)
+# 
+# # bring in info from M&E team, merge reasons with current table and only show the farmers for which we are still missing an explanation
+# 
+# test <- read_xlsx("Farmer not find for SHS survey 7.9.2017.xlsx", sheet=2) %>%
+#   rename(sample_id = `Soil ID`) %>%
+#   mutate(sample_id = tolower(sample_id))
 
-# bring in info from M&E team, merge reasons with current table and only show the farmers for which we are still missing an explanation
-
-test <- read_xlsx("Farmer not find for SHS survey 7.9.2017.xlsx", sheet=2) %>%
-  rename(sample_id = `Soil ID`) %>%
-  mutate(sample_id = tolower(sample_id))
-
-table(test$sample_id %in% attritionTab$sample_id) # do they appear among the missing?
-table(test$sample_id %in% subset(fieldDat, fieldDat$season=="15b")$sample_id) # they are farmers but I've found them
+# table(test$sample_id %in% attritionTab$sample_id) # do they appear among the missing?
+# table(test$sample_id %in% subset(fieldDat, fieldDat$season=="15b")$sample_id) # they are farmers but I've found them
 
   # dplyr::select(`Reason not found`, `Reason not found other`, District, Cell, Village, `Cell field`, `Respondent name`, `Farmer tel`, `Respondent tel`, `Neighbor tel`, sample_id) %>%
   # left_join(., attritionTab, by="sample_id") %>%
