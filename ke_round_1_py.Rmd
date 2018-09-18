@@ -1,0 +1,579 @@
+---
+title: "Kenya Soil Health Study"
+author: '[Matt Lowes](mailto:matt.lowes@oneacrefund.org)'
+date: '`r format(Sys.time(), "%B %d, %Y")`'
+output:
+  html_notebook:
+    number_sections: yes
+    code_folding: show
+    theme: flatly
+    toc: yes
+    toc_depth: 6
+    toc_float: yes
+subtitle: "Yield Paired Round 1"
+---
+
+```{r setup, include=FALSE}
+#### set up
+## clear environment and console
+rm(list = ls())
+cat("\014")
+
+## set up some global options
+# always set stringsAsFactors = F when loading data
+options(stringsAsFactors=FALSE)
+
+# show the code
+knitr::opts_chunk$set(echo = TRUE)
+
+# define all knitr tables to be html format
+options(knitr.table.format = 'html')
+
+# change code chunk default to not show warnings or messages
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+libs <- c("dplyr", "reshape2", "knitr", "ggplot2", "tibble", "readxl", 
+    "MASS", "gridExtra", "cowplot", "robustbase", "car", "RStata", "foreign",
+    "tidyr", "readxl", "readxl")
+lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F)
+
+#### define helpful functions
+# define function to adjust table widths
+html_table_width <- function(kable_output, width) {
+  width_html <- paste0(paste0('<col width="', width, '">'), collapse = "\n")
+  sub("<table>", paste0("<table>\n", width_html), kable_output)
+}
+
+options("RStata.StataVersion" = 12)
+options("RStata.StataPath" = "/Applications/Stata/StataSE.app/Contents/MacOS/stata-se")
+```
+
+# Objectives
+
+The objectives of this notebook are to analyze the results from the first follow up round of the Rwanda long term soil health study.
+
+# Key Takeaways
+
+> None for the time being
+
+TODO - check projection from baseline maps, are they shifted over?
+TODO - how to connect photos to farmers for enumerators
+
+# Data Prep
+
+```{r}
+dataDir <- normalizePath(file.path("..", "..", "data"))
+soilDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "ke_shs_maize_paired"))
+
+
+forceUpdateAll <- FALSE
+
+source("../oaflib/commcareExport.R")
+```
+
+How do soil attributes predict yields (climbing beans) >> can we understand yield as functions of carbon, pH, etc. Are the curves as we might expect?
+
+## Load soil sampling data
+
+`py` is the associated survey data with the soil data. We'll use it to help merge the soil data with the yield data
+
+```{r}
+py <- getFormData("harvest", "Harvest Soil Sampling 2016", "Soil Sampling 2016", forceUpdate = forceUpdateAll)
+#write.csv(py, file="rawCcYpData.csv", row.names=F)
+```
+
+## Load soil
+
+It's probably safe to assume that if there isn't a soil code the data can be dropped. It's not clear how to match the yield data to the soil data. There might be a way to use the client id from the SHS data but I also don't know if that maps to the M&E data. I could try it if Nathaniel doesn't have a suggestion.
+
+```{r}
+#names(bean)[grep("soil",names(bean))]
+#names(bean)[grep("id",names(bean))]
+#table(bean$soil_code, useNA = 'ifany')
+pairedSoilDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "ke_shs_maize_paired", "4_predicted", "other_summaries"))
+pairedSoil <- read.csv(file=paste(pairedSoilDir, "combined-predictions-including-bad-ones.csv", sep = "/"))
+
+pSoilIdDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "ke_shs_maize_paired", "5_merged"))
+pSoilIds <- read_excel(paste(pSoilIdDir, "database.xlsx", sep = "/"))
+```
+
+## Load yield data
+
+```{r}
+yd <- getFormData("harvest", "Harvest Survey 2016", "Maize Dry Weight", forceUpdate = forceUpdateAll)
+
+dat <- yd %>%
+  setNames(tolower(names(.))) %>%
+  dplyr::select(contains("bag"), contains("cmid"), contains("oafid")) %>%
+  rename(
+    separate = `did the farmer keep maize separate in bags ?`,
+    added = `was anything added or removed from the harvest bag?`,
+    bagA.oaf = `oaf farmer, oaf plot dry weight bag a`,
+    bagB.oaf = `oaf farmer, oaf plot dry weight bag b`,
+    bagA.nonoaf = `oaf farmer, non oaf plot dry weight bag a`,
+    bagB.nonoaf = `oaf farmer, non oaf plot dry weight bag b`,
+    bagA.control = `non oaf farmer dry weight bag a`,
+    bagB.control = `non oaf farmer dry weight bag b`,
+    cmid = `#form/identifier/cmid`,
+    oafid = `#form/identifier/oafid`
+  ) %>% 
+  gather(key, value, -c(cmid, oafid, separate, added)) %>%
+  separate(key, c("var", "type"), sep="\\.") %>%
+  filter(!is.na(value)) %>%
+  mutate(value = ifelse(value<0, NA, value)) %>%
+  group_by(cmid, type) %>%
+  summarize(bagYield = sum(value, na.r=T)) %>%
+  arrange(cmid)
+
+harvestBox <- getFormData("harvest", "Harvest Survey 2016", "Maize Harvest Box", forceUpdate = forceUpdateAll)
+
+hb <- harvestBox %>%
+  setNames(tolower(names(.))) %>%
+  dplyr::select(contains("box A"), contains("box B"), contains("cmid"), contains("identifier/oaf")) %>%
+  rename(
+    width.BoxA.oaf = `width of oaf farmer, oaf plot box a`,
+    length.BoxA.oaf = `length of oaf farmer, oaf plot box a`,
+    width.BoxA.nonoaf = `width of oaf farmer, non oaf plot box a`,
+    length.BoxA.nonoaf = `length of oaf farmer, non oaf plot box a`,
+    width.BoxA.control = `width of non oaf farmer plot box a`,
+    length.BoxA.control = `length of non oaf farmer plot box a`,
+    width.BoxB.oaf = `width of oaf farmer, oaf plot box b`,
+    length.BoxB.oaf = `length of oaf farmer, oaf plot box b`,
+    width.BoxB.nonoaf = `width of oaf farmer, non oaf plot box b`,
+    length.BoxB.nonoaf = `length of oaf farmer, non oaf plot box b`,
+    width.BoxB.control = `width of non oaf farmer plot box b`,
+    length.BoxB.control = `length of non oaf farmer plot box b`,
+    cmid = `#form/identifier/cmid`,
+    type = `#form/identifier/oaf`,
+    oafid = `#form/identifier/oafid`
+  ) %>%
+  dplyr::select(-contains("group")) %>%
+  gather(key, value, -c(cmid, oafid, type)) %>%
+  filter(!is.na(value) & !is.na(cmid)) %>%
+  separate(key, c("measure", "box", "type2"), sep="\\.") %>%
+  group_by(cmid, box, type2) %>%
+  summarize(area = prod(value, na.rm=T)) %>%
+  group_by(cmid, type2) %>%
+  summarise(area = sum(area, na.rm=T)) %>%
+  rename(type = type2) %>%
+  mutate(area = ifelse(area>80, 80, area))
+
+#combine dat and hb to have yield and harvest box size
+dat <- left_join(dat, hb, by=c("cmid", "type"))
+
+```
+
+Soil samples were only taken from OAF plots anyway so the nonoaf and control yields are sort of irrelevant.
+
+### Clean soil ids
+
+Helpful links: [mutate_each](https://stackoverflow.com/questions/27027347/mutate-each-summarise-each-in-dplyr-how-do-i-select-certain-columns-and-give) and [var names to lower](https://stackoverflow.com/questions/29264028/dplyr-or-magrittr-tolower)
+
+```{r}
+psi <- pSoilIds %>% 
+  setNames(tolower(names(.))) %>%
+  setNames(gsub("identifier.|info.", "i.", names(.))) %>%
+  mutate_each(funs(tolower), i.district, i.sublocation) %>%
+  rename(ssn = plot_i.mation.bar_code) %>% 
+  mutate(
+    ssn = gsub("_", "", ssn),
+    ssn = gsub(" ", "", ssn),
+    ssnDups = duplicated(ssn) | duplicated(.[nrow(.):1, "ssn"])[nrow(.):1]
+  ) %>% as.data.frame()
+
+table(psi$ssnDups)
+psi$ssn[psi$ssnDups==T]
+
+pairedSoil <- pairedSoil %>% 
+  setNames(tolower(names(.))) %>%
+  mutate(
+    ssn = gsub("_", "", ssn),
+    ssn = gsub("oafoaf", "oaf", ssn)
+  )
+  
+table(psi$ssn %in% pairedSoil$ssn) # FALSE  TRUE  41   703
+table(pairedSoil$ssn %in% psi$ssn) # FALSE  TRUE  27   703
+
+psi$ssn[!psi$ssn %in% pairedSoil$ssn]
+pairedSoil$ssn[!pairedSoil$ssn %in% psi$ssn]
+```
+
+There are some records that aren't matching. Keep all values for which we have survey data.
+TODO - come back and figure out why we aren't getting more matches.
+
+```{r}
+pairedSoil <- left_join(pairedSoil, psi, by="ssn") %>%
+  dplyr::select(-x) %>%
+  rename(oaf.indicator = oaf) %>%
+  setNames(gsub("i\\.", "", names(.)))
+```
+
+And now check how many soil ids are duplicated in the bean data. Is there any hope of untangling which ones are suppoed to be which based on the info provided in the soil data?
+
+```{r}
+py <- py %>% 
+  rename(
+    ssn = `Bar code scan`
+  ) %>%
+  setNames(tolower(names(.))) %>%
+  filter(!is.na(ssn)) %>%
+  mutate(ssn = gsub(" ", "", ssn),
+         ssn = gsub("_", "", ssn)) %>%
+  mutate(idDups = duplicated(ssn) | duplicated(.[nrow(.):1, "ssn"])[nrow(.):1])
+
+pyCheck <- py %>% 
+  filter(idDups==TRUE) %>%
+  arrange(ssn) %>%
+  dplyr::select(district, sublocation, ssn)
+
+pyCheck
+```
+
+And let's compare this to the ids in the soil data to see if we can find matches. If I can, I'll need to make a new unique id to match them.
+
+```{r}
+#vector of duplicated ids in the bean data
+idComps <- unique(pyCheck$ssn[pyCheck$idDups==TRUE])
+
+pairedSoil %>% 
+  filter(ssn %in% idComps) %>%
+  arrange(ssn) %>%
+  dplyr::select(district, sublocation, ssn)
+```
+
+There doesn't seem to be a match in the `pairedSoil` data for the duplicated id. I'm just going to drop those values for now.
+Fix the one duplicate we can, drop the others and merge the yield data with the soil data. 
+
+TODO - follow up with Charles about the soil ids not matching.
+
+```{r}
+py <- py %>% 
+  filter(idDups==FALSE)
+```
+
+Now combine `py` and `pairedSoil` and then combine that with `dat`, the yield data
+
+```{r}
+py <- py %>%
+  inner_join(., pairedSoil, by="ssn") %>%
+  #rename(cmid = `#form/identifier/cmid`) %>%
+  as.data.frame()
+
+table(py$cmid %in% dat$cmid)
+sample(py$cmid[!py$cmid %in% dat$cmid],10)
+
+table(dat$cmid %in% py$cmid)
+dat <- as.data.frame(dat)
+
+py <- merge(py, dat, by="cmid")
+```
+
+## Clean and construct vars
+
+We don't need to deal with the harvest box size and will assume that the harvest boxes were roughly the same.
+
+```{r}
+#yr <- py[,names(py) %in% respVar]
+py$tha <- (py$bagYield/py$area) * 10
+
+soilVars <- names(py)[which(names(py)=="potassium"):which(names(py)=="x.total.nitrogen")]
+keySoilVars <- c("ph", "x.organic.carbon", "x.total.nitrogen", "calcium", "magnesium")
+```
+
+Impose sensible constraints on soil variables
+
+**Ask Patrick and Step what those might be**. The table above removes IQR outliers. The check below removes based on 3sd so the values are different.
+
+```{r}
+check.3sd <- function(x) {
+  x = ifelse(is.infinite(x), NA, x)
+  mean = mean(x, na.rm=T)
+  sd = sd(x, na.rm=T)
+  mark = ifelse(x>(mean + (3*sd)) |
+        x<(mean - (3*sd)), NA, x)
+  return(mark)
+}
+
+
+sdSoilVals.py <- py %>%
+  dplyr::select(one_of(soilVars)) 
+
+sdCheck.py <- as.data.frame(apply(sdSoilVals.py, 2, function(x){
+  return(check.3sd(x))
+}))
+
+names(py)[which(names(py)=="potassium"):which(names(py)=="x.total.nitrogen")] <- paste0(names(py)[which(names(py)=="potassium"):which(names(py)=="x.total.nitrogen")], ".raw")
+
+py <- cbind(py, sdCheck.py)
+```
+
+# Point of diminishing returns
+
+Graphs to show the relationship between soil parameter and yield. We don't expect this relationships to be linear. A couple notes:
+
+* As in Rwanda, we're not seeing the typical relationship between our soil variables and yield.
+* Therefore it'll be difficult to identify a point of diminishing returns
+
+```{r}
+for(i in 1:length(keySoilVars)){
+  print(
+  ggplot(py, aes(x = py[,keySoilVars[i]], y = tha)) + 
+    geom_point() +
+    stat_smooth() +
+    geom_vline(xintercept=summary(py[,keySoilVars[i]])[[2]], linetype="dashed") + 
+    geom_vline(xintercept=summary(py[,keySoilVars[i]])[[5]], linetype="dashed") + 
+    labs(title = keySoilVars[i], x= keySoilVars[i], y="Yield (t/ha)")
+  )
+}
+```
+
+```{r}
+pdrFunction <- function(dat, var, outcome){
+  powerVar = dat[,var]^2
+  
+  mod = lm(outcome ~ dat[,var] + powerVar, data=dat)
+  
+  if(summary(mod)$coeff[3]<0){
+    beta1 <- summary(mod)$coeff[2]
+    beta2 <- summary(mod)$coeff[3]
+
+    keyPoint <- round((-beta1)/(2*beta2),2)
+    tab = data.frame(var = var, result = keyPoint)
+    return(tab)
+  }else{
+    return(data.frame(var = var, result= "NR"))
+  }
+  
+}
+
+```
+
+## All values
+
+```{r}
+indPdrTab <- do.call(rbind, lapply(keySoilVars, function(x){
+  pdrFunction(py, x, py$tha)
+}))
+
+kable(indPdrTab, format="markdown")
+```
+
+## Site values
+
+```{r}
+py$site <- tolower(py$sublocation.x)
+
+aggSite <- py %>%
+  group_by(site) %>%
+  summarize_each(funs(mean(., na.rm=T)), c(tha, ph, x.organic.carbon, x.total.nitrogen, calcium, magnesium)) %>%
+  as.data.frame()
+```
+
+```{r}
+for(i in 1:length(keySoilVars)){
+  print(
+  ggplot(aggSite, aes(x = aggSite[,keySoilVars[i]], y = tha)) + 
+    geom_point() +
+    stat_smooth() +
+    #stat_smooth(method="lm", color="red")+
+    labs(title = keySoilVars[i], x= keySoilVars[i], y="Yield (t/ha)")
+  )
+}
+```
+
+The cell level results seem a bit more useable (??? big question mark). I'll try to fit the expected relationship to these data and see where the coefficients cancel each other out
+
+```{r}
+aggTab <- do.call(rbind, lapply(keySoilVars, function(x){
+  pdrFunction(aggSite, x, aggSite$tha)
+}))
+
+kable(aggTab, format="markdown")
+```
+
+
+## Wet chem
+
+```{r}
+pairedWetDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "ke_shs_maize_paired", "3_wet_chem"))
+pairedWet <- read.csv(file=paste(pairedWetDir, "wet_chem.csv", sep = "/"))
+
+pSoilIdDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "ke_shs_maize_paired", "5_merged"))
+pSoilIds <- read_xlsx(paste(pSoilIdDir, "database.xlsx", sep = "/"), sheet=1) %>%
+  as.data.frame()
+
+pSoilIds <- pSoilIds %>%
+  rename(ssn = plot_information.Bar_code) %>%
+  mutate(
+    ssn = gsub(" ", "", ssn),
+    ssn = gsub("_", "", ssn)
+  )
+
+pairedWet <- pairedWet %>%
+  mutate(
+    Field_Name = tolower(Field_Name)
+  ) %>%
+  rename(ssn = Field_Name) %>%
+  filter(ssn!="") %>%
+  mutate(
+    ssn = tolower(ssn),
+    ssn = gsub("_", "", ssn)
+  ) %>%
+  left_join(., pSoilIds, by="ssn") %>% 
+  left_join(., py[,c("tha", "ssn")], by="ssn") %>%
+  setNames(tolower(names(.)))
+
+names(pairedWet) <- tolower(names(pairedWet))
+```
+
+```{r}
+for(i in 1:length(keySoilVars)){
+  print(
+  ggplot(pairedWet, aes(x = pairedWet[,keySoilVars[i]], y = tha)) + 
+    geom_point() +
+    stat_smooth() +
+    #stat_smooth(method="lm", color="red")+
+    labs(title = keySoilVars[i], x= keySoilVars[i], y="Yield (t/ha)")
+  )
+}
+```
+
+Quick overview:
+
+**Reminder**: the curves on these models is a loess curve. Loess takes a local average to derive a line of best fit. This line is by design very responsive to the data and not the model we're using to detect the point of diminishing returns. It's a good first check to see if it's worth investigating. 
+
+* pH again doesn't make much sense
+* Carbon looks alright. Let's take a closer look
+* Nitrogen looks useable as well.
+* Calcium looks really odd
+* Magnesium looks like calcium; really odd.
+
+```{r}
+wetPdrTab <- do.call(rbind, lapply(keySoilVars, function(x){
+  pdrFunction(pairedWet, x, pairedWet$tha)
+}))
+
+kable(wetPdrTab, format="markdown")
+```
+
+## Summary
+```{r}
+sourceTab <- c("aggTab", "indPdrTab", "wetPdrTab")
+pdrTab <- do.call(rbind, lapply(sourceTab, function(x){
+  tab = get(x)
+  return(data.frame(cbind(source = x, tab)))
+  }))
+
+
+kable(pdrTab, format="markdown")
+```
+
+# Soil Quartiles
+
+Yield response table by quartile
+
+```{r}
+yQuartiles <- function(yVar, xVar, df){
+  applyCuts = cut(df[,xVar], breaks=quantile(df[,xVar],c(0.25, 0.5, 0.75, 1),type=1, na.rm=T))
+  tab = tapply(df[,yVar], applyCuts, function(x){mean(x, na.rm=T)})
+  #diff = tab[[4]] - tab[[1]]
+  return(tab)
+}
+
+yQChange <- function(tab, start, end){ #start and end are the indicies
+  diff = tab[[end]]-tab[[start]]
+  return(diff)
+}
+
+qTab <- do.call(rbind, lapply(keySoilVars, function(x){
+  yQuartiles("tha", x, py)
+}))
+qTab <- as.data.frame(qTab)
+names(qTab) <- c("q25to50","q50to75","q75to100")
+
+qTab <- as.data.frame(sapply(qTab, function(x){round(x,2)}))
+
+qTab <- cbind(qTab, 
+              diff25to50 = apply(qTab, 1, function(x){
+                  yQChange(x,1,2)}),
+              diff50to75 = apply(qTab, 1, function(x){
+                  yQChange(x,2,3)}))
+
+rownames(qTab) <- keySoilVars
+```
+
+Add in revenue calculation. Assume that farmers are earning 25c a kg so $250/ton and we're moving the bottom quarter of our sample to the 75th percentile.
+
+```{r}
+library(scales)
+# add revenue
+marketValueT <- 340
+numFarmersKe <- 217000/4
+qTab$revenueA <- dollar(qTab$diff25to50 * marketValueT)
+qTab$revenueB <- dollar(qTab$diff50to75 * marketValueT)
+
+write.csv(qTab, file="output/quartileCalc.csv")
+```
+
+## Minimum Threshold
+
+Programmatic value of moving 75% of farmers above minimum soil threshold. A couple notes:
+
+```{r}
+minThresh <- function(xVar, yVar, per.thold, thold, FarmerCount, marketValue, df){
+  # figure out where the threshold is in terms of percentile of xVar
+  # calculate value of moving farmers below that percentile above that perentile in terms of yield gain
+  
+  dist <- ecdf(df[,xVar])
+  perce <- dist(thold)
+  
+  # amount above thold
+  inClear <- 1-perce
+  remainToMove <- ifelse(per.thold-inClear>0, per.thold - inClear, 0)
+  remainToMoveFarmers <- FarmerCount*remainToMove
+  
+  startingPointX <- quantile(df[,xVar], c(perce - remainToMove), type=1, na.rm = T)[[1]]
+  
+  # yield value above threshold
+  above <- mean(df[,yVar][df[,xVar]>thold], na.rm = T) #this is the average for all above threshold
+  
+  #distance between farmers yield value and threshold yield value for farmers below threshold and within the percentile we want to move up.
+  
+  remaining <-subset(df, df[,xVar]>=startingPointX & df[,xVar]<=thold)
+  bump <- above - remaining[,yVar]
+  
+  marketValuetha <- marketValue*1000
+  
+  #average value add
+  res <- mean(bump, na.rm = T) * remainToMoveFarmers * marketValuetha
+  res <- paste(format(round(res / 1e6, 2), trim = TRUE), "M")
+  
+  
+  return(res)
+}
+
+progImpactpH <- minThresh("ph", "tha", 0.75, 5.8, 217000, 0.34, py)
+progImpactN <- minThresh("x.total.nitrogen", "tha", 0.75, 0.1, 217000, 0.34, py)
+progImpactC <- minThresh("x.organic.carbon", "tha", 0.75, 2, 217000, 0.34, py)
+
+pdf(file=paste("output", "carbon graph.pdf", sep="/"), width=11, height=8.5)
+ggplot(py, aes(x=x.organic.carbon, y=tha)) + 
+  geom_point() + 
+  geom_vline(xintercept = summary(py$x.organic.carbon)[[2]]) + 
+  geom_vline(xintercept = summary(py$x.organic.carbon)[[5]]) + 
+  stat_smooth(method="lm") + 
+  labs(x = "Carbon", y = "Yield (t/ha)", title = "75% threshold looks weird because of farmers doing well at low C values",
+       subtitle = "We can trim those values but then we're basically shaping the data to our story")
+dev.off()
+
+progImpactCa <- minThresh("calcium", "tha", 0.75, 1056, 217000, 0.34, py)
+progImpactMg <- minThresh("magnesium", "tha", 0.75, 148, 217000, 0.34, py)
+
+progObj <- ls()[grep("progImpact", ls())]
+  
+progImpTab <- do.call(rbind, lapply(progObj, function(x){get(x)}))
+progImpTab <- data.frame(var = progObj, value = progImpTab)
+
+write.csv(progImpTab, file=paste("output/", "rwandaThresholdTab.csv", sep=""), row.names = F)
+```
+
