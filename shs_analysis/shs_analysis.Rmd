@@ -1,0 +1,72 @@
+---
+title: "Kenya Soil Health Study Analysis"
+author: '[Matt Lowes](mailto:matt.lowes@oneacrefund.org)'
+date: '`r format(Sys.time(), "%B %d, %Y")`'
+output:
+  html_notebook:
+    number_sections: yes
+    code_folding: show
+    theme: flatly
+    toc: yes
+    toc_depth: 6
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=F}
+rm(list = ls())
+cat("\014")
+
+## set up some global options
+# always set stringsAsFactors = F when loading data
+options(stringsAsFactors=FALSE)
+
+# show the code
+knitr::opts_chunk$set(echo = TRUE)
+
+# define all knitr tables to be html format
+options(knitr.table.format = 'html')
+
+# change code chunk default to not show warnings or messages
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+libs <- c("dplyr", "reshape2", "knitr", "ggplot2", "tibble", "readxl", 
+    "MASS", "gridExtra", "cowplot", "robustbase", "car", "RStata", "foreign",
+    "tidyr", "readxl", "stringr", "sp", "dismo", "leaflet", "XML", "ggmap", "knitr",
+    "MASS")
+lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F)
+
+#### define helpful functions
+# define function to adjust table widths
+html_table_width <- function(kable_output, width) {
+  width_html <- paste0(paste0('<col width="', width, '">'), collapse = "\n")
+  sub("<table>", paste0("<table>\n", width_html), kable_output)
+}
+
+source("../oaflib/commcareExport.R")
+source("../oaflib/misc.R")
+```
+
+# Background
+
+This file will pick up on from the Kenya round 1 file and finish the analysis. The cleaning of the data up through the round 1 data (baseline and round 1) happens in the `kenya_round_1` folder. Going forward, the cleaning of new data will happen in the `shs_cleaning.R` file, which I'll source here, and then the analysis will happen here.
+
+# Objective
+
+Analyze the soil health study data.
+
+# Data
+```{r}
+# load the latest kenya data from the cleaning file >> or maybe do the combining there.
+load()
+
+
+```
+
+
+# Output
+
+# Appendix
