@@ -30,7 +30,7 @@ source("../../oaflib/misc.R")
 
 
 # load the latest Kenya data to add to the existing data
-keDat17 <- read.csv("Kenya_2017_soil_health_study_data.csv")
+keDat17 <- read.csv("Kenya_2017_soil_health_study_data.csv", stringsAsFactors = F, na.strings = "---")
 
 # update names to the fieldDat names
 names(fieldDat)
@@ -88,6 +88,174 @@ focusVariables <- names(keDat17)[!names(keDat17) %in% matchedNames]
 names(fieldDat)[!names(fieldDat) %in% matchedNames]
 focusVariables
 
+## do some cleaning to make data ready to combine
+# these functions come from the ke_round_1.Rmd file
 
+identifyCatVars <- function(dat){
+  # takes a df and returns the variable names that are categorical variables
+  return(names(dat)[sapply(dat, function(x){is.character(x)})])
+}
+
+identifyCatVars(fieldDat)
+
+
+varClean <- function(dat, x, toRemove){
+  dat[,x] <- ifelse(dat[,x] %in% toRemove, NA, dat[,x])
+  return(dat[,x])
+}
+
+strTable <- function(dat, x){
+  varName = x
+  tab = as.data.frame(table(dat[,x], useNA = 'ifany'))
+  tab = tab[order(tab$Freq, decreasing = T),]
+  end = ifelse(length(tab$Var1)<10, length(tab$Var1), 10)
+  repOrder = paste(tab$Var1[1:end], collapse=", ")
+  out = data.frame(variable = varName,
+                   responses = repOrder)
+  
+  return(out)
+}
+
+# clean up known values
+catEnumVals <- c("-99", "-88", "- 99", "-99.0", "88", "_88", "- 88", "0.88",
+                 "--88", "__88", "-88.0", "99.0")
+
+
+## !!! change the data slightly so that I'm only cleaning the variables I care about !!!
 ## okay, I've merged the variables that I can. I now need the soil data. I hope we have it!
+# subset the data so I can only append the columns that match.
+keDat17Append <- keDat17[, names(keDat17) %in% names(fieldDat)] 
+
+
+# and then force all factors into characters to simplify working with the data
+keDat17Append <- keDat17Append %>%
+  mutate_if(is.factor, as.character) %>%
+  as.data.frame()
+
+# clean up keDat17 categorical variables
+keDat17Append[,identifyCatVars(keDat17Append)] <- sapply(identifyCatVars(keDat17Append), function(y){
+  keDat17Append[,y] <- varClean(keDat17Append,y, catEnumVals)
+})
+
+# and plot
+repGraphs <- function(dat, x){
+  tab = as.data.frame(table(dat[,x], useNA = 'ifany'))
+  tab = tab[order(tab$Freq, decreasing = T),]
+  # the printing of the graph happens here!!
+  print(
+    ggplot(data=tab, aes(x=Var1, y=Freq)) + geom_bar(stat="identity") +
+      theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+      labs(title =paste0("Composition of variable: ", x))
+  )
+}
+
+catVarsToIgnore <- c("plot.location", "photo", "sample_id", "gps", "site")
+catVarsToPlot <- identifyCatVars(keDat17Append)[!identifyCatVars(keDat17Append) %in% catVarsToIgnore]
+
+pdf(file = "shs_analysis_categorical_cleaning.pdf", width = 11, height = 8.5)
+for(i in 1:length(catVarsToPlot)){
+  repGraphs(keDat17Append, catVarsToPlot[i])
+}
+dev.off()
+
+# and then clean up issues
+keDat17Append <- keDat17Append %>%
+  mutate(region = ifelse(grepl("western", tolower(region)), "Western Province",
+                         ifelse(grepl("nyan", tolower(region)), "Nyanza",
+                                ifelse(region == "OK", NA, region))),
+         intercrop = ifelse(intercrop == "0", NA, intercrop),
+         erosion = ifelse(erosion == "0", NA, erosion)
+         )
+
+# clean up numeric variables
+
+identifyNumVars <- function(dat){
+  # takes a df and returns the variable names that are categorical variables
+  return(names(dat)[sapply(dat, function(x){is.numeric(x)})])
+}
+
+
+#Basic cleaning of known issues like enumerator codes for DK, NWR, etc.
+
+enumVals <- c(-88,-85, -99, -66)
+
+keDat17Append[,identifyNumVars(keDat17Append)] <- sapply(identifyNumVars(keDat17Append), function(y){
+  keDat17Append[,y] <- varClean(keDat17Append,y, enumVals)
+})
+
+numVarsToIgnore <- c("oafid", "season")
+numVarsToPlot <- identifyNumVars(keDat17Append)[!identifyNumVars(keDat17Append) %in% numVarsToIgnore]
+
+# and plot
+pdf(file = "shs_analysis_numerical_cleaning.pdf", width = 11, height = 8.5)
+for(i in 1:length(numVarsToPlot)){
+  base <- ggplot(keDat17Append, aes(x=keDat17Append[,numVarsToPlot[i]])) + labs(x = numVarsToPlot[i])
+  temp1 <- base + geom_density()
+  temp2 <- base + geom_histogram(bins = 10)
+  #temp2 <- boxplot(r[,numVars[i]],main=paste0("Variable: ", numVars[i]))
+  multiplot(temp1, temp2, cols = 2)
+}
+dev.off()
+
+# and then addressing some potentially large values
+# 300 chickens
+keDat17Append %>%
+  filter(chickens > 250)
+
+keDat17Append$chickens <- ifelse(keDat17Append$chickens==300, 30, keDat17Append$chickens)
+  
+# 20 cows
+keDat17Append %>%
+  filter(cows > 15) # okay, leave it.
+
+# 200 kg dap >> check plot size
+keDat17Append %>% filter(dap.main > 150) # okay, seems okay reasonable.
+# 200 kg can >> check plot size
+# 100 kg urea >> check plot size
+keDat17Append %>% filter(urea.main > 75) # okay, seems reasonable
+# compost >> 15000 kgs?
+keDat17Append %>% filter(compost.kgs > 10000) # 15k compost? Seems unreasonable, set to median
+
+keDat17Append$compost.kgs <- ifelse(keDat17Append$compost.kgs > 10000, median(keDat17Append$compost.kgs), keDat17Append$compost.kgs)
+
+#### make new outcome variables like inputs per acreage
+
+m2ToAcres <- function(input, meters) {
+  # function that takes inputs in kg/m2 and converts it to kg/acres
+  res <- (input/meters)*4046
+  return(res)
+}
+
+
+keDat17Append <- keDat17Append %>% 
+  mutate(
+    plot.m2 = plot.size*4046,
+    can.acre = m2ToAcres(can.main, plot.m2),
+    dap.acre = m2ToAcres(dap.main,plot.m2),
+    npk.acre = m2ToAcres(npk.main,plot.m2),
+    urea.acre = m2ToAcres(urea.main,plot.m2),
+    compost.acre = m2ToAcres(compost.kgs,plot.m2),
+    seed.acre = m2ToAcres(seed.kgs,plot.m2),
+    intercrop.seed.acre = m2ToAcres(intercrop.seed.kgs, plot.m2),
+    intercrop.dap.acre = m2ToAcres(dap.intercrop, plot.m2),
+    intercrop.can.acre = m2ToAcres(can.intercrop, plot.m2),
+    intercrop.npk.acre = m2ToAcres(npk.intercrop, plot.m2),
+    intercrop.urea.acre = m2ToAcres(urea.intercrop, plot.m2))
+
+
+# import and clean the most recent soil data
+soilDir <- normalizePath(file.path("..", "..", "..", "OAF Soil Lab Folder"))
+
+
+
+
+# then combine with fieldDat!!
+
+fieldDat <- plyr::rbind.fill(fieldDat, keDat17Append)
+
+
+# then do some quick reality checking of the overall data set
+
+table(fieldDat$district)
+
 
