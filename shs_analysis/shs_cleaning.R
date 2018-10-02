@@ -39,8 +39,55 @@ names(fieldDat)
 thingsToRemove <- paste(c("form\\.consent_yes\\.", "demography\\.", "basic_information\\.", "field\\.", "plot_information\\.", "inputs\\.", "other_respondent_details\\.", "field_information\\.", "livestock\\."), collapse = "|")
 names(keDat17) <- gsub(thingsToRemove, "", names(keDat17))
 names(keDat17) <- tolower(names(keDat17))
+names(keDat17) <- gsub("\\_", ".", names(keDat17))
+
+keDat17 <- keDat17 %>%
+  rename(region = region.name,
+         d_client = oaf,
+         respondent.gender = gender,
+         plot.size = field.size,
+         main.crop = maincrop.maincrop,
+         main.crop.specify = maincrop.specify.other.main.crop,
+         seed.type = maincrop.seedtype,
+         seed.kgs = maincrop.seedkgs,
+         fertilizer.main = input.maincrop,
+         fertilizer.intercrop = input.intercrop,
+         dap.main = dap.kg,
+         can.main = can.kg,
+         npk.main = npk.kg,
+         urea.main = urea.kg,
+         dap.intercrop = dap.kg.intercrop,
+         can.intercrop = can.kg.intercrop,
+         npk.intercrop = npk.kg.intercrop,
+         urea.intercrop = urea.kg.intercrop,
+         lime.kgs = lime.kg, # continue from here harmonizing names...
+         plot.location = field.location,
+         field.location = location,
+         intercrop.seed.kgs = intercrop.seedkgs,
+         intercrop.seed.type = intercrop.seedtype,
+         yield = maincrop.maincrop.total.yield.in.kilograms,
+         harvestcomp.2016 = maincrop.yield.comparative,
+         intercrop.harvestcomp = intercrop.yield.comparative,
+         erosion = anti.erosion,
+         intercrop = intercrop.intercrop,
+         intercrop.specify = intercrop.specify.other.main.crop,
+         intercrop.yield = intercrop.intercrop.yiedl,
+         sample_id = soil.sample.id
+         ) %>%
+  mutate(season = 2017)
+  
 
 # and now figure out how to match variable names as quickly as possible. 
 # I'll first weed out any variable names that already match and only focus on the remaining ones
 
+matchedNames <- names(keDat17)[names(keDat17) %in% names(fieldDat)]
+
+# and now just look at remaining names until matched:
+focusVariables <- names(keDat17)[!names(keDat17) %in% matchedNames]
+
+names(fieldDat)[!names(fieldDat) %in% matchedNames]
+focusVariables
+
+
+## okay, I've merged the variables that I can. I now need the soil data. I hope we have it!
 
