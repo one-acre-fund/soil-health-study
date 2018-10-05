@@ -24,6 +24,25 @@ select <- dplyr::select
 # load the ke r1 data to combine the new data with
 load("../ke_round_1/ke_r1_cleaned_combined.Rdata") # fieldDat
 
+####### LOAD MERGING IDS BETWEEN SURVEY AND LAB #######
+
+soilDir <- normalizePath(file.path("..", "..", "..", "OAF Soil Lab Folder", "Projects", "ke_shs_17", "5_merged"))
+
+mergeIds <- read_xlsx(paste(soilDir, "soil_texture_results.xlsx", sep = "/")) %>%
+  mutate(reception_barcode = gsub("_", "", reception_barcode)) %>%
+  as.data.frame()
+
+####### LOAD SOIL DATA FOR KENYA SHS 17 #######
+
+ke17soil <- readRDS("kenya_shs_17_soil_values_dw.rds")
+
+## check for right merge variable
+table(ke17soil$SSN %in% mergeIds$reception_barcode)
+
+# look at the one unmatched value
+ke17soil$SSN[!ke17soil$SSN %in% mergeIds$reception_barcode]
+
+
 # and the latest kenya survey rounds, should be 2 and 3??
 source("../../oaflib/commcareExport.R")
 source("../../oaflib/misc.R")
@@ -31,6 +50,15 @@ source("../../oaflib/misc.R")
 
 # load the latest Kenya data to add to the existing data
 keDat17 <- read.csv("Kenya_2017_soil_health_study_data.csv", stringsAsFactors = F, na.strings = "---")
+
+
+# check that keDat17 has a variable that can merge with the mergeid data to link in soil data
+keDat17$formid <- gsub("-", "", keDat17$formid)
+
+
+table(keDat17$formid %in% mergeIds$info.caseid)  
+head(keDat17$formid)
+head(mergeIds$info.caseid)
 
 # update names to the fieldDat names
 names(fieldDat)
@@ -87,6 +115,9 @@ focusVariables <- names(keDat17)[!names(keDat17) %in% matchedNames]
 
 names(fieldDat)[!names(fieldDat) %in% matchedNames]
 focusVariables
+
+## but then keep the keDat17$formid variable to try to match it.
+
 
 ## do some cleaning to make data ready to combine
 # these functions come from the ke_round_1.Rmd file
@@ -244,7 +275,14 @@ keDat17Append <- keDat17Append %>%
 
 
 # import and clean the most recent soil data
-soilDir <- normalizePath(file.path("..", "..", "..", "OAF Soil Lab Folder"))
+#source("soil_values_access.R") # this pulls the right data from the dw
+
+names(keDat17Append)[grep("id", names(keDat17Append))] # find id var
+names(keDat17)[grep("case", names(keDat17))] # find case id var
+
+keDat17Append %>%
+  select(sample_id) %>%
+  sample_n(10)
 
 
 
@@ -257,5 +295,8 @@ fieldDat <- plyr::rbind.fill(fieldDat, keDat17Append)
 # then do some quick reality checking of the overall data set
 
 table(fieldDat$district)
+
+#################### RWANDA 17 CLEANING ################
+
 
 
