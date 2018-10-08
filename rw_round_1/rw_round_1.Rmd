@@ -83,7 +83,7 @@ forceUpdateAll <- FALSE
 ```
 
 ```{r}
-baselineDir <- normalizePath(file.path("..", "rw_baseline", "data"))
+baselineDir <- normalizePath(file.path("..", "rw_shs_baseline", "data"))
 
 load(file=paste0(baselineDir, "/shs rw baseline full soil.Rdata")) # obj d
 b <- baseVars
@@ -96,7 +96,7 @@ b <- baseVars
 ## Round 1 data
 
 ```{r}
-source("../oaflib/commcareExport.R")
+source("../../oaflib/commcareExport.R")
 r <- getFormData("oafrwanda", "M&E", "16B Ubutaka (Soil)", forceUpdate = F)
 write.csv(r, file="rawCcR1Data.csv", row.names = F)
 ```
@@ -111,12 +111,19 @@ stataDir <- normalizePath(file.path("..", "rw_round_1_check"))
 
 Here I access the soil predictions from the OAF soil lab. [Patrick Bell](mailto:patrick.bell@oneacrefund.org) manages the lab and [Mike Barber](mike.barber@oneacrefund.org) oversees the prediction scripts.
 
+10/5/18 - I had to download the files and add them to the repo to streamline getting the data I needed. When syncing is complete I should be able to draw from the 1AF Soil Lab folder.
+
 ```{r}
 soilDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_second_round", "4_predicted", "other_summaries"))
-soil <- read.csv(file=paste(soilDir, "combined-predictions-including-bad-ones.csv", sep = "/"))
+
+
+# soil <- read.csv(file=paste(soilDir, "combined-predictions-including-bad-ones.csv", sep = "/"))
+soil <- read.csv("combined-predictions-including-bad-ones.csv")
 
 idDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_second_round", "5_merged"))
-Identifiers <- read_excel(paste(idDir,"database.xlsx",sep="/"), sheet=1)
+
+#Identifiers <- read_excel(paste(idDir,"database.xlsx",sep="/"), sheet=1)
+Identifiers <- read_excel("database.xlsx", sheet = 1)
 ```
 
 Combine the available data by farmer and resolve merging issues. These data can be combined long as long as the variable names are consistent or wide. I'm going to combine the data long and use `split` type commands to aggregate the data more easily. Confirm the variable names are consistent. By advancing this code on 5/9/17, I'm for the time being ignoring the cleaning Alex did in his do file. I'll need to go back and incorporate those changes.
@@ -145,7 +152,7 @@ Load Alex's raw data and take the variable names from this. If I can align these
 ## Stata .do file
 
 ```{r}
-rawDir <- normalizePath(file.path("Soil health study (year one)", "data"))
+rawDir <- normalizePath(file.path("..", "rw_shs_round_1_master", "Soil health study (year one)", "data"))
 
 avRaw <- read.csv(paste(rawDir, "y1_shs_rwanda_28sep.csv", sep = "/"), stringsAsFactors = F)
 
@@ -215,7 +222,7 @@ r <- r[,!names(r) %in% toDrop]
 
 
 ```{r}
-source("../oaflib/misc.R")
+source("../../oaflib/misc.R")
 names(r) <- gsub("^y1_|intro_", "", names(r))
 r[r=="."] <- NA
 
@@ -621,7 +628,6 @@ r <- r %>% rename(
   kg_yield_2_16a = kg_yield_16a_2,
   yield_compare_1_16a = yield_compare_16a_1,
   yield_compare_2_16a = yield_compare_16a_2,
-  
   which_crop_1_16b = which_crop_16b_1,
   which_maize_seed_1_16b = which_maize_seed_16b_1,
   which_crop_2_16b = which_crop_16b_2,
@@ -970,6 +976,16 @@ fieldSoilDat$fert_kgare_2555npk1 <- fieldSoilDat$fert_kg_2555npk1/fieldSoilDat$a
 fieldSoilDat$fert_kgare_2555npk2 <- fieldSoilDat$fert_kg_2555npk2/fieldSoilDat$are
 fieldSoilDat$fert_kgare_2555npk_total <- fieldSoilDat$fert_total_2555npk/fieldSoilDat$are
 ```
+
+## Save data 
+For importing to shs_analysis to update the cleaning file and update the analysis overall.
+
+Save the Rwanda R1 data to include it in the `shs_analysis/shs_cleaning.R` work.
+
+```{r}
+saveRDS(fieldDat, file = "r1FieldDat.rds")
+```
+
 
 ### Visualize field variables
 
