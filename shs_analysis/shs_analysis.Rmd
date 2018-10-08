@@ -66,6 +66,12 @@ load()
 
 ```
 
+# Analysis
+
+## Surveys for which we don't have soil
+
+Check that there isn't something systematic in these surveys. If so, describe what it is.
+
 
 # Output
 
