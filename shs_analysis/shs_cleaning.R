@@ -298,5 +298,79 @@ table(fieldDat$district)
 
 #################### RWANDA 17 CLEANING ################
 
+# IMPORT THE CLEANED AND COMBINED RWANDA DATA
+rw1Dir <- normalizePath(file.path("..", "rw_round_1"))
+
+
+rwFieldDat <- readRDS(paste(rw1Dir, "r1FieldDat.rds", sep = "/"))
+
+#### IMPORT THE MOST RECENT SHS SURVEYS FROM RWANDA
+# in an ideal world this comes from CC but I don't want to absorb that complication right now.
+# just use the export and move on.
+
+#rw17b <- getFormData("oafrwanda", "M&E", "17B Ubutaka (Soil)", forceUpdate=F)
+
+#names(rw17b) <- tolower(make.names(names(rw17b)))
+
+# rw17bClean <- rw17b %>%
+#   setNames(gsub("x.form.", "", names(.))) %>%
+#   mutate(sample_id = tolower(sample_id))
+
+# also import the csv from CC to get the variable names more easily:
+rw17b <- read.csv("rwanda_17b.csv", stringsAsFactors = F) %>%
+  setNames(gsub("form\\.","", names(.)))
+
+
+# and import the linking information for rw_17b from the OAF Soil Lab Folder
+rw17bSoilDir <- normalizePath(file.path("..", "..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_second_round", "5_merged"))
+
+# sample_id looks like it'll match the data.
+rw17BMergeId <- read_xlsx(paste(rw17bSoilDir, "database.xlsx", sep = "/")) %>%
+  setNames(make.names(tolower(names(.))))
+
+rw17bSoilValues <- readRDS("rwanda_shs_17b_soil_values_dw.rds") %>%
+  setNames(make.names(tolower(names(.))))
+
+
+# compare the database result with the soil values to make sure there are
+# matches across all the data
+
+# check the ids and the soil values first << comparing ssn
+table(rw17BMergeId$lab.ssn %in% rw17bSoilValues$ssn) # they're all there!
+
+# this is what I want to combine with the survey data!
+rw17bSoilMerged <- left_join(rw17BMergeId, rw17bSoilValues, by=c("lab.ssn" = "ssn"))
+
+# check the merge with the survey data << okay, some of the surveys don't have
+# soil. That's probalby okay but we should look into that
+table(rw17b$sample_id %in% rw17bSoilMerged$sample.id)
+
+# fully combined. we're missing some connetions but that's not the worst thing. 
+# let's look at where we're not getting matches and note
+rw17bMerged <- left_join(rw17b, rw17bSoilMerged, by = c("sample_id" = "sample.id"))
+
+# clean up objects from here to simplify code a bit.
+rm(rw17bSoilDir, rw17BMergeId, rw17bSoilValues, rw17bSoilMerged)
+
+
+#### here's where I can import the rw_18 survey data but I don't think we yet
+#have spectral data so there's nothing to do 
+
+
+#and now reference the cleaning in the rw_round_2_check to merge this latest
+#data with the exiting data
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
