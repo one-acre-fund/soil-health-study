@@ -173,17 +173,18 @@ repGraphs <- function(dat, x){
   tab = as.data.frame(table(dat[,x], useNA = 'ifany'))
   tab = tab[order(tab$Freq, decreasing = T),]
   # the printing of the graph happens here!!
-  print(
-    ggplot(data=tab, aes(x=Var1, y=Freq)) + geom_bar(stat="identity") +
-      theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
-      labs(title =paste0("Composition of variable: ", x))
-  )
+  
+    print(
+      ggplot(data=tab, aes(x=Var1, y=Freq)) + geom_bar(stat="identity") +
+        theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+        labs(title =paste0("Composition of variable: ", x))
+    )
 }
 
 catVarsToIgnore <- c("plot.location", "photo", "sample_id", "gps", "site")
 catVarsToPlot <- identifyCatVars(keDat17Append)[!identifyCatVars(keDat17Append) %in% catVarsToIgnore]
 
-pdf(file = "shs_analysis_categorical_cleaning.pdf", width = 11, height = 8.5)
+pdf(file = "ke17_shs_analysis_categorical_cleaning.pdf", width = 11, height = 8.5)
 for(i in 1:length(catVarsToPlot)){
   repGraphs(keDat17Append, catVarsToPlot[i])
 }
@@ -218,7 +219,7 @@ numVarsToIgnore <- c("oafid", "season")
 numVarsToPlot <- identifyNumVars(keDat17Append)[!identifyNumVars(keDat17Append) %in% numVarsToIgnore]
 
 # and plot
-pdf(file = "shs_analysis_numerical_cleaning.pdf", width = 11, height = 8.5)
+pdf(file = "ke17_shs_analysis_numerical_cleaning.pdf", width = 11, height = 8.5)
 for(i in 1:length(numVarsToPlot)){
   base <- ggplot(keDat17Append, aes(x=keDat17Append[,numVarsToPlot[i]])) + labs(x = numVarsToPlot[i])
   temp1 <- base + geom_density()
@@ -317,7 +318,7 @@ rwFieldDat <- readRDS(paste(rw1Dir, "r1FieldDat.rds", sep = "/"))
 #   mutate(sample_id = tolower(sample_id))
 
 # also import the csv from CC to get the variable names more easily:
-rw17b <- read.csv("rwanda_17b.csv", stringsAsFactors = F) %>%
+rw17b <- read.csv("rwanda_17b.csv", stringsAsFactors = F, na.strings = "---") %>%
   setNames(gsub("form\\.","", names(.)))
 
 
@@ -331,6 +332,11 @@ rw17BMergeId <- read_xlsx(paste(rw17bSoilDir, "database.xlsx", sep = "/")) %>%
 rw17bSoilValues <- readRDS("rwanda_shs_17b_soil_values_dw.rds") %>%
   setNames(make.names(tolower(names(.))))
 
+# make variables numeric that should be numeric
+rw17SoilVars <- c(names(rw17bSoilValues)[which(names(rw17bSoilValues)=="zinc"):
+                                         which(names(rw17bSoilValues)=="hp")], "ph")
+
+rw17bSoilValues[,rw17SoilVars] <- sapply(rw17bSoilValues[,rw17SoilVars], function(x){as.numeric(x)})
 
 # compare the database result with the soil values to make sure there are
 # matches across all the data
@@ -350,15 +356,193 @@ table(rw17b$sample_id %in% rw17bSoilMerged$sample.id)
 rw17bMerged <- left_join(rw17b, rw17bSoilMerged, by = c("sample_id" = "sample.id"))
 
 # clean up objects from here to simplify code a bit.
-rm(rw17bSoilDir, rw17BMergeId, rw17bSoilValues, rw17bSoilMerged)
+rm(rw17bSoilDir, rw17BMergeId, rw17bSoilValues, rw17bSoilMerged, rw17b)
 
 
 #### here's where I can import the rw_18 survey data but I don't think we yet
-#have spectral data so there's nothing to do 
+#have spectral data so there's nothing to do  ######
 
 
 #and now reference the cleaning in the rw_round_2_check to merge this latest
-#data with the exiting data
+#data with the exiting data.
+# also reference the rw_round_1 code to see how to align the data with previous seasons
+
+#### CATEGORICAL VALUE CLEANING #####
+# examine categorical and numeric variables for odd values:
+rw17bMerged[,identifyCatVars(rw17bMerged)] <- sapply(identifyCatVars(rw17bMerged), function(y){
+  rw17bMerged[,y] <- varClean(rw17bMerged,y, catEnumVals)
+})
+
+rw17bMerged <- rw17bMerged %>%
+  mutate_if(is.factor, as.character) %>%
+  as.data.frame()
+
+
+# instead build in check to look at number of uniqe values and exclude those with more than 20+
+catVarsToIgnore <- c("formid", "start_time", "enumerator", "not_find_why", "not_find_why_other",
+                     "intro.intro", "soil_id", "soil_id2_", "text_final.photo", "text_final.d_photo",
+                     "text_final.d_soilsample", "farmer.cell_input_17b", "farmer.cell_field_17b",
+                     "farmer.village_17b", "farmer.farmer_name", "farmer.name_respondent",
+                     "farmer.farmer_tel", "farmer.tel_respondent", "farmer.neighbor_tel",
+                     "other_comments", "finish_time", "Description", "Enumerator_in_16B",
+                     "Respondent_in_16B", "sample_id", "gps_hidden", "Farmer_phone", "Enumerator_in_15B",
+                     "Respondent_Phone", "name", "completed_time", "started_time", "username", "received_on",
+                     "case..case_id", "umudugudu", "lab.ssn", "comments", "condition")
+catVarsToPlot <- identifyCatVars(rw17bMerged)[!identifyCatVars(rw17bMerged) %in% catVarsToIgnore]
+
+
+# plot
+pdf(file = "rw17_shs_analysis_categorical_cleaning.pdf", width = 11, height = 8.5)
+for(i in 1:length(catVarsToPlot)){
+  repGraphs(rw17bMerged, catVarsToPlot[i])
+}
+dev.off()
+
+
+### notes:
+# clean up district << or just use the other variable
+# make cell to lower, check for duplicates
+# clean up village
+
+# and then clean up issues
+rw17bMerged <- rw17bMerged %>%
+  mutate(female = ifelse(farmer.farmer_gender == "female", 1, 0),
+         client15b = ifelse(Client_in_15B == "Yego", 1, 0)
+  )
+
+
+#### NUMERICAL VALUE CLEANING ####
+rw17bMerged[,identifyNumVars(rw17bMerged)] <- sapply(identifyNumVars(rw17bMerged), function(y){
+  rw17bMerged[,y] <- varClean(rw17bMerged,y, enumVals)
+})
+
+numVarsToIgnore <- c("number", "intro.intro", "ext_final.d_photo", "text_final.d_soilsample")
+numVarsToPlot <- identifyNumVars(rw17bMerged)[!identifyNumVars(rw17bMerged) %in% numVarsToIgnore]
+
+# and plot
+pdf(file = "rw17_shs_analysis_numerical_cleaning.pdf", width = 11, height = 8.5)
+for(i in 1:length(numVarsToPlot)){
+  base <- ggplot(rw17bMerged, aes(x=rw17bMerged[,numVarsToPlot[i]])) + labs(x = numVarsToPlot[i])
+  temp1 <- base + geom_density()
+  temp2 <- base + geom_histogram(bins = 10)
+  #temp2 <- boxplot(r[,numVars[i]],main=paste0("Variable: ", numVars[i]))
+  multiplot(temp1, temp2, cols = 2)
+}
+dev.off()
+
+# notes
+# something weird in age
+rw17bMerged %>%
+  filter(farmer.age_farmer > 100)
+
+rw17bMerged <- rw17bMerged %>%
+  mutate(farmer.age_farmer = ifelse(farmer.age_farmer == 6161, 61,
+                                    ifelse(farmer.age_farmer == 122, NA, farmer.age_farmer)))
+
+
+# hh size
+rw17bMerged %>%
+  filter(farmer.hh_n > 20) 
+
+rw17bMerged %>%
+  filter(!is.na(farmer.hh_n)) %>%
+  ggplot(., aes(x = farmer.hh_n)) + geom_histogram(bins = 20)
+
+
+rw17bMerged <- rw17bMerged %>%
+  mutate(farmer.hh_n = ifelse(farmer.hh_n > 20, NA, farmer.hh_n))
+
+# check out cows and goats and chickens and pigs and sheep >> very big values
+rw17bMerged %>%
+  filter(n_cows > 10 | n_chickens > 20 | n_pigs > 10 | n_sheep > 10)
+
+# it doesn't seem that the big animal values are with the same farmers. These are 
+# much larger than the other values but it doesn't necessarily mean they're impossible.
+# 42 sheep seems like a lot but it's not inconceivable.
+
+# field length?
+rw17bMerged %>%
+  filter(soil_field.length_17b > 150) %>%
+  select(soil_field.length_17b, soil_field.width_17b, soil_field.field_area_17b, soil_field.field_ares)
+
+# there's one field that's 152 x 3. That seems unlikely?
+# or 170 x 10? Also seems unlikely >> get M&E advice on these.
+
+# with seed quantities>>
+rw17bMerged %>%
+  select(contains("seed"), contains("field.")) %>%
+  filter(prim_17a_.kg_seed_crop1_17a > 100)
+
+# seed quantities don't match up with field sizes...why aren't these checks automated.
+
+# compost amounts
+rw17bMerged %>%
+  select(contains("seed"), contains("compost"), contains("field")) %>%
+  filter(ammend_17b_.kg_compost_17b > 1000)
+
+# there's one clear strange value, fix that
+rw17bMerged <- rw17bMerged %>%
+  mutate(ammend_17b_.kg_compost_17b = ifelse(ammend_17b_.kg_compost_17b > 10000, NA, ammend_17b_.kg_compost_17b))
+
+# types of crops
+rw17bMerged %>%
+  filter(n_types_crop_17b > 10)
+
+# 25? That seems like too many in a single plot. Set this to missing but also ask M&E.s
+rw17bMerged <- rw17bMerged %>%
+  mutate(n_types_crop_17b = ifelse(n_types_crop_17b > 10, NA, n_types_crop_17b))
+
+# ares
+rw17bMerged %>%
+  filter(soil_field.field_ares > 10) %>%
+  select(contains("are")) %>%
+  sample_n(10)
+
+# these seem reasonable. Leave as they are.
+
+# large aluminum value << set to median value
+rw17bMerged %>%
+  filter(exchangeable_aluminium > 30)
+
+rw17bMerged <- rw17bMerged %>%
+  mutate(exchangeable_aluminium = ifelse(exchangeable_aluminium > 30, median(exchangeable_aluminium, na.rm=T), exchangeable_aluminium))
+
+##### NOW RESHAPE THE NEW DATA TO MATCH THE OLDER DATA, COMBINE INTO ONE DF ######
+# do some additional variable name cleaning to simplify rehaping the data
+names(rw17bMerged) <- gsub("ammend_17._\\.|farmer\\.", "", names(rw17bMerged))
+
+names(rw17bMerged)[duplicated(names(rw17bMerged)) | duplicated(names(rw17bMerged), fromLast = T)]
+
+varsToUpdate <-  names(rw17bMerged)[grep("fert\\d|crop\\d", names(rw17bMerged))]
+
+# then use this vector to update these variable names efficiently rather than
+# typing them all out. So for all these variables add the right number to the end
+# and then update the portion in the middle.
+
+# this is tailored for this survey but should be more flexible. not sure how so
+# just going to keep it simple
+substrRight <- function(x, n){
+  substr(x, nchar(x)-n+1, nchar(x))
+}
+
+namesForReshape <- function(name){
+  options = paste(c(paste0("fert", 1:2), paste0("crop", 1:2)), collapse = "|")
+  whichToUse = strapplyc(name, options, simplify = T)
+  temp1 = sub(whichToUse, "", name)
+  # now take the last digit and put a _ before it and tack it on the end.
+  tack = paste0("_", substrRight(whichToUse, 1))
+  temp2 = paste0(temp1, tack)
+  temp2 = gsub("_\\.", "", temp2)
+  return(temp2)
+  
+}
+
+lapply(varsToUpdate, function(x){namesForReshape(x)})
+
+
+
+
+
 
 
 
