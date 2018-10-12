@@ -15,7 +15,7 @@ cat("\014")
 # reshape is for easy table transformation
 # knitr is to make pretty tables at the end
 # ggplot2 is for making graphs
-libs <- c("tidyverse", "knitr", "readxl")
+libs <- c("tidyverse", "knitr", "readxl", "gsubfn")
 lapply(libs, require, character.only = T)
 
 select <- dplyr::select
@@ -509,7 +509,9 @@ rw17bMerged <- rw17bMerged %>%
 
 ##### NOW RESHAPE THE NEW DATA TO MATCH THE OLDER DATA, COMBINE INTO ONE DF ######
 # do some additional variable name cleaning to simplify rehaping the data
-names(rw17bMerged) <- gsub("ammend_17._\\.|farmer\\.", "", names(rw17bMerged))
+
+# but put the season at the end, not the number!!!
+names(rw17bMerged) <- gsub("ammend_17._\\.|farmer\\.|prim_17", "", names(rw17bMerged))
 
 names(rw17bMerged)[duplicated(names(rw17bMerged)) | duplicated(names(rw17bMerged), fromLast = T)]
 
@@ -523,28 +525,106 @@ varsToUpdate <-  names(rw17bMerged)[grep("fert\\d|crop\\d", names(rw17bMerged))]
 # just going to keep it simple
 substrRight <- function(x, n){
   substr(x, nchar(x)-n+1, nchar(x))
-}
-
-namesForReshape <- function(name){
-  options = paste(c(paste0("fert", 1:2), paste0("crop", 1:2)), collapse = "|")
-  whichToUse = strapplyc(name, options, simplify = T)
-  temp1 = sub(whichToUse, "", name)
-  # now take the last digit and put a _ before it and tack it on the end.
-  tack = paste0("_", substrRight(whichToUse, 1))
-  temp2 = paste0(temp1, tack)
-  temp2 = gsub("_\\.", "", temp2)
-  return(temp2)
   
 }
 
-lapply(varsToUpdate, function(x){namesForReshape(x)})
+# namesForReshape <- function(name){
+#   # this function needs to take the season and put it at the end if it's not
+#   # it might already be???
+#   options = paste(c(paste0("fert", 1:2), paste0("crop", 1:2)), collapse = "|")
+#   whichToUse = strapplyc(name, options, simplify = T)
+#   temp1 = sub(whichToUse, substr(whichToUse, 1, nchar(whichToUse)-1), name)
+#   # now take the last digit and put a _ before it and tack it on the end.
+#   tack = paste0("_", substrRight(whichToUse, 1))
+#   temp2 = paste0(temp1, tack)
+#   temp2 = gsub("\\.", "", temp2)
+#   return(temp2)
+#   
+# }
+
+#updatedVars <- do.call(c, lapply(list(varsToUpdate), function(x){namesForReshape(x)}))
 
 
+# ## and now actually update the names <<< UUUUUUUGGGGGGGHHH THIS TOOK TOO LONG.
+# # but just typing variable names is DUMB.
+# grepOptions <- paste(c(paste0("fert", 1:2), paste0("crop", 1:2)), collapse = "|")
+# for(i in 1:length(names(rw17bMerged))){
+#   if(grepl(grepOptions, names(rw17bMerged)[i])){
+#     names(rw17bMerged)[i] <- namesForReshape(names(rw17bMerged)[i])
+#   }
+# }
 
 
+## and now reshape the rwanda data to match the existing data
+names(rwFieldDat)
+
+# rename some variables that are too weird to easily be captured:
 
 
+# set up the varible names based on the season to which they refer:
+aSeason <- names(rw17bMerged)[grep("(1.a)", names(rw17bMerged))]
+bSeason <- names(rw17bMerged)[grep("(1.b)", names(rw17bMerged))]
+seasonalVars <- c(aSeason, bSeason, "sample_id") # basically just the plot level data
+farmerVars <- c(names(rw17bMerged)[!names(rw17bMerged) %in% seasonalVars], "sample_id")
 
+# check aDat for duplicates
+table(duplicated(rw17bMerged$sample_id))
+
+rw17bMerged[duplicated(rw17bMerged$sample_id) | duplicated(rw17bMerged$sample_id, fromLast = T), c("age_farmer", "district_17b")]
+
+rw17bMerged$dup <- duplicated(rw17bMerged$sample_id) | duplicated(rw17bMerged$sample_id, fromLast = T)
+
+rw17bMerged <- rw17bMerged %>%
+  filter(dup == FALSE) # it's crude but I'm just dropping duplicates to make this easier.
+
+# but then remove a variable that should be a demographic variable but that
+# snuck in due to formatting
+### something like:
+aDat <- rw17bMerged[,names(rw17bMerged) %in% seasonalVars] # works for this!
+
+aDat <- aDat[, !names(aDat) %in% c("client15b", "d_client17a", "d_client17b", "d_client18a")]
+# maybe do this differently?!
+
+#http://stackoverflow.com/questions/25925556/gather-multiple-sets-of-columns
+seasonalDat <- aDat %>%
+  gather(key, value, -sample_id) %>%
+  tidyr::extract(key, c("variable", "season"), "(^.*\\_1.)(.)") %>%
+  mutate(season = paste0("17", season)) %>%
+  mutate(variable = gsub("\\_17", "", variable),
+         variable = gsub("17", "", variable)) %>%
+  group_by_at(vars(-value)) %>%  # group by everything other than the value column. 
+  mutate(row_id=1:n()) %>% ungroup() %>% # this worked while rowid_to_column didn't
+  spread(variable, value) %>%
+  select(-c(row_id)) %>%
+  as.data.frame()
+
+# and then merge seasonal data reshape with the demographic data. This probably
+# could be done all at once but I'm doing this this way because it worked last
+# time
+
+dat17b <- left_join(seasonalDat, rw17bMerged[,c(names(rw17bMerged)[!names(rw17bMerged) %in% seasonalVars],"sample_id")], by="sample_id")
+
+names(rwFieldDat)
+names(dat17b)
+
+# okay, just go through and rename the variables until they match the existing data
+
+dat17b <- dat17b %>%
+  rename(d_compost = compost,
+         quality_compost = compost_qual,
+         type_compost = compost_type,
+         d_lime = lime,
+         fert_kg1 = kg_fert1,
+         fert_kg2 = kg_fert2)
+
+# look at matches
+names(rwFieldDat)[names(rwFieldDat) %in% names(dat17b)]
+
+# look at mismatches
+names(rwFieldDat)[!names(rwFieldDat) %in% names(dat17b)]
+
+# list names to be changed
+names(dat17b)[!names(dat17b) %in% names(rwFieldDat)]
 
 
 
