@@ -652,25 +652,6 @@ farmerVars <- c(names(r)[!names(r) %in% seasonalVars], "sample_id")
 ```
 
 ```{r}
-# example data
-# df <- data.frame(
-#   id = 1:10,
-#   time = as.Date('2009-01-01') + 0:9,
-#   Q3.2.1. = rnorm(10, 0, 1),
-#   Q3.2.2. = rnorm(10, 0, 1),
-#   Q3.2.3. = rnorm(10, 0, 1),
-#   Q3.3.1. = rnorm(10, 0, 1),
-#   Q3.3.2. = rnorm(10, 0, 1),
-#   Q3.3.3. = rnorm(10, 0, 1)
-# )
-# 
-# df %>%
-#   gather(key, value, -id, -time) %>%
-#   extract(key, c("question", "loop_number"), "(Q.\\..)\\.(.)") %>%
-#   spread(question, value)
-```
-
-```{r}
 
 # aDat <- r[,names(r) %in% aSeason] # works for this too!
 # aDat <- aDat[,grep("16a_1", names(aDat))] # works for this
