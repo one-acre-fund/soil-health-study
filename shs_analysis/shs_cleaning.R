@@ -605,7 +605,14 @@ names(rwFieldDat)
 aSeason <- names(rw17bMerged)[grep("(1.a)", names(rw17bMerged))]
 bSeason <- names(rw17bMerged)[grep("(1.b)", names(rw17bMerged))]
 seasonalVars <- c(aSeason, bSeason, "sample_id") # basically just the plot level data
-farmerVars <- c(names(rw17bMerged)[!names(rw17bMerged) %in% seasonalVars], "sample_id")
+
+nonSeasonalVars <- c("client15b", "d_client18a", "district_17b", "cell_input_17b",
+                     "cell_field_17b", "soil_field.field_area_17b", "soil_field.length_17b",
+                     "soil_field.width_17b", "soil_field.n_spots_17b", "d_plant_rows_slope_17b")
+
+seasonalVars <- seasonalVars[!seasonalVars %in% nonSeasonalVars]
+
+farmerVars <- c(names(rw17bMerged)[!names(rw17bMerged) %in% seasonalVars], nonSeasonalVars)
 
 # check aDat for duplicates
 table(duplicated(rw17bMerged$sample_id))
@@ -620,18 +627,27 @@ rw17bMerged <- rw17bMerged %>%
 # but then remove a variable that should be a demographic variable but that
 # snuck in due to formatting
 ### something like:
-aDat <- rw17bMerged[,names(rw17bMerged) %in% seasonalVars] # works for this!
+aDat <- rw17bMerged[,names(rw17bMerged) %in% seasonalVars] %>%
+  rename(d_client_17a = d_client17a, 
+         d_client_17b = d_client17b)
 
-aDat <- aDat[, !names(aDat) %in% c("client15b", "d_client17a", "d_client17b", "d_client18a")]
 # maybe do this differently?!
+
+
+# A and B season crop variables are not working the way I expect. Fix this.
+# remove the a_. and b_. which make those variables different when they shouldn't be.
+
 
 #http://stackoverflow.com/questions/25925556/gather-multiple-sets-of-columns
 seasonalDat <- aDat %>%
+  select(-sec_17b_.seed_maize_crop1_17b) %>% # remove this variable that is mostly blank anyway...
   gather(key, value, -sample_id) %>%
   tidyr::extract(key, c("variable", "season"), "(^.*\\_1.)(.)") %>%
   mutate(season = paste0("17", season)) %>%
   mutate(variable = gsub("\\_17", "", variable),
-         variable = gsub("17", "", variable)) %>%
+         variable = gsub("17", "", variable),
+         variable = gsub("^._\\.", "", variable),
+         variable = gsub("^sec._\\.", "", variable)) %>%
   group_by_at(vars(-value)) %>%  # group by everything other than the value column. 
   mutate(row_id=1:n()) %>% ungroup() %>% # this worked while rowid_to_column didn't
   spread(variable, value) %>%
@@ -644,7 +660,7 @@ seasonalDat <- aDat %>%
 
 dat17b <- left_join(seasonalDat, rw17bMerged[,c(names(rw17bMerged)[!names(rw17bMerged) %in% seasonalVars],"sample_id")], by="sample_id")
 
-names(rwFieldDat)
+names(rwFieldDat) <- tolower(names(rwFieldDat))
 names(dat17b)
 
 # okay, just go through and rename the variables until they match the existing data
@@ -655,7 +671,10 @@ dat17b <- dat17b %>%
          type_compost = compost_type,
          d_lime = lime,
          fert_kg1 = kg_fert1,
-         fert_kg2 = kg_fert2)
+         fert_kg2 = kg_fert2,
+         fert_type1 = fert1,
+         fert_type2 = fert2,
+         )
 
 # look at matches
 names(rwFieldDat)[names(rwFieldDat) %in% names(dat17b)]
