@@ -34,7 +34,8 @@ mergeIds <- read_xlsx(paste(soilDir, "Soil Sampling  Sample reception 2017  Samp
 
 ####### LOAD SOIL DATA FOR KENYA SHS 17 #######
 
-ke17soil <- readRDS("kenya_shs_17_soil_values_dw.rds")
+ke17soil <- readRDS("kenya_shs_17_soil_values_dw.rds") %>%
+  mutate_at(.funs = as.numeric, .vars = vars(Zinc:Hp, pH))
 
 ## check for right merge variable
 table(ke17soil$SSN %in% mergeIds$reception_barcode)
@@ -85,9 +86,6 @@ names(keDat17) <- gsub(thingsToRemove, "", names(keDat17))
 names(keDat17) <- tolower(names(keDat17))
 names(keDat17) <- gsub("\\_", ".", names(keDat17))
 
-keDat17 %>%
-  select(maincrop.yield.m, maincrop.yield.q)
-
 keDat17 <- keDat17 %>%
   rename(region = regionname,
          d_client = oaf,
@@ -112,25 +110,40 @@ keDat17 <- keDat17 %>%
          field.location = location,
          intercrop.seed.kgs = intercrop.seedkgs,
          intercrop.seed.type = intercrop.seedtype,
-         #yield = maincrop.maincrop.total.yield.in.kilograms, # make new variable
          harvestcomp.2016 = maincrop.yield.comparative,
          intercrop.harvestcomp = intercrop.yield.comparative,
          erosion = anti.erosion,
          intercrop = intercrop.intercrop,
          intercrop.specify = intercrop.specify.other.main.crop,
-         #intercrop.yield = intercrop.intercrop.yiedl, # same.
-         sample_id = soil.sample.id
+         sample_id = soil.sample.id,
+         district = districtname,
+         site = sitename,
+         phosphorus = phosphorous,
+         c.e.c = cec,
+         compost.kgs = compost
          ) %>%
   mutate_at(.funs = as.numeric, .vars = vars(maincrop.yield.q, intercrop.yield.q)) %>%
   mutate(season = 2017,
          yield = ifelse(maincrop.yield.m == "90kg", maincrop.yield.q * 90, 
                         ifelse(maincrop.yield.m == "50kg", maincrop.yield.q * 50,
                                ifelse(maincrop.yield.m == "100kg", maincrop.yield.q * 100, 
-                                      ifelse(maincrop.yield.m == "GG", maincrop.yield.q * 2.2, NA)))))
+                                      ifelse(maincrop.yield.m == "GG", maincrop.yield.q * 2.2, NA)))),
+         intercrop.yield = ifelse(intercrop.yield.m == "90kg", intercrop.yield.q * 90, 
+                                  ifelse(intercrop.yield.m == "50kg", intercrop.yield.q * 50,
+                                         ifelse(intercrop.yield.m == "100kg", intercrop.yield.q * 100, 
+                                                ifelse(intercrop.yield.m == "GG", intercrop.yield.q * 2.2, NA)))))
   
 
 # and now figure out how to match variable names as quickly as possible. 
 # I'll first weed out any variable names that already match and only focus on the remaining ones
+
+### rename some of the fieldDat soil variables
+fieldDat <- fieldDat %>%
+  setNames(gsub("x\\.", "", names(.))) %>%
+  rename(ec.salts = ec..salts.,
+         phosphorous.sorption.index.psi = phosphorus.sorption.inde.psi.)
+
+
 
 matchedNames <- names(keDat17)[names(keDat17) %in% names(fieldDat)]
 
@@ -139,9 +152,6 @@ focusVariables <- names(keDat17)[!names(keDat17) %in% matchedNames]
 
 names(fieldDat)[!names(fieldDat) %in% matchedNames]
 focusVariables
-
-## but then keep the keDat17$formid variable to try to match it.
-
 
 ## do some cleaning to make data ready to combine
 # these functions come from the ke_round_1.Rmd file
@@ -179,6 +189,7 @@ catEnumVals <- c("-99", "-88", "- 99", "-99.0", "88", "_88", "- 88", "0.88",
 ## !!! change the data slightly so that I'm only cleaning the variables I care about !!!
 ## okay, I've merged the variables that I can. I now need the soil data. I hope we have it!
 # subset the data so I can only append the columns that match.
+
 keDat17Append <- keDat17[, names(keDat17) %in% names(fieldDat)] 
 
 
@@ -205,7 +216,20 @@ repGraphs <- function(dat, x){
     )
 }
 
-catVarsToIgnore <- c("plot.location", "photo", "sample_id", "gps", "site")
+
+# change variables to numeric that should be numeric
+keDat17Append <- keDat17Append %>%
+  mutate_at(.funs = as.numeric, .vars = vars(d_client, oafid, age, respondent.gender, seasons.oaf,
+                                             cows, goats, chickens, pigs, sheep,
+                                             plot.size, seed.kgs, intercrop.seed.kgs,
+                                             dap.main, can.main, npk.main, urea.main,
+                                             dap.intercrop, can.intercrop, npk.intercrop,
+                                             urea.intercrop, lime.kgs, compost.kgs))
+
+
+
+
+catVarsToIgnore <- c("plot.location", "photo", "sample_id", "gps", "site", "oafid")
 catVarsToPlot <- identifyCatVars(keDat17Append)[!identifyCatVars(keDat17Append) %in% catVarsToIgnore]
 
 pdf(file = "ke17_shs_analysis_categorical_cleaning.pdf", width = 11, height = 8.5)
@@ -213,6 +237,7 @@ for(i in 1:length(catVarsToPlot)){
   repGraphs(keDat17Append, catVarsToPlot[i])
 }
 dev.off()
+
 
 # and then clean up issues
 keDat17Append <- keDat17Append %>%
@@ -299,18 +324,6 @@ keDat17Append <- keDat17Append %>%
     intercrop.urea.acre = m2ToAcres(urea.intercrop, plot.m2))
 
 
-# import and clean the most recent soil data
-#source("soil_values_access.R") # this pulls the right data from the dw
-
-names(keDat17Append)[grep("id", names(keDat17Append))] # find id var
-names(keDat17)[grep("case", names(keDat17))] # find case id var
-
-keDat17Append %>%
-  select(sample_id) %>%
-  sample_n(10)
-
-
-
 
 # then combine with fieldDat!!
 
@@ -320,6 +333,9 @@ fieldDat <- plyr::rbind.fill(fieldDat, keDat17Append)
 # then do some quick reality checking of the overall data set
 
 table(fieldDat$district)
+
+
+saveRDS(fieldDat, file = "cleaned_combined_fieldDat.rds")
 
 #################### RWANDA 17 CLEANING ################
 
