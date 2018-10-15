@@ -28,7 +28,7 @@ load("../ke_round_1/ke_r1_cleaned_combined.Rdata") # fieldDat
 
 soilDir <- normalizePath(file.path("..", "..", "..", "OAF Soil Lab Folder", "Projects", "ke_shs_17", "5_merged"))
 
-mergeIds <- read_xlsx(paste(soilDir, "soil_texture_results.xlsx", sep = "/")) %>%
+mergeIds <- read_xlsx(paste(soilDir, "Soil Sampling  Sample reception 2017  Sample reception 2017 2018-10-14.xlsx", sep = "/")) %>%
   mutate(reception_barcode = gsub("_", "", reception_barcode)) %>%
   as.data.frame()
 
@@ -49,27 +49,47 @@ source("../../oaflib/misc.R")
 
 
 # load the latest Kenya data to add to the existing data
-keDat17 <- read.csv("Kenya_2017_soil_health_study_data.csv", stringsAsFactors = F, na.strings = "---")
+keDat17 <- readxl::read_xlsx("Soil Sampling  Soil Sampling 2017  Soil Sampling 2017 2018-10-14.xlsx", na = "---", trim_ws = TRUE) %>%
+  as.data.frame()
 
+#test <- read.csv("Kenya_2017_soil_health_study_data.csv")
 
-# check that keDat17 has a variable that can merge with the mergeid data to link in soil data
-keDat17$formid <- gsub("-", "", keDat17$formid)
+table(keDat17$info.caseid %in% mergeIds$info.caseid) # okay, mostly there!
 
-# NO WAY TO MERGE SOIL AND SURVEY
-table(keDat17$formid %in% mergeIds$info.caseid)  
-head(keDat17$formid)
-head(mergeIds$info.caseid)
+keDat17[!keDat17$info.caseid %in% mergeIds$info.caseid,] # find what's not there
+
+#### GO AHEAD AND MERGE EVERYTHING BEFORE CLEANING
+
+# merge soil and merge id
+ke17SoilMatch <- left_join(ke17soil, mergeIds, by = c("SSN" = "reception_barcode"))
+
+## check soil and survey for duplicates
+table(duplicated(ke17SoilMatch$SSN)) ## << 5 duplicates
+
+## soil match duplicates
+dups <- duplicated(ke17SoilMatch$SSN) | duplicated(ke17SoilMatch$SSN, fromLast = TRUE)
+ke17SoilMatch[dups, ]
+
+# they truly are just duplicated so drop one version of it and move on.
+ke17SoilMatch <- ke17SoilMatch %>%
+  filter(!duplicated(ke17SoilMatch$SSN))
+
+# and then merge that with the main survey file << some duplicates. resolve
+keDat17 <- left_join(keDat17, ke17SoilMatch, by = "info.caseid")
 
 # update names to the fieldDat names
 names(fieldDat)
 
-thingsToRemove <- paste(c("form\\.consent_yes\\.", "demography\\.", "basic_information\\.", "field\\.", "plot_information\\.", "inputs\\.", "other_respondent_details\\.", "field_information\\.", "livestock\\."), collapse = "|")
+thingsToRemove <- paste(c("form\\.consent_yes\\.", "demography\\.", "basic_information\\.", "field\\.", "plot_information\\.", "inputs\\.", "other_respondent_details\\.", "field_information\\.", "livestock\\.", "id_base\\."), collapse = "|")
 names(keDat17) <- gsub(thingsToRemove, "", names(keDat17))
 names(keDat17) <- tolower(names(keDat17))
 names(keDat17) <- gsub("\\_", ".", names(keDat17))
 
+keDat17 %>%
+  select(maincrop.yield.m, maincrop.yield.q)
+
 keDat17 <- keDat17 %>%
-  rename(region = region.name,
+  rename(region = regionname,
          d_client = oaf,
          respondent.gender = gender,
          plot.size = field.size,
@@ -92,16 +112,21 @@ keDat17 <- keDat17 %>%
          field.location = location,
          intercrop.seed.kgs = intercrop.seedkgs,
          intercrop.seed.type = intercrop.seedtype,
-         yield = maincrop.maincrop.total.yield.in.kilograms,
+         #yield = maincrop.maincrop.total.yield.in.kilograms, # make new variable
          harvestcomp.2016 = maincrop.yield.comparative,
          intercrop.harvestcomp = intercrop.yield.comparative,
          erosion = anti.erosion,
          intercrop = intercrop.intercrop,
          intercrop.specify = intercrop.specify.other.main.crop,
-         intercrop.yield = intercrop.intercrop.yiedl,
+         #intercrop.yield = intercrop.intercrop.yiedl, # same.
          sample_id = soil.sample.id
          ) %>%
-  mutate(season = 2017)
+  mutate_at(.funs = as.numeric, .vars = vars(maincrop.yield.q, intercrop.yield.q)) %>%
+  mutate(season = 2017,
+         yield = ifelse(maincrop.yield.m == "90kg", maincrop.yield.q * 90, 
+                        ifelse(maincrop.yield.m == "50kg", maincrop.yield.q * 50,
+                               ifelse(maincrop.yield.m == "100kg", maincrop.yield.q * 100, 
+                                      ifelse(maincrop.yield.m == "GG", maincrop.yield.q * 2.2, NA)))))
   
 
 # and now figure out how to match variable names as quickly as possible. 
