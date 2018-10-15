@@ -555,6 +555,8 @@ names(rw17bMerged) <- gsub("ammend_17._\\.|farmer\\.|prim_17", "", names(rw17bMe
 
 names(rw17bMerged)[duplicated(names(rw17bMerged)) | duplicated(names(rw17bMerged), fromLast = T)]
 
+rw17bMerged <- rw17bMerged %>%
+  rename(kg_fert1_17b = kg_fert1_crop1_17b)
 
 ## and now reshape the rwanda data to match the existing data
 names(rwFieldDat)
@@ -569,7 +571,8 @@ seasonalVars <- c(aSeason, bSeason, "sample_id") # basically just the plot level
 
 nonSeasonalVars <- c("client15b", "d_client18a", "district_17b", "cell_input_17b",
                      "cell_field_17b", "soil_field.field_area_17b", "soil_field.length_17b",
-                     "soil_field.width_17b", "soil_field.n_spots_17b", "d_plant_rows_slope_17b")
+                     "soil_field.width_17b", "soil_field.n_spots_17b", "d_plant_rows_slope_17b",
+                     "n_types_crop_17b", "village_17b")
 
 seasonalVars <- seasonalVars[!seasonalVars %in% nonSeasonalVars]
 
@@ -601,7 +604,7 @@ aDat <- rw17bMerged[,names(rw17bMerged) %in% seasonalVars] %>%
 
 #http://stackoverflow.com/questions/25925556/gather-multiple-sets-of-columns
 seasonalDat <- aDat %>%
-  select(-sec_17b_.seed_maize_crop1_17b) %>% # remove this variable that is mostly blank anyway...
+  select(-c(sec_17b_.seed_maize_crop1_17b, sec_17a_.seed_maize_crop2_17b)) %>% # remove this variable that is mostly blank anyway...
   gather(key, value, -sample_id) %>%
   tidyr::extract(key, c("variable", "season"), "(^.*\\_1.)(.)") %>%
   mutate(season = paste0("17", season)) %>%
@@ -614,6 +617,10 @@ seasonalDat <- aDat %>%
   spread(variable, value) %>%
   select(-c(row_id)) %>%
   as.data.frame()
+
+# remove lines where there are 20 or more missing values
+test <- seasonalDat[rowSums(is.na(seasonalDat[ , 3:23])) < 20,]
+
 
 # and then merge seasonal data reshape with the demographic data. This probably
 # could be done all at once but I'm doing this this way because it worked last
