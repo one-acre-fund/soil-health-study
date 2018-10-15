@@ -555,45 +555,6 @@ names(rw17bMerged) <- gsub("ammend_17._\\.|farmer\\.|prim_17", "", names(rw17bMe
 
 names(rw17bMerged)[duplicated(names(rw17bMerged)) | duplicated(names(rw17bMerged), fromLast = T)]
 
-varsToUpdate <-  names(rw17bMerged)[grep("fert\\d|crop\\d", names(rw17bMerged))]
-
-# then use this vector to update these variable names efficiently rather than
-# typing them all out. So for all these variables add the right number to the end
-# and then update the portion in the middle.
-
-# this is tailored for this survey but should be more flexible. not sure how so
-# just going to keep it simple
-substrRight <- function(x, n){
-  substr(x, nchar(x)-n+1, nchar(x))
-  
-}
-
-# namesForReshape <- function(name){
-#   # this function needs to take the season and put it at the end if it's not
-#   # it might already be???
-#   options = paste(c(paste0("fert", 1:2), paste0("crop", 1:2)), collapse = "|")
-#   whichToUse = strapplyc(name, options, simplify = T)
-#   temp1 = sub(whichToUse, substr(whichToUse, 1, nchar(whichToUse)-1), name)
-#   # now take the last digit and put a _ before it and tack it on the end.
-#   tack = paste0("_", substrRight(whichToUse, 1))
-#   temp2 = paste0(temp1, tack)
-#   temp2 = gsub("\\.", "", temp2)
-#   return(temp2)
-#   
-# }
-
-#updatedVars <- do.call(c, lapply(list(varsToUpdate), function(x){namesForReshape(x)}))
-
-
-# ## and now actually update the names <<< UUUUUUUGGGGGGGHHH THIS TOOK TOO LONG.
-# # but just typing variable names is DUMB.
-# grepOptions <- paste(c(paste0("fert", 1:2), paste0("crop", 1:2)), collapse = "|")
-# for(i in 1:length(names(rw17bMerged))){
-#   if(grepl(grepOptions, names(rw17bMerged)[i])){
-#     names(rw17bMerged)[i] <- namesForReshape(names(rw17bMerged)[i])
-#   }
-# }
-
 
 ## and now reshape the rwanda data to match the existing data
 names(rwFieldDat)
