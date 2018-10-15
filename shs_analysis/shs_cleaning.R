@@ -55,14 +55,13 @@ keDat17 <- read.csv("Kenya_2017_soil_health_study_data.csv", stringsAsFactors = 
 # check that keDat17 has a variable that can merge with the mergeid data to link in soil data
 keDat17$formid <- gsub("-", "", keDat17$formid)
 
-
+# NO WAY TO MERGE SOIL AND SURVEY
 table(keDat17$formid %in% mergeIds$info.caseid)  
 head(keDat17$formid)
 head(mergeIds$info.caseid)
 
 # update names to the fieldDat names
 names(fieldDat)
-
 
 thingsToRemove <- paste(c("form\\.consent_yes\\.", "demography\\.", "basic_information\\.", "field\\.", "plot_information\\.", "inputs\\.", "other_respondent_details\\.", "field_information\\.", "livestock\\."), collapse = "|")
 names(keDat17) <- gsub(thingsToRemove, "", names(keDat17))
