@@ -370,7 +370,8 @@ rw17BMergeId <- read_xlsx(paste(rw17bSoilDir, "database.xlsx", sep = "/")) %>%
   setNames(make.names(tolower(names(.))))
 
 rw17bSoilValues <- readRDS("rwanda_shs_17b_soil_values_dw.rds") %>%
-  setNames(make.names(tolower(names(.))))
+  setNames(make.names(tolower(names(.)))) %>%
+  setNames(gsub("_", ".", names(.)))
 
 # make variables numeric that should be numeric
 rw17SoilVars <- c(names(rw17bSoilValues)[which(names(rw17bSoilValues)=="zinc"):
@@ -593,9 +594,9 @@ rw17bMerged <- rw17bMerged %>%
 ### something like:
 aDat <- rw17bMerged[,names(rw17bMerged) %in% seasonalVars] %>%
   rename(d_client_17a = d_client17a, 
-         d_client_17b = d_client17b)
-
-# maybe do this differently?!
+         d_client_17b = d_client17b,
+         sec_17a_.seed_maize_crop2_17a = sec_17a_.seed_maize_crop2_17b,
+         sec_17a_.crop2_yield_comparison_17a = sec_17a_.crop2_yield_comparison_17b)
 
 
 # A and B season crop variables are not working the way I expect. Fix this.
@@ -604,7 +605,7 @@ aDat <- rw17bMerged[,names(rw17bMerged) %in% seasonalVars] %>%
 
 #http://stackoverflow.com/questions/25925556/gather-multiple-sets-of-columns
 seasonalDat <- aDat %>%
-  select(-c(sec_17b_.seed_maize_crop1_17b, sec_17a_.seed_maize_crop2_17b)) %>% # remove this variable that is mostly blank anyway...
+  select(-c(sec_17a_.seed_maize_crop2_17a, sec_17b_.seed_maize_crop1_17b)) %>% # remove this variable that is mostly blank anyway...
   gather(key, value, -sample_id) %>%
   tidyr::extract(key, c("variable", "season"), "(^.*\\_1.)(.)") %>%
   mutate(season = paste0("17", season)) %>%
@@ -613,14 +614,21 @@ seasonalDat <- aDat %>%
          variable = gsub("^._\\.", "", variable),
          variable = gsub("^sec._\\.", "", variable)) %>%
   group_by_at(vars(-value)) %>%  # group by everything other than the value column. 
-  mutate(row_id=1:n()) %>% ungroup() %>% # this worked while rowid_to_column didn't
+  mutate(row_id=1:n()) %>% 
+  ungroup() %>% # this worked while rowid_to_column didn't
   spread(variable, value) %>%
   select(-c(row_id)) %>%
   as.data.frame()
 
+
 # remove lines where there are 20 or more missing values
 test <- seasonalDat[rowSums(is.na(seasonalDat[ , 3:23])) < 20,]
 
+# remove the third instance of each sample_id.. it's crude but I need to move forward.
+seasonalDat$n_ <- ave(seasonalDat$season, seasonalDat$sample_id, FUN = seq_along)
+
+seasonalDat <- seasonalDat %>%
+  filter(n_ != 3)
 
 # and then merge seasonal data reshape with the demographic data. This probably
 # could be done all at once but I'm doing this this way because it worked last
@@ -629,7 +637,12 @@ test <- seasonalDat[rowSums(is.na(seasonalDat[ , 3:23])) < 20,]
 dat17b <- left_join(seasonalDat, rw17bMerged[,c(names(rw17bMerged)[!names(rw17bMerged) %in% seasonalVars],"sample_id")], by="sample_id")
 
 names(rwFieldDat) <- tolower(names(rwFieldDat))
-names(dat17b)
+
+rwFieldDat <- rwFieldDat %>%
+  setNames(gsub("x\\.", "", names(.))) %>%
+  rename(phosphorous = phosphorus,
+         ec.salts = ec..salts.,
+         cec = c.e.c)
 
 # okay, just go through and rename the variables until they match the existing data
 
@@ -642,6 +655,22 @@ dat17b <- dat17b %>%
          fert_kg2 = kg_fert2,
          fert_type1 = fert1,
          fert_type2 = fert2,
+         kg_seed_1 = kg_seed_crop1,
+         kg_seed_2 = kg_seed_crop2,
+         kg_yield_1 = yield_crop1,
+         kg_yield_2 = yield_crop2,
+         age = age_farmer,
+         n_household = hh_n,
+         phosphorus.sorption.inde.psi. = phosphorous.sorption.index.psi,
+         field_width = soil_field.width_17b,
+         field_length = soil_field.length_17b,
+         how_use_residues = crop_residues,
+         enum_name = enumerator,
+         village = village_17b,
+         district = district_17b,
+         cell_field = cell_field_17b,
+         n_spots = soil_field.n_spots_17b,
+         field_erosion = anti_erosion_efforts
          )
 
 # look at matches
@@ -650,8 +679,12 @@ names(rwFieldDat)[names(rwFieldDat) %in% names(dat17b)]
 # look at mismatches
 names(rwFieldDat)[!names(rwFieldDat) %in% names(dat17b)]
 
+## these we don't need anymore because we collected them in previous seasons.
+
 # list names to be changed
 names(dat17b)[!names(dat17b) %in% names(rwFieldDat)]
+
+
 
 
 
