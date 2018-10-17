@@ -33,10 +33,9 @@ options(knitr.table.format = 'html')
 # change code chunk default to not show warnings or messages
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
-libs <- c("dplyr", "reshape2", "knitr", "ggplot2", "tibble", "readxl", 
-    "MASS", "gridExtra", "cowplot", "robustbase", "car", "RStata", "foreign",
-    "tidyr", "readxl", "stringr", "sp", "dismo", "leaflet", "XML", "ggmap", "knitr",
-    "MASS")
+libs <- c("tidyverse", "knitr", "readxl", 
+    "MASS", "gridExtra", "robustbase",
+    "sp", "dismo", "leaflet", "XML", "ggmap")
 lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F)
 
 #### define helpful functions
@@ -46,8 +45,10 @@ html_table_width <- function(kable_output, width) {
   sub("<table>", paste0("<table>\n", width_html), kable_output)
 }
 
-source("../oaflib/commcareExport.R")
-source("../oaflib/misc.R")
+source("../../oaflib/commcareExport.R")
+source("../../oaflib/misc.R")
+source("../../oaflib/plm.R")
+select <- dplyr::select
 ```
 
 # Background
@@ -61,18 +62,477 @@ Analyze the soil health study data.
 # Data
 ```{r}
 # load the latest kenya data from the cleaning file >> or maybe do the combining there.
-load()
+#source("shs_cleaning.R")
+
+keDat <- readRDS("ke_cleaned_combined_fieldDat.rds")
+rwDat <- readRDS("rw_cleaned_combined_fieldDat.rds")
 
 
 ```
 
 # Analysis
 
+## Check identifiers
+
+**It's hard to know where to draw the line between cleaning and analysis. I'm going to keep this code here even though it's technically additional data cleaning**
+
+
+Check that we're actually dealing with clients for which we have multiple records
+```{r}
+table(table(rwDat$sample_id)==5) 
+```
+
+So we have some clients for which we don't have 3 records, one for each survey. Find out what the deal is.
+
+```{r}
+table(table(rwDat$sample_id))
+```
+
+Hm. So the numbers less than 5 could be that we're just not finding people every year. But the 1s and 2s are particularly strange. Let's check those out. Here's a [helpful link](https://stackoverflow.com/questions/41875078/how-to-identify-indexes-of-elements-appearing-only-once-in-a-vector-in-r)
+
+```{r}
+singleSurvey <- names(which(table(rwDat$sample_id) == 1))
+
+rwDat %>%
+  filter(sample_id == singleSurvey)
+                     
+                     
+```
+
+Looks like this person was only surveyed in the first season. Okay. Check out the other seasons
+
+```{r}
+twoSurveys <- names(which(table(rwDat$sample_id) == 2))
+rwDat %>%
+  filter(sample_id %in% twoSurveys)
+```
+
+Okay, these are from the recent round but they don't have any previous surveys which is odd. We shouldn't be adding new farmers into the survey.  These can be dropped for simplicity. I can follow up with Eric and Cyprien to find out the issue but I'm just going to drop them for now.
+
+```{r}
+rwDat <- rwDat %>%
+  filter(!sample_id %in% twoSurveys)
+```
+
+```{r}
+fourSurveys <- names(which(table(rwDat$sample_id)==4))
+rwDat %>%
+  filter(sample_id %in% fourSurveys)
+```
+
+Okay. There are enough surveys in the 3 and 4 category that they're at least plausible from a data quality and survey strategy perspective. I'll leave them as they are.
+
 ## Surveys for which we don't have soil
 
 Check that there isn't something systematic in these surveys. If so, describe what it is.
 
+### Identifier variables
 
-# Output
+Create a record of how many farmers are joining and leaving Tubura between the baseline through the current survey round. These numbers only reflect the changes from the last round.
+
+```{r, eval=F}
+
+# Rwanda
+rwDat %>% 
+  dplyr::select(sample_id, season, d_client) %>%
+  group_by(sample_id) %>%
+  spread(., season, d_client) %>%
+  rename(
+    client15b = `15b`,
+    client16a = `16a`,
+    client16b = `16b`,
+    client17a = `17a`,
+    client17b = `17b`
+  ) %>%
+  mutate(
+    becameClient = ifelse(client15b==0 & (client16b==1 | client17b == 1), 1, 0),
+    becameControl = ifelse(client15b==1 & (client16b==0 | client17b == 0), 1, 0),
+    stayedClient = ifelse(client15b==1 & client16b==1 & client17b == 1, 1, 0),
+    stayedControl = ifelse(client15b==0 & client16b==0 & client17b == 0, 1, 0)
+  ) %>% 
+  ungroup() %>%
+  dplyr::summarize_at(
+    vars(contains("became"), contains("stayed")), funs(mean= mean(., na.rm=T))) %>% 
+  mutate_all(
+    funs(paste0(round(.,2)*100, "%"))
+  ) %>%
+  kable(caption="Movement in Sample", format='markdown')
+```
+
+```{r, eval=F}
+## Kenya
+keDat %>%
+  dplyr::select(sample_id, season, d_client) %>%
+  group_by(sample_id) %>%
+  spread(., season, d_client) %>%
+  rename(
+    client15 = `2015`,
+    client16 = `2016`
+  ) %>%
+  mutate(
+    becameClient = ifelse(client15==0 & client16==1, 1, 0),
+    becameControl = ifelse(client15==1 & client16==0, 1, 0),
+    stayedClient = ifelse(client15==1 & client16==1, 1, 0),
+    stayedControl = ifelse(client15==0 & client16==0, 1, 0)
+  ) %>% 
+  ungroup() %>%
+  dplyr::summarize_each(
+    funs(mean= mean(., na.rm=T)), -c(sample_id, client15, client16)
+  ) %>% 
+  mutate_each(
+    funs(paste0(round(.,2)*100, "%"))
+  ) %>%
+  kable(caption="Movement in Sample", format='markdown')
+
+
+```
+
+### Client count
+
+Using `fieldDat` to have 16a counts
+
+```{r, eval=F}
+clientCount <- function(dat){
+  dat %>% 
+    dplyr::select(sample_id, season, d_client) %>%
+    group_by(sample_id)
+    spread(., season, d_client) 
+}
+
+
+clientCount(keDat)
+
+clientCount <- rwDat %>% 
+  dplyr::select(sample_id, season, d_client) %>%
+  group_by(sample_id) %>%
+  spread(., season, d_client) %>%
+  rename(
+    client15b = `15b`,
+    client16a = `16a`,
+    client16b = `16b`
+  )
+
+
+clientCountTab <- cbind(
+  as.data.frame(table(clientCount$client15b)),
+  as.data.frame(table(clientCount$client16b)))
+
+clientCountTab <- clientCountTab[,-3]
+names(clientCountTab) <- c("Treatment", "Clients 15b", "Clients 16b")
+write.csv(clientCountTab, file=paste0("output/", "clientCountTab.csv"), row.names = F)
+```
+
+Subset of farmers that kept status for soil regression table. 
+TODO - decide if the analyses that follow need to be turned into functions or if it's sufficient to set the sample here and use that same sample going forward.
+
+```{r, eval=F}
+sameStatusVec <- soilDat %>%
+  dplyr::select(sample_id, season, d_client) %>%
+  group_by(sample_id) %>%
+  spread(., season, d_client) %>%
+  as.data.frame() %>%
+  mutate(
+    same = ifelse(`15b`==`16b`, 1, 0)
+  ) %>%
+  filter(same==1)
+
+sameStatus <- soilDat[soilDat$sample_id %in% sameStatusVec$sample_id,]
+sameStatusCount <- table(sameStatus$d_client)/2
+write.csv(sameStatusCount, file="output/sameStatusCount.csv")
+#sameStatusfs <- soilDat[soilDat$sample_id %in% sameStatusVec$sample_id,] #
+```
+
+## Soil summary
+
+### Initial soil graphs
+
+These graphs are a peek at how soil parameter averages and differences look between treatment and control farmers using both baseline and round 1 values. **This is a preliminary rough look**. Next steps include:
+
+* Confirming client assignment and clarifying status
+* Additional cleaning of soil variables
+  + reconcile using IQR or SD method for adjusting data
+* Matching of clients to derive a more causal look at client effects on soil parameters.
+
+[Helpful code for putting the graphics together](https://github.com/tidyverse/ggplot2/wiki/Mixing-ggplot2-graphs-with-other-graphical-output)
+
+### Soil means and diffs
+
+TODO: Clean soil data here once Step and Patrick have some feedback regarding what are reasonable and unreasonable values.
+
+`soilOut` has common modifications. All resulting soil outcomes are made using that. Soil outcomes are named `soilOut.outcome_name`. This uses only farmers that have the same treatment status in 15b and 16b
+
+```{r, eval=F}
+soilOut <- soilDat %>% 
+  filter(soilDat$sample_id %in% sameStatusVec$sample_id) %>%
+  mutate(
+  measure = ifelse(season=="15b", 1, 
+                   ifelse(season=="16b", 2,NA))
+) %>% arrange(measure) %>%
+  as.data.frame()
+
+soilOut.Mean <- soilOut %>%
+  group_by(sample_id) %>%
+  summarize_each(
+    funs(mean(., na.rm=T)), -c(SSN, season, sample_id, measure, d_client)
+  ) %>% 
+  ungroup() %>% 
+  as.data.frame() %>%
+  rename_(.dots = setNames(names(.), gsub("X\\.|\\.", "", names(.))))
+
+# find a way to fit this into piping
+names(soilOut.Mean)[2:19] <- paste0(names(soilOut.Mean)[2:19], ".mean")
+
+# 0s are when we have only one observation
+soilOut.Diff <- soilOut %>%
+  group_by(sample_id) %>%
+  # summarise_each(
+  #   funs(if_else(length(.)==2, diff(x), .)), -c(SSN, season, sample_id, measure)
+  # ) %>% ungroup() %>% as.data.frame()
+  mutate_each(
+    funs(. - lag(., default=first(.))), -c(SSN, season, sample_id, measure, d_client)
+  ) %>%
+  filter(measure==2) %>%
+  as.data.frame() %>%
+  rename_(.dots = setNames(names(.), gsub("X\\.|\\.", "", names(.))))
+
+# find a way to fit this into piping
+names(soilOut.Diff)[1:18] <- paste0(names(soilOut.Diff)[1:18], ".diff")
+
+
+# gather soil outcomes to merge back together
+#soilTrans <- list(ls()[grep("soilOut.", ls())])
+
+soilMerge <- merge(soilOut.Mean, soilOut.Diff,by="sample_id")
+
+
+library(tidyr)
+library(RGraphics)
+soilGraph <- soilMerge %>%
+  gather(variable, value, -c(SSN, sample_id, measure, season, d_client)) %>%
+  separate(variable, c("soilChar", "type"), sep="\\.")
+
+for(i in 1:length(unique(soilGraph$soilChar))){
+  for(j in 1:length(unique(soilGraph$type))){
+    
+    temp <- soilGraph %>% 
+      filter(soilChar==unique(soilGraph$soilChar)[i] & soilGraph$type==unique(soilGraph$type)[j]) %>%
+      mutate(
+        value = ifelse(is.infinite(value), NA, value)
+      )
+    
+    
+     gph = ggplot(temp, aes(x = d_client, y=value)) + 
+       geom_boxplot() + 
+       labs(title = paste("NON-MATCHED PRELIM -", unique(soilGraph$soilChar)[i], unique(soilGraph$type)[j], sep=" "), x = "Treatment v. Control", y=unique(soilGraph$soilChar)[i])
+    
+    
+    
+      tab = tableGrob(
+        aggregate(temp$value, by=list(temp$d_client), function(x){
+        paste(round(mean(x, na.rm=T),2), " (", round(sd(x,na.rm=T),2), ")", sep="")
+          }),
+        cols = c("Treatment", "Mean (sd)"))
+      
+
+      grid.arrange(gph, tab, ncol=2, top=paste("NON-MATCHED PRELIM -", unique(temp$soilChar), unique(temp$type), sep=" "))
+
+  }
+}
+
+
+```
+
+### Soil summary table
+
+**Note**: This table is preliminary and does not reflect values ready for interpretation (6/19). This uses **all farmers**.
+
+```{r, eval=F}
+tabOut <- do.call(rbind, lapply(split(soilGraph, list(soilGraph$type, soilGraph$soilChar)), function(x){
+  
+  x <- x %>% mutate(
+   value = ifelse(is.infinite(value), NA, value) 
+  )
+  
+  temp = aggregate(x$value, by=list(x$d_client), FUN=mean, na.rm=T)
+  pval = round(wilcox.test(value ~ d_client, data=x)$p.value,3)
+  Tmean = round(temp$x[2], 2)
+  Cmean = round(temp$x[1], 2)
+  
+  output = data.frame(cat = paste0(unique(x$soilChar), " - ", unique(x$type)), Cmean, Tmean, pval)
+  return(output)
+  
+}))
+
+tabOut <- tabOut %>% 
+  mutate(pval.adj = round(p.adjust(pval, "fdr"),3)) %>%
+  arrange(pval.adj)
+
+kable(tabOut, format='markdown', row.names = F, col.names = c("Outcome", "Control mean", "OAF mean", "p-value", "adj. p-value"))
+```
+
+### Longitudinal soil graphs
+
+```{r, eval=F}
+soilLineGraph <- soilOut %>%
+  group_by(d_client, season) %>%
+  summarize_each(
+    funs(mean(., na.rm=T)), -c(SSN, sample_id)
+  ) %>%
+  gather(variable, value, -c(season, d_client)) %>%
+  filter(variable %in% keySoilVars)
+  
+pdf(file=paste("output/", "key soil vars - longitudinal.pdf", sep = ""), width=11, height=8.5)
+for(i in 1:length(keySoilVars)){
+    print(ggplot(subset(soilLineGraph, soilLineGraph$variable==keySoilVars[i]), aes(x = season, y = value, group=d_client, color=d_client)) + 
+      geom_line() +
+      labs(title=paste(keySoilVars[i], "over time by client status - same only", sep= " "),
+          x= "Season", y=keySoilVars[i], color="Treatment")
+    )
+  makeFootnote(footnote)
+    
+}
+dev.off()
+```
+
+Here is the table in section 1 of the report. 
+
+```{r, eval=F}
+soilLineGraph %>%
+  spread(season, value) %>%
+  arrange(variable) %>%
+  rename(
+    year1 = `15b`,
+    year2 = `16b`
+  ) %>%
+  mutate_if(
+    is.numeric, funs(round(.,3))
+  ) %>% 
+  write.csv(., file="output/sumTab1.csv")
+
+```
+
+
+### Regressions
+
+See [sketch of SHS report](https://docs.google.com/document/d/1koNsKzx97_3rpkGeJI6PnPdYNMdV9q4e-cPQxAWDeDk/edit).  Remember that `sameStatus` are the farmers that kept their status between baseline and endline. The two models of interest are:
+
+* Individual fixed effects account for things specicic to farmer that don't change over time
+* can control for unobserved sources of heterogeneity over time, very sensitive to model 
+* add in other data points that do change over time
+* so add in things that change over time that plausibly affect our outcome
+* fertilizer and seed use are synoymous with being a client or not, highly endogenous
+* run two regs
+ + one with oaf 
+ + one with oaf and fertilizer
+* things like slope are collinear
+* individual fixed effects makes more sense than using PSM now that we have multiple years.
+* means by directional changes
+* papers using fixed effects by miguel on whether changes to rural to urban areas and income
+
+[Helpful link](https://www.r-bloggers.com/how-to-go-parallel-in-r-basics-tips/) for executing code in parallel
+
+```{r}
+keySoilVars <- c("ph", "calcium", "total.nitrogen", "organic.carbon")
+```
+
+
+```{r}
+clustered_standard_errors <- function(dep.var, controls, dataset, id, returnconfit) {
+  
+  dep.var.col <- eval(as.name(dep.var), dataset)
+  id.col <- eval(as.name(id), dataset)
+  
+  reg.formula <- as.formula(paste("dep.var.col ~ ", paste(controls, collapse="+"), sep = ""))
+  
+  reg <- lm(reg.formula, data=dataset)
+  reg.covs <- cluster.vcov(reg, id.col)
+  reg.clustered.errors <- coeftest(reg, reg.covs)
+  
+  # conf interval
+  t<-qt(.90, reg$df.residual) # .90 level
+  ct <- coeftest(reg, reg.covs)
+  est<-cbind(ct[,1], ct[,1]-t*ct[,2], ct[,1]+t*ct[,2])
+  colnames(est)<-c("Estimate","LowerCI","UpperCI")
+
+  if (returnconfit == TRUE) {
+    
+    return(est)
+    
+  }
+  
+  return(reg.clustered.errors)
+  
+}
+```
+
+
+```{r}
+keDat <- keDat %>% mutate(age2 = age^2)
+
+
+indFeList <- list("as.factor(d_client)", 
+                  c("as.factor(d_client)", "as.factor(sample_id)"),
+                  c("as.factor(d_client)", "as.factor(sample_id)", "as.factor(season)"),
+                  c("as.factor(d_client)", "as.factor(sample_id)", "as.factor(season)", "age", "age2"))
+
+
+# run this in parallel to speed up the process
+# load the data and variables and packages into the cluster
+regFile <- "regFile_through2017.RData"
+#forceUpdate <- forceUpdateAll
+if(!file.exists(regFile) || forceUpdate) {
+library(parallel)
+no_cores <- detectCores() - 1
+
+cl <- makeCluster(no_cores, type="FORK")
+clusterEvalQ(cl, "plm")
+clusterExport(cl, "keDat")
+clusterExport(cl, "keySoilVars")
+clusterExport(cl, "indFeList")
+
+indFeLoop <- parLapply(cl, indFeList, function(mod){
+  lapply(keySoilVars, function(outcome){
+    form = lm(reformulate(termlabels = mod, response = outcome), data=keDat)
+    
+    pdf(file=paste("output/ke2017/", paste0(outcome, paste(mod, collapse = "")), ".pdf", sep = "")) 
+    print(plot(form))
+    dev.off()
+    
+    form = plm(form, c("sample_id", "age", "age2"))
+    
+    rownames(form) = paste(rownames(form), outcome, sep = " ")
+    return(form)
+  })
+  
+})
+stopCluster(cl)
+save(indFeLoop, file=regFile)
+} else {
+  load("regFile.RData")
+}
+```
+
+And combine model outputs into tables for each model
+
+```{r}
+modExport <- lapply(indFeLoop, function(models){
+  do.call(rbind, models)
+})
+
+for(i in 1:length(modExport)){
+  write.csv(modExport[i], file=paste0("output/ke2017/","regOutput_", i, ".csv"), row.names = T)
+}
+
+```
+
+In the individual fixed effect model above, the naive model would only include a client indicator and individual fixed effects. If we add season, we lose significance on almost everything. I'd guess that as we add more likely controls we additionally lose signficance. I've included age and age squared along the lines of [Hicks et.al](http://www.nber.org/papers/w23253).
+
+
+```{r}
+finalModel <- modExport[4]
+
+kable(finalModel, format="markdown")
+write.csv(finalModel, file="output/ke2017/indFe_ke2017.csv")
+```
 
 # Appendix
