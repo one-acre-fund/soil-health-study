@@ -435,36 +435,7 @@ See [sketch of SHS report](https://docs.google.com/document/d/1koNsKzx97_3rpkGeJ
 keySoilVars <- c("ph", "calcium", "total.nitrogen", "organic.carbon")
 ```
 
-
-```{r}
-clustered_standard_errors <- function(dep.var, controls, dataset, id, returnconfit) {
-  
-  dep.var.col <- eval(as.name(dep.var), dataset)
-  id.col <- eval(as.name(id), dataset)
-  
-  reg.formula <- as.formula(paste("dep.var.col ~ ", paste(controls, collapse="+"), sep = ""))
-  
-  reg <- lm(reg.formula, data=dataset)
-  reg.covs <- cluster.vcov(reg, id.col)
-  reg.clustered.errors <- coeftest(reg, reg.covs)
-  
-  # conf interval
-  t<-qt(.90, reg$df.residual) # .90 level
-  ct <- coeftest(reg, reg.covs)
-  est<-cbind(ct[,1], ct[,1]-t*ct[,2], ct[,1]+t*ct[,2])
-  colnames(est)<-c("Estimate","LowerCI","UpperCI")
-
-  if (returnconfit == TRUE) {
-    
-    return(est)
-    
-  }
-  
-  return(reg.clustered.errors)
-  
-}
-```
-
+#### Kenya models
 
 ```{r}
 keDat <- keDat %>% mutate(age2 = age^2)
@@ -478,9 +449,9 @@ indFeList <- list("as.factor(d_client)",
 
 # run this in parallel to speed up the process
 # load the data and variables and packages into the cluster
-regFile <- "regFile_through2017.RData"
+regFileKe <- "regFile_through2017.RData"
 #forceUpdate <- forceUpdateAll
-if(!file.exists(regFile) || forceUpdate) {
+if(!file.exists(regFileKe) || forceUpdate) {
 library(parallel)
 no_cores <- detectCores() - 1
 
@@ -490,7 +461,7 @@ clusterExport(cl, "keDat")
 clusterExport(cl, "keySoilVars")
 clusterExport(cl, "indFeList")
 
-indFeLoop <- parLapply(cl, indFeList, function(mod){
+indFeLoopKe <- parLapply(cl, indFeList, function(mod){
   lapply(keySoilVars, function(outcome){
     form = lm(reformulate(termlabels = mod, response = outcome), data=keDat)
     
@@ -506,21 +477,21 @@ indFeLoop <- parLapply(cl, indFeList, function(mod){
   
 })
 stopCluster(cl)
-save(indFeLoop, file=regFile)
+save(indFeLoopKe, file=regFileKe)
 } else {
-  load("regFile.RData")
+  load("regFileKe.RData")
 }
 ```
 
 And combine model outputs into tables for each model
 
 ```{r}
-modExport <- lapply(indFeLoop, function(models){
+modExportKe <- lapply(indFeLoopKe, function(models){
   do.call(rbind, models)
 })
 
-for(i in 1:length(modExport)){
-  write.csv(modExport[i], file=paste0("output/ke2017/","regOutput_", i, ".csv"), row.names = T)
+for(i in 1:length(modExportKe)){
+  write.csv(modExportKe[i], file=paste0("output/ke2017/","regOutput_", i, ".csv"), row.names = T)
 }
 
 ```
@@ -529,10 +500,85 @@ In the individual fixed effect model above, the naive model would only include a
 
 
 ```{r}
-finalModel <- modExport[4]
+finalModelKe <- modExportKe[4]
 
-kable(finalModel, format="markdown")
-write.csv(finalModel, file="output/ke2017/indFe_ke2017.csv")
+kable(finalModelKe, format="markdown")
+write.csv(finalModelKe, file="output/ke2017/indFe_ke2017.csv")
+```
+
+
+#### Rwanda models
+
+
+```{r}
+rwDat <- rwDat %>% mutate(age2 = age^2)
+
+
+indFeList <- list("as.factor(d_client)", 
+                  c("as.factor(d_client)", "as.factor(sample_id)"),
+                  c("as.factor(d_client)", "as.factor(sample_id)", "as.factor(season)"),
+                  c("as.factor(d_client)", "as.factor(sample_id)", "as.factor(season)", "age", "age2"))
+
+
+# run this in parallel to speed up the process
+# load the data and variables and packages into the cluster
+regFileRw <- "regFile_through2017b.RData"
+#forceUpdate <- forceUpdateAll
+if(!file.exists(regFileRw) || forceUpdate) {
+library(parallel)
+no_cores <- detectCores() - 1
+
+cl <- makeCluster(no_cores, type="FORK")
+clusterEvalQ(cl, "plm")
+clusterExport(cl, "rwDat")
+clusterExport(cl, "keySoilVars")
+clusterExport(cl, "indFeList")
+
+indFeLoopRw <- parLapply(cl, indFeList, function(mod){
+  lapply(keySoilVars, function(outcome){
+    form = lm(reformulate(termlabels = mod, response = outcome), data=rwDat)
+    
+    pdf(file=paste("output/rw2017b/", paste0(outcome, paste(mod, collapse = "")), ".pdf", sep = "")) 
+    print(plot(form))
+    dev.off()
+    
+    form = plm(form, c("sample_id", "age", "age2"))
+    
+    rownames(form) = paste(rownames(form), outcome, sep = " ")
+    return(form)
+  })
+  
+})
+stopCluster(cl)
+save(indFeLoopRw, file=regFileRw)
+} else {
+  load("regFileRw.RData")
+}
+```
+
+And combine model outputs into tables for each model
+
+```{r}
+modExportRw <- lapply(indFeLoopRw, function(models){
+  do.call(rbind, models)
+})
+
+for(i in 1:length(modExportRw)){
+  write.csv(modExportRw[i], file=paste0("output/rw2017b/","regOutput_", i, ".csv"), row.names = T)
+}
+
+```
+
+In the individual fixed effect model above, the naive model would only include a client indicator and individual fixed effects. If we add season, we lose significance on almost everything. I'd guess that as we add more likely controls we additionally lose signficance. I've included age and age squared along the lines of [Hicks et.al](http://www.nber.org/papers/w23253).
+
+
+```{r}
+finalModelRw <- modExportRw[4]
+
+kable(finalModelRw, format="markdown")
+write.csv(finalModelRw, file="output/rw2017b/indFe_rw2017.csv")
 ```
 
 # Appendix
+
+Nothing to see here
