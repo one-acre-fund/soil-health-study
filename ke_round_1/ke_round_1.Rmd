@@ -619,7 +619,6 @@ bUpdate <- b %>% rename(
 # helper to know what else needs to be changed
 names(d)[!names(d) %in% names(bUpdate)]
 names(bUpdate)[!names(bUpdate) %in% names(d)]
-
 ```
 
 The variables that remain to be aligned are the soil variables and any resulting calulations such as fertilizer per acre. These caculations can be redone once the data is combined.

@@ -9,7 +9,7 @@ rm(list = ls())
 cat("\014")
 
 
-## load libraries
+#### load libraries  ####
 
 # dplyr is for working with tables
 # reshape is for easy table transformation
@@ -335,7 +335,7 @@ fieldDat <- plyr::rbind.fill(fieldDat, keDat17Append)
 table(fieldDat$district)
 
 
-saveRDS(fieldDat, file = "cleaned_combined_fieldDat.rds")
+saveRDS(fieldDat, file = "ke_cleaned_combined_fieldDat.rds")
 
 #################### RWANDA 17 CLEANING ################
 
@@ -683,6 +683,22 @@ names(rwFieldDat)[!names(rwFieldDat) %in% names(dat17b)]
 
 # list names to be changed
 names(dat17b)[!names(dat17b) %in% names(rwFieldDat)]
+
+
+#### truncate dat17b to only the variables shared with rwFieldDat
+dat17b <- dat17b %>%
+  select(one_of(names(.)[names(.) %in% names(rwFieldDat)]))
+
+##### Append rwanda data ####
+
+rwFieldDat <- plyr::rbind.fill(rwFieldDat, dat17b)
+
+## final touches
+rwFieldDat <- rwFieldDat %>%
+  mutate(sample_id = tolower(sample_id))
+
+## and then save result
+saveRDS(rwFieldDat, file = "rw_cleaned_combined_fieldDat.rds")
 
 
 
