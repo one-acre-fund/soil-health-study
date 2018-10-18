@@ -128,64 +128,24 @@ Okay. There are enough surveys in the 3 and 4 category that they're at least pla
 
 Check that there isn't something systematic in these surveys. If so, describe what it is.
 
-### Identifier variables
+### Attrition analysis for appendix
 
 Create a record of how many farmers are joining and leaving Tubura between the baseline through the current survey round. These numbers only reflect the changes from the last round.
 
-```{r, eval=F}
+```{r}
+clientCount <- function(dat){
+  # this assumes season, d_client, and sample_id remain the names of 
+  # the key variables. They should for the data to match.
+  return(dat %>%
+    filter(!is.na(d_client)) %>%
+    group_by(season, d_client) %>%
+    summarize(countClient = length(unique(sample_id))))
+  
+}
 
-# Rwanda
-rwDat %>% 
-  dplyr::select(sample_id, season, d_client) %>%
-  group_by(sample_id) %>%
-  spread(., season, d_client) %>%
-  rename(
-    client15b = `15b`,
-    client16a = `16a`,
-    client16b = `16b`,
-    client17a = `17a`,
-    client17b = `17b`
-  ) %>%
-  mutate(
-    becameClient = ifelse(client15b==0 & (client16b==1 | client17b == 1), 1, 0),
-    becameControl = ifelse(client15b==1 & (client16b==0 | client17b == 0), 1, 0),
-    stayedClient = ifelse(client15b==1 & client16b==1 & client17b == 1, 1, 0),
-    stayedControl = ifelse(client15b==0 & client16b==0 & client17b == 0, 1, 0)
-  ) %>% 
-  ungroup() %>%
-  dplyr::summarize_at(
-    vars(contains("became"), contains("stayed")), funs(mean= mean(., na.rm=T))) %>% 
-  mutate_all(
-    funs(paste0(round(.,2)*100, "%"))
-  ) %>%
-  kable(caption="Movement in Sample", format='markdown')
-```
+clientCount(rwDat)
 
-```{r, eval=F}
-## Kenya
-keDat %>%
-  dplyr::select(sample_id, season, d_client) %>%
-  group_by(sample_id) %>%
-  spread(., season, d_client) %>%
-  rename(
-    client15 = `2015`,
-    client16 = `2016`
-  ) %>%
-  mutate(
-    becameClient = ifelse(client15==0 & client16==1, 1, 0),
-    becameControl = ifelse(client15==1 & client16==0, 1, 0),
-    stayedClient = ifelse(client15==1 & client16==1, 1, 0),
-    stayedControl = ifelse(client15==0 & client16==0, 1, 0)
-  ) %>% 
-  ungroup() %>%
-  dplyr::summarize_each(
-    funs(mean= mean(., na.rm=T)), -c(sample_id, client15, client16)
-  ) %>% 
-  mutate_each(
-    funs(paste0(round(.,2)*100, "%"))
-  ) %>%
-  kable(caption="Movement in Sample", format='markdown')
-
+clientCount(keDat)
 
 ```
 
