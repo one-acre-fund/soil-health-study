@@ -149,40 +149,7 @@ clientCount(keDat)
 
 ```
 
-### Client count
 
-Using `fieldDat` to have 16a counts
-
-```{r, eval=F}
-clientCount <- function(dat){
-  dat %>% 
-    dplyr::select(sample_id, season, d_client) %>%
-    group_by(sample_id)
-    spread(., season, d_client) 
-}
-
-
-clientCount(keDat)
-
-clientCount <- rwDat %>% 
-  dplyr::select(sample_id, season, d_client) %>%
-  group_by(sample_id) %>%
-  spread(., season, d_client) %>%
-  rename(
-    client15b = `15b`,
-    client16a = `16a`,
-    client16b = `16b`
-  )
-
-
-clientCountTab <- cbind(
-  as.data.frame(table(clientCount$client15b)),
-  as.data.frame(table(clientCount$client16b)))
-
-clientCountTab <- clientCountTab[,-3]
-names(clientCountTab) <- c("Treatment", "Clients 15b", "Clients 16b")
-write.csv(clientCountTab, file=paste0("output/", "clientCountTab.csv"), row.names = F)
-```
 
 Subset of farmers that kept status for soil regression table. 
 TODO - decide if the analyses that follow need to be turned into functions or if it's sufficient to set the sample here and use that same sample going forward.
