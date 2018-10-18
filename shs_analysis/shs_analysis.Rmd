@@ -49,6 +49,8 @@ source("../../oaflib/commcareExport.R")
 source("../../oaflib/misc.R")
 source("../../oaflib/plm.R")
 select <- dplyr::select
+
+forceUpdateAll <- FALSE
 ```
 
 # Background
@@ -416,18 +418,18 @@ soilLineGraph %>%
 
 See [sketch of SHS report](https://docs.google.com/document/d/1koNsKzx97_3rpkGeJI6PnPdYNMdV9q4e-cPQxAWDeDk/edit).  Remember that `sameStatus` are the farmers that kept their status between baseline and endline. The two models of interest are:
 
-* Individual fixed effects account for things specicic to farmer that don't change over time
+* Individual fixed effects account for things specific to farmer that don't change over time
 * can control for unobserved sources of heterogeneity over time, very sensitive to model 
 * add in other data points that do change over time
 * so add in things that change over time that plausibly affect our outcome
-* fertilizer and seed use are synoymous with being a client or not, highly endogenous
+* fertilizer and seed use are synonymous with being a client or not, highly endogenous
 * run two regs
  + one with oaf 
  + one with oaf and fertilizer
 * things like slope are collinear
 * individual fixed effects makes more sense than using PSM now that we have multiple years.
 * means by directional changes
-* papers using fixed effects by miguel on whether changes to rural to urban areas and income
+* papers using fixed effects by Miguel on whether changes to rural to urban areas and income
 
 [Helpful link](https://www.r-bloggers.com/how-to-go-parallel-in-r-basics-tips/) for executing code in parallel
 
@@ -450,7 +452,8 @@ indFeList <- list("as.factor(d_client)",
 # run this in parallel to speed up the process
 # load the data and variables and packages into the cluster
 regFileKe <- "regFile_through2017.RData"
-#forceUpdate <- forceUpdateAll
+forceUpdate <- forceUpdateAll
+
 if(!file.exists(regFileKe) || forceUpdate) {
 library(parallel)
 no_cores <- detectCores() - 1
@@ -479,7 +482,7 @@ indFeLoopKe <- parLapply(cl, indFeList, function(mod){
 stopCluster(cl)
 save(indFeLoopKe, file=regFileKe)
 } else {
-  load("regFileKe.RData")
+  load(regFileKe)
 }
 ```
 
@@ -496,7 +499,7 @@ for(i in 1:length(modExportKe)){
 
 ```
 
-In the individual fixed effect model above, the naive model would only include a client indicator and individual fixed effects. If we add season, we lose significance on almost everything. I'd guess that as we add more likely controls we additionally lose signficance. I've included age and age squared along the lines of [Hicks et.al](http://www.nber.org/papers/w23253).
+In the individual fixed effect model above, the naive model would only include a client indicator and individual fixed effects. If we add season, we lose significance on almost everything. I'd guess that as we add more likely controls we additionally lose significance. I've included age and age squared along the lines of [Hicks et.al](http://www.nber.org/papers/w23253).
 
 
 ```{r}
@@ -509,11 +512,19 @@ write.csv(finalModelKe, file="output/ke2017/indFe_ke2017.csv")
 
 #### Rwanda models
 
+The parallel model wasn't running for some reason so I'm just going to run the one model I really want to look at and save those results.
+
 
 ```{r}
 rwDat <- rwDat %>% mutate(age2 = age^2)
 
+rwDat <- do.call(data.frame,lapply(rwDat, function(x){ 
+  replace(x, is.infinite(x),NA)
+  }))
 
+```
+
+```{r, eval=F}
 indFeList <- list("as.factor(d_client)", 
                   c("as.factor(d_client)", "as.factor(sample_id)"),
                   c("as.factor(d_client)", "as.factor(sample_id)", "as.factor(season)"),
@@ -524,6 +535,7 @@ indFeList <- list("as.factor(d_client)",
 # load the data and variables and packages into the cluster
 regFileRw <- "regFile_through2017b.RData"
 #forceUpdate <- forceUpdateAll
+
 if(!file.exists(regFileRw) || forceUpdate) {
 library(parallel)
 no_cores <- detectCores() - 1
@@ -536,6 +548,7 @@ clusterExport(cl, "indFeList")
 
 indFeLoopRw <- parLapply(cl, indFeList, function(mod){
   lapply(keySoilVars, function(outcome){
+    
     form = lm(reformulate(termlabels = mod, response = outcome), data=rwDat)
     
     pdf(file=paste("output/rw2017b/", paste0(outcome, paste(mod, collapse = "")), ".pdf", sep = "")) 
@@ -552,13 +565,9 @@ indFeLoopRw <- parLapply(cl, indFeList, function(mod){
 stopCluster(cl)
 save(indFeLoopRw, file=regFileRw)
 } else {
-  load("regFileRw.RData")
+  load(regFileRw)
 }
-```
 
-And combine model outputs into tables for each model
-
-```{r}
 modExportRw <- lapply(indFeLoopRw, function(models){
   do.call(rbind, models)
 })
@@ -567,17 +576,36 @@ for(i in 1:length(modExportRw)){
   write.csv(modExportRw[i], file=paste0("output/rw2017b/","regOutput_", i, ".csv"), row.names = T)
 }
 
-```
-
-In the individual fixed effect model above, the naive model would only include a client indicator and individual fixed effects. If we add season, we lose significance on almost everything. I'd guess that as we add more likely controls we additionally lose signficance. I've included age and age squared along the lines of [Hicks et.al](http://www.nber.org/papers/w23253).
-
-
-```{r}
 finalModelRw <- modExportRw[4]
 
 kable(finalModelRw, format="markdown")
 write.csv(finalModelRw, file="output/rw2017b/indFe_rw2017.csv")
 ```
+
+And instead just run the one regression I really want to look at:
+
+```{r}
+rwDat %>%
+  filter(!is.na(d_client)) %>%
+  select(one_of(keySoilVars), d_client, sample_id, season, age, age2) %>%
+  summarize_all(.funs = funs(sum(is.infinite(.))))
+```
+
+
+```{r}
+# not missing clients
+
+keyModel <- lapply(keySoilVars, function(outcome){
+  form = lm(reformulate(termlabels = c("as.factor(d_client)", "as.factor(sample_id)", "as.factor(season)", "age", "age2"), response = outcome), data=rwDat)
+  
+  form = plm(form, c("sample_id", "age", "age2"))
+    
+  rownames(form) = paste(rownames(form), outcome, sep = " ")
+  return(form)
+  
+})
+```
+
 
 # Appendix
 
