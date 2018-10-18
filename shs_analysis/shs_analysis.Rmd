@@ -582,30 +582,6 @@ kable(finalModelRw, format="markdown")
 write.csv(finalModelRw, file="output/rw2017b/indFe_rw2017.csv")
 ```
 
-And instead just run the one regression I really want to look at:
-
-```{r}
-rwDat %>%
-  filter(!is.na(d_client)) %>%
-  select(one_of(keySoilVars), d_client, sample_id, season, age, age2) %>%
-  summarize_all(.funs = funs(sum(is.infinite(.))))
-```
-
-
-```{r}
-# not missing clients
-
-keyModel <- lapply(keySoilVars, function(outcome){
-  form = lm(reformulate(termlabels = c("as.factor(d_client)", "as.factor(sample_id)", "as.factor(season)", "age", "age2"), response = outcome), data=rwDat)
-  
-  form = plm(form, c("sample_id", "age", "age2"))
-    
-  rownames(form) = paste(rownames(form), outcome, sep = " ")
-  return(form)
-  
-})
-```
-
 
 # Appendix
 
