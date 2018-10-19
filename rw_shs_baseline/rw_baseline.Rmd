@@ -54,7 +54,7 @@ The working directory objects are from the original baseline analysis. I've upda
 # dd <- paste(wd, "data", sep = "/")
 # od <- paste(wd, "output", sep="/")
 # md <- paste(wd, "maps", sep="/")
-drive <- "~/drive/r_help/4_output/statistical_test_outputs"
+drive <- "~/Google Drive/r_help/4_output/statistical_test_outputs"
 od <- "output" # come back and update this later. I got about half way through?
 md <- "maps"
 
@@ -78,7 +78,7 @@ Import the results of Alex's do file.
 d <- read.csv("data/rwanda_shs_baseline_data.csv", stringsAsFactors = F)
 Identifiers <- read.csv("data/Identifiers with SSN_final.csv", stringsAsFactors = F)
 
-wetChem <- read.csv(paste("/Users/mlowes/drive/jupyter/Rwanda Acidity", "Original chem_rwanda_shs.csv", sep = "/"))
+wetChem <- read.csv(paste("/Users/mlowes/Google Drive/jupyter/Rwanda Acidity", "Original chem_rwanda_shs.csv", sep = "/"))
 ```
 
 
@@ -87,7 +87,7 @@ wetChem <- read.csv(paste("/Users/mlowes/drive/jupyter/Rwanda Acidity", "Origina
 d <- left_join(d, Identifiers, by="sample_id")
 
 # now import the soil results and merge with survey data
-soilDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_baseline", "4_predicted", "other_summaries"))
+soilDir <- normalizePath(file.path("..", "..", "..", "OAF Soil Lab Folder", "Projects", "rw_shs_baseline", "4_predicted", "other_summaries"))
 
 soilRF <- read.csv(file=paste(soilDir, "combined-predictions-including-bad-ones.csv", sep="/"))
 
@@ -1290,8 +1290,8 @@ ggplot(as.data.frame(pca1$x),aes(x=PC1,y=PC2, color=d$aez)) + geom_point() +
 Coloring the points by AEZ, we see a much clearer trend. The east is to the right of our graphic, then the central plateau followed by lake Kive and then Congo Nile in green on the left. What does this mean in terms of actual soil features? Let's look at the figure but with the variable associations layered on top. See here for [documentation](http://stats.stackexchange.com/questions/88880/does-the-sign-of-scores-or-of-loadings-in-pca-or-fa-have-a-meaning-may-i-revers)
 
 ```{r}
-library(pca3d)
-pca2d( pca1, biplot= TRUE, shape= 19, col= "black"  )
+# library(pca3d)
+# pca2d( pca1, biplot= TRUE, shape= 19, col= "black"  )
 ```
 
 It appears that the right side of the graph, the eastern AEZ, is associated with pH, Mg and Ca. This indicates that as the first principal component increases, so does the level of pH, Ca and Mg. Conversely, total N and C increase as the second principal component decreases. In terms of the AEZ figure above, this suggest that the Congo Nile AEZ has higher levels of N and C. Let's test these hypotheses with a simple summary table:
@@ -1325,7 +1325,7 @@ ggplot(as.data.frame(pca2$x),aes(x=PC1,y=PC2, color=as.factor(wetVal$aez))) + ge
 ```
 
 ```{r}
-pca2d(pca2, biplot= TRUE, shape= 19, col= "black")
+# pca2d(pca2, biplot= TRUE, shape= 19, col= "black")
 ```
 
 ```{r results='asis'}
@@ -2107,6 +2107,7 @@ write.csv(tenure.reg, file=paste(od, "table13_reg.csv", sep = "/"), row.names=T)
 # Soil Clusters
 
 ## Heirarchical Clustering
+
 I draw from [Robert's](robert.on@oneacrefund.org) example in the BGMS soil response notebook.
 
 Scale soil variables to remove units as an issue.
@@ -2218,12 +2219,21 @@ Alternatively, this could be initial evidence that the AEZ designations are not 
 
 # Mapping
 
+#### Export the data for sharing
+
+```{r}
+d %>%
+  dplyr::select(gps_pic_guid, pH, Total.N, Total.C, district, cellule_field, umudugudu, aez, cell, lat, lon, alt, precision, black_soil, red_soil, sandy_soil) %>%
+  write.csv(., file = "data/rwanda_soil_data_for_map.csv", row.names = F)
+```
+
+
 ## Soil health maps for soil health study areas
 
 ```{r}
 #crdref <- CRS('+proj=longlat +datum=WGS84')
 crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
-e <- d[!is.na(d$lon),]
+e <- d[!is.na(d$lon),] # where d is the data I've shared.
 ss <- SpatialPointsDataFrame(coords = e[, c("lon", "lat")], data=e, proj4string = crdref)
 
 rw <- getData("GADM", country='RW', level=3, path = "/Users/mlowes/drive/optimized_agronomy/soil/soil_health_study/data") # the higher the number, the higher the resolution
