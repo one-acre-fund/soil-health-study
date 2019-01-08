@@ -7,6 +7,8 @@ This is the master repo for 1AF Kenya and Rwanda soil health studies. The object
 
 The longitudinal soil health study focuses on the first of those objectives by following a set of plots over time. Information on the cultivation methods used on those plots is recorded as well as if it received 1AF inputs. The movement of plots in and out of 1AF cultivation over time allows us to isolate the portion of the soil health outcome attributable to being a 1AF farmer.
 
+You will notice that there are not folders for `ke round 2` and `rw round 2`. These data were directly analyzed in the `shs_analysis` folder. 
+
 Reports:
 
 * [Baseline report](https://drive.google.com/open?id=0B8h28h6EIayDVDRNcnhvSG5QdTQ)
