@@ -31,19 +31,23 @@ suppressMessages(library(Matching))
 ```
 
 ```{r import}
-wd <- "/Users/mlowes/drive/optimized_agronomy/soil/soil_health_study/data/ke baseline"
-dd <- paste(wd, "data", sep = "/")
-od <- paste(wd, 'output', sep = "/")
+# wd <- "/Users/mlowes/Google Drive /optimized_agronomy/soil/soil_health_study/data/ke baseline"
+# dd <- paste(wd, "data", sep = "/")
+# od <- paste(wd, 'output', sep = "/")
+dd <- normalizePath(file.path("data"))
+soilDir <- normalizePath(file.path("..", "..", "..", "data", "soil", "predictions"))
 
-load(paste("/Users/mlowes/drive/R_help/3_analyze/regressions", "regression_functions.Rdata", sep = "/"))
+od <- normalizePath(file.path("output"))
+
+load(paste("/Users/mlowes/Google Drive/r_help/3_analyze/regressions - general, R", "regression_functions.Rdata", sep = "/"))
 
 ```
 
 ```{r}
 d <- read.csv(paste(dd, "KE SHS Baseline Survey Data.csv", sep = '/'))
 soil <- read.csv(paste(dd, "Kenya_SHS_results.csv", sep = "/"))
-cnP <- read.csv(paste(dd, "Kenya_SHS_N_C.csv", sep = "/"))
-Identifiers <- read.csv(paste(dd, "Combined meta with SSN.csv", sep = '/'), stringsAsFactors = F)
+cnP <- read.csv(paste(soilDir, "Kenya_SHS_N_C.csv", sep = "/"))
+Identifiers <- read.csv(paste(soilDir, "Combined meta with SSN.csv", sep = '/'), stringsAsFactors = F)
 ```
 
 First step is merging the data. The ids in the Identifiers data need to be adjusted so that they match the ids in the ids in CommCare
