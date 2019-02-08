@@ -10,7 +10,8 @@
 *.Rproj.user
 *.RData
 *.gsheet
-Icon
+*Icon
+/Icon
 *.DS_Store
 *.Rhistory
 old
@@ -24,4 +25,5 @@ enum_summaries
 rw_baseline_files
 rw_baseline_cache
 shs_rw_bl_shiny
+shsmismatches
 
