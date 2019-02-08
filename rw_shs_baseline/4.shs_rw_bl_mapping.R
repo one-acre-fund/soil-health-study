@@ -28,15 +28,22 @@ library(grid)
 library(gridExtra)
 
 #directories:
-wd <- "/Users/mlowes/drive/soil health study/data/rw baseline"
+wd <- "/Users/mlowes/Google Drive/analyses/soil_health_study/rw_shs_baseline"
 dd <- paste(wd, "data", sep="/")
 od <- paste(wd, "output", sep="/")
 md <- paste(wd, "maps", sep="/")
-drive <- "~/drive/r_help/4_output/statistical_test_outputs"
+drive <- "~/Google Drive/r_help/4_output/statistical_test_outputs"
 
 #load data:
 load(paste(dd, "shs rw baseline.Rdata", sep = "/"))
 load(paste(drive, "output_functions.Rdata", sep="/"))
+
+### October 19th, 2018 ####
+# prep version of the data for sharing:
+# d %>%
+#   dplyr::select(gps_pic_guid, district, selected_cell, cellule_field, umudugudu, aez, cell, 
+#          pH, Total.N, Total.C, field.size, lat, lon, alt, precision, black_soil, red_soil, sandy_soil) %>%
+#   write.csv(., file = "data/rwanda_map_soil_data.csv", row.names = F)
 
 # ---------------------------------------------------------------------------------
 # visualizations and mapping
@@ -50,7 +57,7 @@ crdref <- CRS('+proj=longlat +datum=WGS84')
 s <- SpatialPointsDataFrame(coords=xy, data=f, proj4string = crdref)
 plot(s)
 
-rw <- getData("GADM", country='RW', level=2, path = "/Users/mlowes/drive/soil health study/data") # level 2 has more detail than 1. how 
+rw <- getData("GADM", country='RW', level=2, path = "/Users/mlowes/Google Drive/analyses/soil_health_study/rw_shs_baseline/data") # level 2 has more detail than 1. how 
 # high does it go? 3 has more! (or at least the file is larger)
 plot(rw)
 
