@@ -35,7 +35,8 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
 libs <- c("tidyverse", "knitr", "readxl", 
     "MASS", "gridExtra", "robustbase",
-    "sp", "dismo", "leaflet", "XML", "ggmap")
+    "sp", "dismo", "leaflet", "XML", "ggmap", "kableExtra",
+    "NbClust", "clValid", "ggfortify", "clustree", "dendextend", "FactoMineR", "corrplot", "GGally")
 lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F)
 
 #### define helpful functions
@@ -132,214 +133,78 @@ Check that there isn't something systematic in these surveys. If so, describe wh
 
 Create a record of how many farmers are joining and leaving Tubura between the baseline through the current survey round. These numbers only reflect the changes from the last round.
 
+**This also should account for clients that we miss in each season so we can say what the attrition has been season to season. Also, why don't we have 16A results for Rwanda. Find out what's happening there.**
+
 ```{r}
 clientCount <- function(dat){
   # this assumes season, d_client, and sample_id remain the names of 
   # the key variables. They should for the data to match.
-  return(dat %>%
+  
+  # this funciton tablulates the number of clients in each season
+  iniTab <- dat %>%
     filter(!is.na(d_client)) %>%
     group_by(season, d_client) %>%
-    summarize(countClient = length(unique(sample_id))))
+    tally() %>%
+    gather(key, value, -c(season, d_client)) %>%
+    spread(d_client, value) %>%
+    rename(control = `0`,
+         client = `1`) %>%
+    mutate(control = as.numeric(control),
+         client = as.numeric(client)) %>%
+    rowwise() %>%
+    mutate(total = sum(control, client)) %>%
+    ungroup()
+    
+  percentDiff <- iniTab %>%
+    mutate(pct_change = (((total - lead(total))/total) * 100))
+  return(percentDiff)    
   
 }
 
-clientCount(rwDat)
+rw.attrition.tab <- clientCount(rwDat)
 
-clientCount(keDat)
+ke.attrition.tab <- clientCount(keDat)
 
 ```
 
-
-
-Subset of farmers that kept status for soil regression table. 
-TODO - decide if the analyses that follow need to be turned into functions or if it's sufficient to set the sample here and use that same sample going forward.
-
-```{r, eval=F}
-sameStatusVec <- soilDat %>%
-  dplyr::select(sample_id, season, d_client) %>%
-  group_by(sample_id) %>%
-  spread(., season, d_client) %>%
-  as.data.frame() %>%
-  mutate(
-    same = ifelse(`15b`==`16b`, 1, 0)
-  ) %>%
-  filter(same==1)
-
-sameStatus <- soilDat[soilDat$sample_id %in% sameStatusVec$sample_id,]
-sameStatusCount <- table(sameStatus$d_client)/2
-write.csv(sameStatusCount, file="output/sameStatusCount.csv")
-#sameStatusfs <- soilDat[soilDat$sample_id %in% sameStatusVec$sample_id,] #
-```
-
-## Soil summary
-
-### Initial soil graphs
-
-These graphs are a peek at how soil parameter averages and differences look between treatment and control farmers using both baseline and round 1 values. **This is a preliminary rough look**. Next steps include:
-
-* Confirming client assignment and clarifying status
-* Additional cleaning of soil variables
-  + reconcile using IQR or SD method for adjusting data
-* Matching of clients to derive a more causal look at client effects on soil parameters.
-
-[Helpful code for putting the graphics together](https://github.com/tidyverse/ggplot2/wiki/Mixing-ggplot2-graphs-with-other-graphical-output)
-
-### Soil means and diffs
-
-TODO: Clean soil data here once Step and Patrick have some feedback regarding what are reasonable and unreasonable values.
-
-`soilOut` has common modifications. All resulting soil outcomes are made using that. Soil outcomes are named `soilOut.outcome_name`. This uses only farmers that have the same treatment status in 15b and 16b
-
-```{r, eval=F}
-soilOut <- soilDat %>% 
-  filter(soilDat$sample_id %in% sameStatusVec$sample_id) %>%
-  mutate(
-  measure = ifelse(season=="15b", 1, 
-                   ifelse(season=="16b", 2,NA))
-) %>% arrange(measure) %>%
-  as.data.frame()
-
-soilOut.Mean <- soilOut %>%
-  group_by(sample_id) %>%
-  summarize_each(
-    funs(mean(., na.rm=T)), -c(SSN, season, sample_id, measure, d_client)
-  ) %>% 
-  ungroup() %>% 
-  as.data.frame() %>%
-  rename_(.dots = setNames(names(.), gsub("X\\.|\\.", "", names(.))))
-
-# find a way to fit this into piping
-names(soilOut.Mean)[2:19] <- paste0(names(soilOut.Mean)[2:19], ".mean")
-
-# 0s are when we have only one observation
-soilOut.Diff <- soilOut %>%
-  group_by(sample_id) %>%
-  # summarise_each(
-  #   funs(if_else(length(.)==2, diff(x), .)), -c(SSN, season, sample_id, measure)
-  # ) %>% ungroup() %>% as.data.frame()
-  mutate_each(
-    funs(. - lag(., default=first(.))), -c(SSN, season, sample_id, measure, d_client)
-  ) %>%
-  filter(measure==2) %>%
-  as.data.frame() %>%
-  rename_(.dots = setNames(names(.), gsub("X\\.|\\.", "", names(.))))
-
-# find a way to fit this into piping
-names(soilOut.Diff)[1:18] <- paste0(names(soilOut.Diff)[1:18], ".diff")
-
-
-# gather soil outcomes to merge back together
-#soilTrans <- list(ls()[grep("soilOut.", ls())])
-
-soilMerge <- merge(soilOut.Mean, soilOut.Diff,by="sample_id")
-
-
-library(tidyr)
-library(RGraphics)
-soilGraph <- soilMerge %>%
-  gather(variable, value, -c(SSN, sample_id, measure, season, d_client)) %>%
-  separate(variable, c("soilChar", "type"), sep="\\.")
-
-for(i in 1:length(unique(soilGraph$soilChar))){
-  for(j in 1:length(unique(soilGraph$type))){
-    
-    temp <- soilGraph %>% 
-      filter(soilChar==unique(soilGraph$soilChar)[i] & soilGraph$type==unique(soilGraph$type)[j]) %>%
-      mutate(
-        value = ifelse(is.infinite(value), NA, value)
-      )
-    
-    
-     gph = ggplot(temp, aes(x = d_client, y=value)) + 
-       geom_boxplot() + 
-       labs(title = paste("NON-MATCHED PRELIM -", unique(soilGraph$soilChar)[i], unique(soilGraph$type)[j], sep=" "), x = "Treatment v. Control", y=unique(soilGraph$soilChar)[i])
-    
-    
-    
-      tab = tableGrob(
-        aggregate(temp$value, by=list(temp$d_client), function(x){
-        paste(round(mean(x, na.rm=T),2), " (", round(sd(x,na.rm=T),2), ")", sep="")
-          }),
-        cols = c("Treatment", "Mean (sd)"))
-      
-
-      grid.arrange(gph, tab, ncol=2, top=paste("NON-MATCHED PRELIM -", unique(temp$soilChar), unique(temp$type), sep=" "))
-
-  }
+```{r}
+attritionRate <- function(org, new){
+  return((org - new)/org * 100)
 }
 
 
+attritionRate(2028, 1935)  # kenya
+attritionRate(2439, 2409) # rwanda
+attritionRate(4467, 4344) # total
 ```
 
-### Soil summary table
 
-**Note**: This table is preliminary and does not reflect values ready for interpretation (6/19). This uses **all farmers**.
+## Soil graphs
 
-```{r, eval=F}
-tabOut <- do.call(rbind, lapply(split(soilGraph, list(soilGraph$type, soilGraph$soilChar)), function(x){
-  
-  x <- x %>% mutate(
-   value = ifelse(is.infinite(value), NA, value) 
-  )
-  
-  temp = aggregate(x$value, by=list(x$d_client), FUN=mean, na.rm=T)
-  pval = round(wilcox.test(value ~ d_client, data=x)$p.value,3)
-  Tmean = round(temp$x[2], 2)
-  Cmean = round(temp$x[1], 2)
-  
-  output = data.frame(cat = paste0(unique(x$soilChar), " - ", unique(x$type)), Cmean, Tmean, pval)
-  return(output)
-  
-}))
-
-tabOut <- tabOut %>% 
-  mutate(pval.adj = round(p.adjust(pval, "fdr"),3)) %>%
-  arrange(pval.adj)
-
-kable(tabOut, format='markdown', row.names = F, col.names = c("Outcome", "Control mean", "OAF mean", "p-value", "adj. p-value"))
+```{r}
+ggplot(rwDat, aes(x = season, y = ph, group = d_client)) + geom_boxplot()
 ```
 
-### Longitudinal soil graphs
+### Variable check
 
-```{r, eval=F}
-soilLineGraph <- soilOut %>%
-  group_by(d_client, season) %>%
-  summarize_each(
-    funs(mean(., na.rm=T)), -c(SSN, sample_id)
-  ) %>%
-  gather(variable, value, -c(season, d_client)) %>%
-  filter(variable %in% keySoilVars)
-  
-pdf(file=paste("output/", "key soil vars - longitudinal.pdf", sep = ""), width=11, height=8.5)
-for(i in 1:length(keySoilVars)){
-    print(ggplot(subset(soilLineGraph, soilLineGraph$variable==keySoilVars[i]), aes(x = season, y = value, group=d_client, color=d_client)) + 
-      geom_line() +
-      labs(title=paste(keySoilVars[i], "over time by client status - same only", sep= " "),
-          x= "Season", y=keySoilVars[i], color="Treatment")
-    )
-  makeFootnote(footnote)
-    
-}
-dev.off()
-```
+```{r}
+ggplot(keDat, aes(x = can.acre)) + 
+  geom_histogram() +
+  scale_x_continuous(limits = c(0,200)) +
+  labs(title = "Set limits to 0 and 100 for CAN")
 
-Here is the table in section 1 of the report. 
+ggplot(keDat, aes(x = dap.acre)) + 
+  geom_histogram() +
+  scale_x_continuous(limits = c(0,200)) +
+  labs(title = "Set limits to 0 and 100 for DAP")
 
-```{r, eval=F}
-soilLineGraph %>%
-  spread(season, value) %>%
-  arrange(variable) %>%
-  rename(
-    year1 = `15b`,
-    year2 = `16b`
-  ) %>%
-  mutate_if(
-    is.numeric, funs(round(.,3))
-  ) %>% 
-  write.csv(., file="output/sumTab1.csv")
 
 ```
 
+
+Check values for upcoming final round of Kenya SHS data collection
+
+This is ideally a grouped boxplot. Fix this when I have internet. This would show the values by season and client type.
 
 ### Regressions
 
@@ -360,8 +225,125 @@ See [sketch of SHS report](https://docs.google.com/document/d/1koNsKzx97_3rpkGeJ
 
 [Helpful link](https://www.r-bloggers.com/how-to-go-parallel-in-r-basics-tips/) for executing code in parallel
 
+# Nitrogen effect
+
+Before running the full models, I'm going to take a closer look at the nitrogen data to make sure we can explain the negative effects we're seeing in Kenya in the models below. There isn't a clear agronomic explanation for the negative effect and as a consequence we're put in a bind in our reporting to explain either the outcome or the modeling.
+
+Let's start with looking at the relationship between nitrogen and other features to make sure we're seeing what expect:
+
+### Nitrogen alone
+
+The big takeaway for me from this plot is that there are regular spikes at certain values. That seems odd for a system that should be pretty continuous. Let's see if that plays out evenly across seasons.
+
 ```{r}
-keySoilVars <- c("ph", "calcium", "total.nitrogen", "organic.carbon")
+keDat %>%
+  ggplot(., aes(x = total.nitrogen)) + 
+  geom_histogram(bins = 100) +
+  geom_density()
+```
+
+```{r}
+keDat %>%
+  ggplot(., aes(x = total.nitrogen)) + 
+  geom_histogram() +
+  geom_vline(xintercept = mean(keDat$total.nitrogen, na.rm = T)) +
+  facet_grid(~ season)
+
+# ggplot() +
+#   geom_histogram(data = filter(keDat, keDat$season == 2015), aes(x = total.nitrogen, fill = 'red'), alpha = 0.5) +
+#   geom_histogram(data = filter(keDat, keDat$season == 2016), aes(x = total.nitrogen, fill = 'blue'), alpha = 0.5) +
+#   geom_histogram(data = filter(keDat, keDat$season == 2017), aes(x = total.nitrogen, fill = 'green'), alpha = 0.5) +
+#   theme(legend.position = 'none')
+```
+### Nitrogen by season
+
+This is what we're observing. There's a clear downward trend across seasons with perhaps a slight shift downward for 
+
+```{r}
+keDat %>%
+  #select(season, total.nitrogen, d_client) %>%
+  ggplot(., aes(x = season, y = total.nitrogen, fill = as.factor(d_client))) + 
+  geom_boxplot() + 
+  theme(legend.position = 'bottom') +
+  labs(title = "Total N by season and client status", subtitle ="Strong seasonal trend with perhaps a slight client trend downward",
+       x = "Season", y = "Total N", fill = "Client Status")
+```
+
+```{r}
+keDat %>%
+  filter(!is.na(d_client)) %>%
+  group_by(season, d_client) %>% 
+  summarize(mean = round(mean(total.nitrogen, na.rm = T),4)) %>%
+  kable(caption = "Downward average N by season") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+1AF clients are slightly below comparison farmers in terms of total nitrogren but the difference is ever so slight. Perhaps in the context of soil chemistry these are big differencs though!
+
+### Nitrogen and carbon
+
+```{r}
+keDat %>%
+  ggplot(., aes(x = organic.carbon, y = total.nitrogen)) + 
+  geom_point() +
+  labs(title = "N vs. C - what we'd expect", x = "Total N", y = "Organic C")
+```
+
+```{r}
+keDat %>%
+  ggplot(., aes(x = organic.carbon, y = total.nitrogen)) + 
+  geom_point() +
+  labs(title = "N vs. C by season - again what we'd expect", x = "Total N", y = "Organic C") +
+  facet_grid(~ season)
+```
+
+This is the same table as above but shows carbon level by season and client status. We don't see the same gap widening between client and non-client plots that we see with nitrogen.
+
+```{r}
+keDat %>%
+  filter(!is.na(d_client)) %>%
+  group_by(season, d_client) %>% 
+  summarize(mean = round(mean(organic.carbon, na.rm = T),4)) %>%
+  kable(caption = "Carbon levels trend together by client status over seasons") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+### Nitrogen and compost
+
+**if you applied compost since there are so many 0s and removing super large values**
+
+```{r}
+keDat %>%
+  filter(compost.acre > 0 & compost.acre < 1000) %>%
+  ggplot(., aes(x = compost.acre, y = total.nitrogen)) +
+  geom_point() +
+  facet_grid(~ season) +
+  labs(title = "N vs. compost", subtitle = "Relationship less clear")
+```
+
+```{r}
+# dap 18% n, can 26%
+keDat %>%
+  mutate(can_n = can.acre * 0.26,
+         dap_n = dap.acre * 0.18) %>%
+  rowwise() %>%
+  mutate(total_n_applied = sum(can_n, dap_n, na.rm = T)) %>%
+  filter(total_n_applied > 0) %>%
+  ggplot(., aes(x = total_n_applied, y = total.nitrogen)) +
+  geom_point() +
+  facet_grid(~ season)
+```
+
+**Interpretation**: There doesn't seem to be a strong relationship between total N applied and total nitrogen in the soil. It's not clear to me what we should have expected from this relationship but in general I don't see anything odd.
+
+## What moves with nitrogen?
+
+Consider using PCA to simplify the data into components that move in the same direction or opposite of nitrogen to understand the main relationships in the data.
+
+
+
+```{r}
+keySoilVars <- c("ph", "calcium", "total.nitrogen", "organic.carbon", "magnesium")
 ```
 
 #### Kenya models
@@ -419,6 +401,7 @@ And combine model outputs into tables for each model
 modExportKe <- lapply(indFeLoopKe, function(models){
   do.call(rbind, models)
 })
+
 
 for(i in 1:length(modExportKe)){
   write.csv(modExportKe[i], file=paste0("output/ke2017/","regOutput_", i, ".csv"), row.names = T)
