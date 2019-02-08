@@ -13,12 +13,12 @@
 *Icon
 *.DS_Store
 *.Rhistory
-/old
-/graphs
-/maps
-/output
-/troubleshoot
-/attritionTabs
-/data
-/enum_summaries
+old
+graphs
+maps
+output
+troubleshoot
+attritionTabs
+data
+enum_summaries
 
