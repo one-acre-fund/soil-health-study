@@ -35,8 +35,8 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
 libs <- c("tidyverse", "knitr", "readxl", 
     "MASS", "gridExtra", "robustbase",
-    "sp", "dismo", "leaflet", "XML", "ggmap", "kableExtra",
-    "NbClust", "clValid", "ggfortify", "clustree", "dendextend", "FactoMineR", "corrplot", "GGally")
+    "sp", "dismo", "leaflet", "XML", "ggmap", "kableExtra")
+#"NbClust", "clValid", "ggfortify", "clustree", "dendextend", "FactoMineR", "corrplot", "GGally"
 lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F)
 
 #### define helpful functions
@@ -340,13 +340,11 @@ keDat %>%
 
 Consider using PCA to simplify the data into components that move in the same direction or opposite of nitrogen to understand the main relationships in the data.
 
-
-
 ```{r}
 keySoilVars <- c("ph", "calcium", "total.nitrogen", "organic.carbon", "magnesium")
 ```
 
-#### Kenya models
+# Kenya models
 
 ```{r}
 keDat <- keDat %>% mutate(age2 = age^2)
@@ -420,7 +418,7 @@ write.csv(finalModelKe, file="output/ke2017/indFe_ke2017.csv")
 ```
 
 
-#### Rwanda models
+# Rwanda models
 
 The parallel model wasn't running for some reason so I'm just going to run the one model I really want to look at and save those results.
 
@@ -496,3 +494,4 @@ write.csv(finalModelRw, file="output/rw2017b/indFe_rw2017.csv")
 # Appendix
 
 Nothing to see here
+
