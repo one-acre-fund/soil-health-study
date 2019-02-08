@@ -11,4 +11,5 @@
 *.RData
 *.gsheet
 *Icon
+*.DS_Store
 
