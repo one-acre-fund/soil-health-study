@@ -282,6 +282,32 @@ write.csv(d, file=paste(dd, "shs ke baseline.csv", sep = "/"))
 save(d, file=paste(dd, "shs ke baseline.Rdata", sep = "/"))
 ```
 
+## Output control sheet for R3
+```{r}
+baselineCheck <- d %>%
+  mutate(sample_id = tolower(gsub(" ", "", Soil_Sample_Id)))
+
+
+library(googlesheets)
+
+samoraSheet <- gs_title("Control Sheet Soil Sample 2017.xls") %>% gs_read(ws = "Sheet1") %>%
+  mutate(unique.id = tolower(gsub(" ", "", UNIQUEID)))
+
+# check that all the ids in the baseline data are in Samora's control sheet
+table(samoraSheet$unique.id %in% baselineCheck$sample_id)
+
+# look at missing ones
+samoraSheet$unique.id[!samoraSheet$unique.id %in% tolower(d$Soil_Sample_Id)] %>%
+  write.csv(., file = paste(od, "extra_obs_in_control_sheet.csv", sep = "/"))
+
+
+# and the other way << what from baseline is not in Samora's sheet
+# everything is there.
+table(baselineCheck$sample_id %in% samoraSheet$unique.id)
+
+```
+
+
 ## Summary statistics
 
 ### Table of final baseline breakdown
