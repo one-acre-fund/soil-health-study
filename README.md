@@ -9,6 +9,19 @@ The longitudinal soil health study focuses on the first of those objectives by f
 
 You will notice that there are not folders for `ke round 2` and `rw round 2`. These data were directly analyzed in the `shs_analysis` folder. 
 
+Key analytical summaries:
+
+## Kenya
+[Kenya baseline analysis](https://one-acre-fund.github.io/soil-health-study/ke_shs_baseline/ke_baseline.html)
+[Kenya round 1 analysis](https://one-acre-fund.github.io/soil-health-study/ke_round_1/ke_round_1.nb.html)
+
+## Rwanda
+[Rwanda baseline analysis](https://one-acre-fund.github.io/soil-health-study/rw_shs_baseline/rw_baseline.nb.html)
+[Rwanda round 1 analysis](https://one-acre-fund.github.io/soil-health-study/rw_round_1.nb.html)
+
+## Combined fulll analysis
+[SHS analysis](https://one-acre-fund.github.io/soil-health-study/shs_analysis/shs_analysis.nb.html)
+
 Reports:
 
 * [Baseline report](https://drive.google.com/open?id=0B8h28h6EIayDVDRNcnhvSG5QdTQ)
