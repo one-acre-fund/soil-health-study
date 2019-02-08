@@ -12,4 +12,5 @@
 *.gsheet
 *Icon
 *.DS_Store
+*.Rhistory
 
