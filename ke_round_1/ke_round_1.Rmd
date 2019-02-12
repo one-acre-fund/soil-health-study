@@ -87,10 +87,10 @@ Here I access the soil predictions from the OAF soil lab. [Patrick Bell](mailto:
 Right now the data is coming from a handover file from Mike Barber. It's not the most sensible place for the data to live but it should work for now. There should instead be one folder with all the latest soil lab stuff. Putting that in the Mike handover folder is sorta strange.
 
 ```{r}
-soilDir <- normalizePath(file.path("..", "..", "..", "mike.barber@oneacrefund.org", "One Acre Fund",  "OAF Soil Lab Folder", "Projects", "ke_shs_17", "4_predicted", "other_summaries"))
+soilDir <- normalizePath(file.path("..", "..", "..", "OAF Soil Lab Folder", "Projects", "ke_shs_17", "4_predicted", "other_summaries"))
 soil <- read.csv(file=paste(soilDir, "combined-predictions-including-bad-ones.csv", sep = "/"))
 
-idDir <- normalizePath(file.path("..", "..", "..", "mike.barber@oneacrefund.org", "One Acre Fund",  "OAF Soil Lab Folder", "Projects", "ke_shs_17", "5_merged"))
+idDir <- normalizePath(file.path("..", "..", "..",  "OAF Soil Lab Folder", "Projects", "ke_shs_17", "5_merged"))
 Identifiers <- read_excel(paste(idDir,"Soil Sampling - Sample reception 2017 - Sample reception 20172017-04-12 (1).xlsx",sep="/"), sheet=1) %>%
   mutate(
     reception_barcode = gsub("_", "", reception_barcode)
@@ -554,10 +554,10 @@ names(d) <- tolower(names(d))
 names(b) <- tolower(names(b))
 
 # convert baseline soil texture vars into one variable
-b <- b %>%
-  mutate(soil.texture = ifelse(clay_soil==1, "clay", 
-                               ifelse(loam_soil==1, "loam",
-                                      ifelse(sandy_soil==1, "sand", "unknown"))))
+# b <- b %>%
+#   mutate(soil.texture = ifelse(clay_soil==1, "clay", 
+#                                ifelse(loam_soil==1, "loam",
+#                                       ifelse(sandy_soil==1, "sand", "unknown"))))
 
 bUpdate <- b %>% rename(
   region = regionname,
@@ -591,7 +591,7 @@ bUpdate <- b %>% rename(
   compost.type = inputs.compost_type,
   lime = inputs.lime,
   lime.kgs = inputs.lime_kg,
-  soil.type = soil_type,
+  #soil.type = soil_type,
   soil.color = soil_color,
   erosion = anti_erosion,
   field.location = location,
@@ -600,6 +600,7 @@ bUpdate <- b %>% rename(
   copper = cu,
   x.ec..salts. = ec,
   #x.exchangeable.aluminum = exch.al,
+  soil.texture = soil_type,
   x.phosphorus.sorption.index..psi. = psi,
   potassium = k,
   magnesium = mg,
@@ -665,13 +666,13 @@ fieldDat <- fieldDat %>%
   urea.acre = m2ToAcres(urea.main,plot.m2),
   compost.acre = m2ToAcres(compost.kgs,plot.m2),
   seed.acre = m2ToAcres(seed.kgs,plot.m2),
-
   intercrop.seed.acre = m2ToAcres(intercrop.seed.kgs, plot.m2),
   intercrop.dap.acre = m2ToAcres(dap.intercrop, plot.m2),
   intercrop.can.acre = m2ToAcres(can.intercrop, plot.m2),
   intercrop.npk.acre = m2ToAcres(npk.intercrop, plot.m2),
   intercrop.urea.acre = m2ToAcres(urea.intercrop, plot.m2),
-  soil.texture = tolower(soil.texture)
+  soil.texture = tolower(soil.texture),
+  yield.t.ha = yield / 10
 ) %>% rename(
   d_client = oaf,
   sample_id = soil_sample_id
@@ -695,7 +696,7 @@ January 9th, 2018 - fulfilling request for soil data and additional variables
 ```{r}
 fieldDat %>%
   filter(season=="2016") %>%
-  dplyr::select(region, district, site, ph, x.organic.carbon, soil.texture, soil.type, soil.color, 
+  dplyr::select(region, district, site, ph, x.organic.carbon, soil.texture, soil.color, 
          x.total.nitrogen, gps, field.location, compost.kgs, compost.quality, compost.type) %>%
   write.csv(., file="cKeData_forStefanandStep.csv", row.names = F)
 
