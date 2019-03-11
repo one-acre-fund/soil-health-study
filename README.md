@@ -19,8 +19,8 @@ Key analytical summaries:
 [Rwanda baseline analysis](https://one-acre-fund.github.io/soil-health-study/rw_shs_baseline/rw_baseline.nb.html)
 [Rwanda round 1 analysis](https://one-acre-fund.github.io/soil-health-study/rw_round_1.nb.html)
 
-## Combined fulll analysis
-[SHS analysis](https://one-acre-fund.github.io/soil-health-study/shs_analysis/shs_analysis.nb.html)
+## Combined full analysis
+[SHS analysis](https://one-acre-fund.github.io/soil-health-study/shs_analysis/shs_analysis.html)
 
 Reports:
 
