@@ -22,11 +22,11 @@ select <- dplyr::select
 
 #### load data ####
 # load the ke r1 data to combine the new data with
-load("ke_round_1/ke_r1_cleaned_combined.Rdata") # fieldDat
+load("../ke_round_1/ke_r1_cleaned_combined.Rdata") # fieldDat
 
 ####### LOAD MERGING IDS BETWEEN SURVEY AND LAB #######
 
-soilDir <- normalizePath(file.path("..", "..", "OAF Soil Lab Folder", "Projects", "ke_shs_17", "5_merged"))
+soilDir <- normalizePath(file.path("..", "..", "..", "OAF Soil Lab Folder", "Projects", "ke_shs_17", "5_merged"))
 
 mergeIds <- read_xlsx(paste(soilDir, "Soil Sampling  Sample reception 2017  Sample reception 2017 2018-10-14.xlsx", sep = "/")) %>%
   mutate(reception_barcode = gsub("_", "", reception_barcode)) %>%
@@ -34,7 +34,7 @@ mergeIds <- read_xlsx(paste(soilDir, "Soil Sampling  Sample reception 2017  Samp
 
 ####### LOAD SOIL DATA FOR KENYA SHS 17 #######
 
-ke17soil <- readRDS("shs_analysis/kenya_shs_17_soil_values_dw.rds") %>%
+ke17soil <- readRDS("kenya_shs_17_soil_values_dw.rds") %>%
   mutate_at(.funs = as.numeric, .vars = vars(Zinc:Hp, pH))
 
 ## check for right merge variable
@@ -45,12 +45,12 @@ ke17soil$SSN[!ke17soil$SSN %in% mergeIds$reception_barcode]
 
 
 # and the latest kenya survey rounds, should be 2 and 3??
-source("../oaflib/commcareExport.R")
-source("../oaflib/misc.R")
+source("../../oaflib/commcareExport.R")
+source("../../oaflib/misc.R")
 
 
 # load the latest Kenya data to add to the existing data
-keDat17 <- readxl::read_xlsx("shs_analysis/Soil Sampling  Soil Sampling 2017  Soil Sampling 2017 2018-10-14.xlsx", na = "---", trim_ws = TRUE) %>%
+keDat17 <- readxl::read_xlsx("Soil Sampling  Soil Sampling 2017  Soil Sampling 2017 2018-10-14.xlsx", na = "---", trim_ws = TRUE) %>%
   as.data.frame()
 
 #test <- read.csv("Kenya_2017_soil_health_study_data.csv")
@@ -322,14 +322,24 @@ keDat17Append <- keDat17Append %>%
     intercrop.dap.acre = m2ToAcres(dap.intercrop, plot.m2),
     intercrop.can.acre = m2ToAcres(can.intercrop, plot.m2),
     intercrop.npk.acre = m2ToAcres(npk.intercrop, plot.m2),
-    intercrop.urea.acre = m2ToAcres(urea.intercrop, plot.m2))
+    intercrop.urea.acre = m2ToAcres(urea.intercrop, plot.m2)) %>%
+  mutate(sample_id = tolower(sample_id))
 
 
 
 # then combine with fieldDat!!
 
-fieldDat <- plyr::rbind.fill(fieldDat, keDat17Append) %>%
-  mutate(yield.t.ha = (yield )
+table(keDat17Append$sample_id %in% fieldDat$sample_id)
+
+keDat17Append %>%
+  select(sample_id) %>%
+  sample_n(20)
+
+fieldDat %>%
+  select(sample_id) %>%
+  sample_n(20)
+
+fieldDat <- plyr::rbind.fill(fieldDat, keDat17Append)
 
 
 # then do some quick reality checking of the overall data set
