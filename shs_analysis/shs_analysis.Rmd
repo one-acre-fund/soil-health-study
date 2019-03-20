@@ -6,12 +6,9 @@ output:
     df_print: paged
     toc: yes
     toc_depth: '6'
-  html_notebook:
     code_folding: show
     number_sections: yes
     theme: flatly
-    toc: yes
-    toc_depth: 6
     toc_float: yes
 ---
 
@@ -32,8 +29,7 @@ options(knitr.table.format = 'html')
 # change code chunk default to not show warnings or messages
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
-libs <- c("tidyverse", "knitr", "readxl", 
-    "sp", "dismo", "leaflet", "kableExtra")
+libs <- c("tidyverse", "knitr", "readxl", "dismo", "leaflet", "kableExtra")
 #"NbClust", "clValid", "ggfortify", "clustree", "dendextend", "FactoMineR", "corrplot", "GGally"
 lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F)
 
@@ -208,12 +204,11 @@ rwDat %>%
 
 ```
 
+# Digging into data
 
 Check values for upcoming final round of Kenya SHS data collection
 
 This is ideally a grouped boxplot. Fix this when I have internet. This would show the values by season and client type.
-
-### Regressions
 
 See [sketch of SHS report](https://docs.google.com/document/d/1koNsKzx97_3rpkGeJI6PnPdYNMdV9q4e-cPQxAWDeDk/edit).  Remember that `sameStatus` are the farmers that kept their status between baseline and endline. The two models of interest are:
 
@@ -232,7 +227,9 @@ See [sketch of SHS report](https://docs.google.com/document/d/1koNsKzx97_3rpkGeJ
 
 [Helpful link](https://www.r-bloggers.com/how-to-go-parallel-in-r-basics-tips/) for executing code in parallel
 
-# Nitrogen effect
+## Nitrogen effect
+
+Work before 3/18/19
 
 Before running the full models, I'm going to take a closer look at the nitrogen data to make sure we can explain the negative effects we're seeing in Kenya in the models below. There isn't a clear agronomic explanation for the negative effect and as a consequence we're put in a bind in our reporting to explain either the outcome or the modeling.
 
@@ -259,6 +256,17 @@ Finally, maybe our farmers are rotating less with legumes than non-farmers, or r
 > Look at [rotations relative to N rate by 1AF status](#nitrogen-by-legume-rotation-and-1AF-status). It does appear that plots that non-1AF plots receive more legume intercrops. This makes sense given that the 1AF core package emphasizes maize monocrops.
 
 Would love to hear your thoughts - entirely possible I’m missing something here. The most critical question here is whether (i) we’re not applying enough C relative to N, (ii) we’re just not applying enough N. I suspect maybe the answer is both, but I’m wary of assuming it’s the latter and making things worse if the key driver is unbalanced C:N ratios.
+
+**3/18/19 forward**
+
+Step Aston of ART wants follow up on the possibility that 1AF is driving down N rates through repeated 1AF culti ation. This [document](https://docs.google.com/document/d/1akjl1BmilbxHBuH07LPHJq9xMVqI7ctYZ6bhq0txKK8/edit?usp=sharing) lists the key questions we want to answer to understand what might be happening in the data. Those questions are (see document for more specifics):
+
+* Are there spatial patterns to the N reduction effect - is this a genuine effect across all program areas, or specific only to certain areas? 
+* Are there differences between control and treatment in how long fields have been farmed for?
+* Are control farmers applying a higher ratio of N compared to C than control farmers? 
+* Is N application vs N uptake ratio different for treatment vs control? 
+* Are our farmers rotating or intercropping with legumes less than non-farmers, or with legumes that are less prolific N-fixers? (i.e. is quality of organic inputs changing to a wider C:N ratio)
+
 
 ### Nitrogen alone
 
@@ -377,7 +385,7 @@ keDat %>%
 
 **Interpretation**: There doesn't seem to be a strong relationship between total N applied and total nitrogen in the soil. It's not clear to me what we should have expected from this relationship but in general I don't see anything odd.
 
-## Nitrogen by legume rotation and 1AF status
+### Nitrogen by legume rotation and 1AF status
 ```{r}
 intercrop_check <- keDat %>%
   mutate(legume_intercrop = ifelse(intercrop %in% c("beans", "groundnuts", "soya"), 1, 0))
@@ -420,7 +428,7 @@ intercrop_check %>%
 
 We're looking for an indication that 1AF plots have fewer legume intercrops and it does appear that plots that have not been cultivated with 1AF have more years of legume intercropping (the blue bar on the left) that for plots that are 1AF plots for more seasons. This relationship is not necessarily statistically different as we also see years of numerous legume intercrops for 1AF plots as well. The main distinguishing feature however is the big bar indicating that **plots that have not been 1AF plots ever have had 3 legume intercrops**.
 
-## What moves with nitrogen?
+### What moves with nitrogen?
 
 Consider using PCA to simplify the data into components that move in the same direction or opposite of nitrogen to understand the main relationships in the data.
 
@@ -428,7 +436,119 @@ Consider using PCA to simplify the data into components that move in the same di
 keySoilVars <- c("ph", "calcium", "total.nitrogen", "organic.carbon", "magnesium")
 ```
 
-# Kenya models
+### Spatial trend in N levels
+
+Clean up `region` variable
+
+```{r}
+keDat$region <- ifelse(grepl("west", tolower(keDat$region)), "Western", "Nyanza")
+```
+
+I want to create a metric of how different treatment values are from control values by district. I'm going to subtract the control average at the district level from each treatment value for each season. I'll then plot them individually so it's easier to see.
+
+```{r}
+control_nitrogen_level <- function(year){
+  return(keDat %>%
+  filter(!is.na(district)) %>%
+  filter(season == year) %>%
+  group_by(district) %>%
+  mutate(control_nitrogen_average = mean(total.nitrogen[d_client == 0], na.rm = T)) %>%
+  ungroup() %>%
+  mutate(difference_nitrogen = total.nitrogen - control_nitrogen_average) %>%
+  filter(d_client == 1))
+}
+
+nitrogen_plots <- lapply(c(2015, 2016, 2017), function(year){
+  control_nitrogen_level(year)
+})
+ 
+
+lapply(nitrogen_plots, function(x){
+  ggplot(x, aes(x = district, y = difference_nitrogen, fill = region)) + 
+  geom_boxplot() +
+  theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = paste("Difference in nitrogen ", unique(x$season)),
+       subtitle = "I don't see a clear spatial trend across locations or time")
+})
+```
+
+Quickly, let's output graphs for each district:
+```{r}
+unique_districts <- unique(keDat$district)[!unique(keDat$district) %in% NA]
+
+lapply(unique_districts, function(dist){
+  keDat %>%
+  filter(!is.na(district)) %>%
+  filter(district == dist) %>%
+  ggplot(., aes(x = season, y = total.nitrogen, fill = as.factor(d_client))) +
+    geom_boxplot() +
+    labs(title = paste("Seasonal trend for", dist))
+})
+```
+
+When we look at this by district over time and 1AF plot status we definitely see a downward trend in some districts. We also see that in some cases, like Butere, the 1AF plots started well below controls. In ohters, like Suneka, we see the 1AF drop dramatically which is pretty difficult to explain. A couple other observations:
+
+* We see that the 2015 values are much higher than the next values. This is true for 1AF and control plots so that's consistent but that highlights some in consistencies in our soil model measurements because we're not actually losing that much N one season to the next.
+* KKM N is an interesting example for how we see a shift in 1AF plots to being below control plots. **We have to remember that what is considered 1AF vs. control is farmer determined**. Farmers could be shifting plots with less N into 1AF cultivation and moving other plots out of 1AF rotation. Let's check out how these trends look if we use the baseline assignment as our indicator for 1AF / control status.
+
+```{r eval=FALSE, include=FALSE}
+baseline_status <- function(dist){
+  return(keDat %>%
+    filter(district == dist) %>%
+    group_by(sample_id) %>%
+    mutate(baseline_status = if_else(season == 2015 && d_client == 1, 1, 0)))
+}
+
+baseline_status_plots <- lapply(unique_districts, function(x) baseline_status(x))
+
+lapply(baseline_status_plots, function(x){
+  ggplot(x, aes(x = season, y = total.nitrogen, fill = as.factor(baseline_status))) +
+    geom_boxplot() +
+    labs(title = paste("Seasonal trend for", unique(x$district), "using baseline treatment status"),
+         subtitle = "The differences between T and C aren't as extreme so maybe plots \n are just being shifted around...")
+  
+})
+```
+
+When we look at the data based on the 2015 baseline treatment status, the difference between 1AF and control plots isn't as extreme. The analytical model we're using below should be taking into acocunt the effect of clients potentially switching their plot back and forth. 
+
+
+
+#### Boxplots by geograph
+
+```{r}
+keDat %>%
+  ggplot(., aes(x = region, y = total.nitrogen)) +
+  geom_boxplot() + 
+  facet_grid(~ season)
+```
+
+
+```{r}
+keDat %>%
+  filter(!is.na(district)) %>%
+  ggplot(., aes(x = district, y = total.nitrogen)) + 
+  geom_boxplot() +
+  facet_grid(season ~ .) +
+  theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+#### Maps - tbd
+
+### Duration of cultivation by treatment
+
+### N application rates by treatment
+
+## 
+* Are there differences between control and treatment in how long fields have been farmed for?
+* Are control farmers applying a higher ratio of N compared to C than control farmers? 
+* Is N application vs N uptake ratio different for treatment vs control? 
+* Are our farmers rotating or intercropping with legumes less than non-farmers, or with legumes that are less prolific N-fixers? (i.e. is quality of organic inputs changing to a wider C:N ratio) 
+
+# Regressions
+
+## Kenya models
 
 ```{r}
 keDat <- keDat %>% mutate(age2 = age^2)
@@ -502,7 +622,7 @@ write.csv(finalModelKe, file="output/ke2017/indFe_ke2017.csv")
 ```
 
 
-# Rwanda models
+## Rwanda models
 
 The parallel model wasn't running for some reason so I'm just going to run the one model I really want to look at and save those results.
 
