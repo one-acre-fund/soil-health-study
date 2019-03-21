@@ -26,5 +26,5 @@ rw_baseline_files
 rw_baseline_cache
 shs_rw_bl_shiny
 shsmismatches
-
 .Rproj.user
+.httr-oauth
