@@ -534,6 +534,26 @@ legume_model_data %>%
 
 ```
 
+## Legume selection by 1AF status
+
+```{r}
+intercrop_check %>%
+  filter(legume_intercrop == 1) %>%
+  group_by(intercrop, d_client) %>%
+  tally() %>%
+  ggplot(., aes(x = intercrop, y = n, fill = as.factor(d_client))) +
+  geom_bar(stat = 'identity', position = 'dodge') +
+  labs(title = "Legume intercrop type by 1AF status",
+       subtitle = "It's mostly beans, folks",
+       x = "Intercrop type",
+       y = "Number of plots", 
+       fill = "1AF status") + 
+  theme_oaf()
+```
+
+**Interpretation**: And there really aren't other crops being used as intercrops in Kenya.
+
+
 ## Spatial trend in N levels
 
 ### Boxplots by geography
