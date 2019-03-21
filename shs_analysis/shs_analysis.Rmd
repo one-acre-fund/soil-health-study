@@ -29,7 +29,7 @@ options(knitr.table.format = 'html')
 # change code chunk default to not show warnings or messages
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
-libs <- c("tidyverse", "knitr", "readxl", "dismo", "leaflet", "kableExtra")
+libs <- c("tidyverse", "knitr", "readxl", "dismo", "leaflet", "kableExtra", "farmr")
 #"NbClust", "clValid", "ggfortify", "clustree", "dendextend", "FactoMineR", "corrplot", "GGally"
 lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F)
 
@@ -227,7 +227,7 @@ See [sketch of SHS report](https://docs.google.com/document/d/1koNsKzx97_3rpkGeJ
 
 [Helpful link](https://www.r-bloggers.com/how-to-go-parallel-in-r-basics-tips/) for executing code in parallel
 
-## Nitrogen effect
+## Nitrogen effect overview
 
 Work before 3/18/19
 
@@ -443,18 +443,11 @@ lapply(applied_c_vs_soil_n, function(x){
 **Interpretation** As with the applied N vs. applied C, I don't see a clear difference in outcome between 1AF and control plots when we look at **applied C and soil N**. 
 
 
-## Nitrogen by legume rotation and 1AF status
+## Legume rotation and nitrogen levels
 ```{r}
 intercrop_check <- keDat %>%
-  mutate(legume_intercrop = ifelse(intercrop %in% c("beans", "groundnuts", "soya"), 1, 0))
-
-# intercrop_check %>%
-#   ggplot(., aes(x = legume_intercrop, y = total.nitrogen, fill = as.factor(d_client))) +
-#   geom_boxplot() +
-#   facet_grid(~ season)
-
-# how to check if they used legumes in previous season?
-
+  mutate(legume_intercrop = ifelse(intercrop %in% c("beans", "groundnuts", "soya"), 1, 0)) %>%
+  filter(!is.na(sample_id))
 
 intercrop_check %>%
   group_by(sample_id, d_client) %>%
@@ -463,10 +456,16 @@ intercrop_check %>%
   filter(legume_count <= 3) %>%
   ggplot(., aes(x = as.factor(legume_count), y = total.nitrogen.average, fill = as.factor(d_client))) +
   geom_boxplot() +
-  labs(title = "Legume intercropping and nitrogen, grouped by plot", x = "Number of legume intercrops", y = "Total N", fill = "1AF status")
+  labs(title = "Legume intercropping (beans, groundnuts, soya) and nitrogen",
+       subtitle = "Control plots have slightly higher N across years of legume intercrops",
+       x = "Number of seasons of legume intercrops", 
+       y = "Total soil N (%)", fill = "1AF status") + 
+  theme_oaf()
 ```
 
 The above plot shows N rates by the number of legume intercrops. It's not a perfect view of what happens following a season in which a farmer rotates to beans but does show the cumulative benefit of additional seasons of a legume intercrop on the plot. Do 1AF farmers have fewer intercrops? This is hard to precisely pin down since the plots can shift from 1AF cultivation to not-1AF cultivation season to season. Therefore I'll look at the average years of 1AF cultivation vs. legume intercrops
+
+## Legume intercrops by 1AF tenure
 
 ```{r}
 intercrop_check %>%
@@ -475,16 +474,65 @@ intercrop_check %>%
             number_intercrops = sum(legume_intercrop, na.rm = T)) %>%
   group_by(years_oaf, number_intercrops) %>%
   tally() %>%
-  filter(years_oaf < 3) %>%
+  filter(years_oaf <= 3) %>%
+  filter(number_intercrops < 4) %>%
   ggplot(., aes(x = as.factor(years_oaf), y = n, fill = as.factor(number_intercrops))) +
   geom_bar(stat = 'identity', position = 'dodge') +
   labs(title = "Legume intercrops by 1AF tenure", x = "Years of cultivation under 1AF", y = "Count of plots",
        subtitle = "") +
-  theme(legend.position = 'bottom')
+  theme(legend.position = 'bottom') +
+  theme_oaf()
+```
+
+We're looking for an indication that 1AF plots have fewer legume intercrops and it does appear that plots that have not been cultivated with 1AF have more years of legume intercropping (the blue bar on the left) that for plots that are 1AF plots for more seasons. This relationship is not necessarily statistically different as we also see years of numerous legume intercrops for 1AF plots as well. The main distinguishing feature however is the big bar indicating that **plots that have never been 1AF plots have had 3 legume intercrops more than 1AF plots**.
+
+## Models of legume intercropping and soil N
+
+```{r}
+library(broom)
+
+legume_model_data <- intercrop_check %>%
+  group_by(sample_id) %>%
+  summarize(years_oaf = sum(d_client, na.rm = T),
+            number_intercrops = sum(legume_intercrop, na.rm = T),
+            average_soil_nitrogen = mean(total.nitrogen, na.rm = T))
+
+
+# plot these data to understand relationship.
+legume_model_data %>%
+  filter(number_intercrops < 4) %>%
+  ggplot(., aes(x = as.factor(years_oaf), y = average_soil_nitrogen, fill = as.factor(number_intercrops))) +
+  geom_boxplot() +
+  theme_oaf() +
+  labs(title = "Soil N by 1AF seasons and legume cultivations",
+       x = "1AF seasons",
+       y = "Average soil N",
+       fill = "Legume cultivations")
+
+
+
+cat("R squard for simple model:", summary(lm(average_soil_nitrogen ~ as.factor(number_intercrops), data = legume_model_data))$r.squared)
+
+cat("R squard for model including years_oaf:", summary(lm(average_soil_nitrogen ~ as.factor(number_intercrops) + years_oaf, data = legume_model_data))$r.squared)
 
 ```
 
-We're looking for an indication that 1AF plots have fewer legume intercrops and it does appear that plots that have not been cultivated with 1AF have more years of legume intercropping (the blue bar on the left) that for plots that are 1AF plots for more seasons. This relationship is not necessarily statistically different as we also see years of numerous legume intercrops for 1AF plots as well. The main distinguishing feature however is the big bar indicating that **plots that have not been 1AF plots ever have had 3 legume intercrops**.
+The r2 of models looking at the simple relationship of years of legume cultivation and soil nitrogen is very low. That doesn't seem to be capturing the movement of soil nitrogen.
+
+```{r eval=FALSE, include=FALSE}
+legume_model_data %>%
+   do(simple_legume_model = lm(average_soil_nitrogen ~ as.factor(number_intercrops), data = .)) %>%
+   tidy(., simple_legume_model) %>%
+   kable() %>%
+   kable_styling()
+
+ legume_model_data %>%
+   do(legume_model = lm(average_soil_nitrogen ~ as.factor(number_intercrops) + years_oaf, data = .)) %>%
+   tidy(., legume_model) %>%
+   kable() %>%
+   kable_styling()
+
+```
 
 ## Spatial trend in N levels
 
@@ -520,7 +568,8 @@ lapply(nitrogen_plots, function(x){
   geom_boxplot() +
   theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1)) +
   labs(title = paste("Difference in nitrogen ", unique(x$season)),
-       subtitle = "I don't see a clear spatial trend across locations or time")
+       subtitle = "I don't see a clear spatial trend across locations or time") +
+    theme_oaf()
 })
 ```
 
@@ -534,7 +583,10 @@ lapply(unique_districts, function(dist){
   filter(district == dist) %>%
   ggplot(., aes(x = season, y = total.nitrogen, fill = as.factor(d_client))) +
     geom_boxplot() +
-    labs(title = paste("Seasonal trend for", dist))
+    labs(title = paste("Seasonal trend for", dist),
+         x = "Season",
+         y = "Total soil N (%)") +
+    theme_oaf()
 })
 ```
 
@@ -559,7 +611,8 @@ lapply(baseline_status_plots, function(x){
   ggplot(x, aes(x = season, y = total.nitrogen, fill = as.factor(baseline_status))) +
     geom_boxplot() +
     labs(title = paste("Seasonal trend for", unique(x$district), "using baseline treatment status"),
-         subtitle = "The differences between T and C aren't as extreme so maybe plots \n are just being shifted around...")
+         subtitle = "The differences between T and C aren't as extreme so maybe plots \n are just being shifted around...") + 
+    theme_oaf()
   
 })
 ```
@@ -585,6 +638,85 @@ keDat %>%
 
 
 ### Maps - tbd
+
+Making maps will be more involved so I'm hoping the boxplots are enough.
+
+## Nitrogen uptake
+
+Assess whether ratio of N application rates vs N uptake rates is different between treatment and control. We’d have to make some assumptions about
+
+1. Yield (drawing from M&E harvest surveys? - or do we get some farmer recall on yield in the SHS survey itself?)
+2. N uptake per unit yield (drawn from IPNI nutrient removal calculator)
+3. N applied as compost/manure (I’m not clear on how much detail we have for Kenya on whether it’s manure vs compost, source etc?)
+
+### Yield and N application
+
+Quick histogram of farmer estimated yields
+
+```{r}
+ggplot(keDat, aes(x = yield.t.ha)) +
+  geom_histogram(binwidth = 0.25) + 
+  scale_x_continuous(limit = c(0, 20)) +
+  labs(title = "Histogram of farmer est. yields (less than 20 t/ha)",
+       subtitle = "Esitmates are very noisy. 75th percentile is 15 t/ha")
+
+#kable(quantile(keDat$yield.t.ha, na.rm = T), caption = "Most observations are less than 15 t/ha which is still really high")
+```
+
+
+```{r}
+applied_n_vs_yield <- lapply(unique_seasons, function(year){
+  return(
+    keDat %>%
+      filter(season == year) %>%
+      mutate(can_n = can.acre * 0.26,
+             dap_n = dap.acre * 0.18) %>%
+      rowwise() %>%
+      mutate(total_n_applied = sum(can_n, dap_n, na.rm = T)) %>%
+      mutate(total_n_applied_ha = total_n_applied * 2.47) %>%
+      filter(total_n_applied > 0) %>%
+      filter(yield.t.ha < 10)) %>%
+    as.data.frame()
+})
+
+lapply(applied_n_vs_yield, function(x){
+  ggplot(x, aes(x = total_n_applied_ha, y = yield.t.ha, color = as.factor(d_client))) +
+    geom_point() +
+    facet_wrap(~ season, scales = 'free') + 
+    geom_smooth(method = 'lm') +
+    labs(title = paste("Applied N vs. farmer estimated yield", unique(x$season)),
+         subtitle = "Limiting farmer est. yield to < 10 t/ha - Trend lines are messy but suggest no difference",
+         x = "Total kg N / ha ",
+         y = "Yield t/ha",
+         fill = "1AF status")
+})
+  
+```
+
+### Yield by compost type
+
+N applied as manure instead of plant material. Let's look at compost by type by client status by season 
+
+```{r}
+keDat %>%
+  mutate(compost_category = ifelse(grepl("pig|goat|cow|chicken", compost.type), "animal", "plant")) %>%
+  filter(compost.kgs > 0) %>%
+  filter(compost.acre < 2000) %>%
+  ggplot(., aes(x = as.factor(compost_category), y = compost.acre, fill = as.factor(d_client))) + 
+  geom_boxplot() +
+  facet_wrap(~ season) +
+  labs(title = "Compost application by type (excluding those that didn't apply)",
+       subtitle = "1AF plots are getting more animal manure when compost is applied",
+       x = "Compost type - animal or plant (plant residue / kitchen)",
+       y = "Total kg compost / acre",
+       fill = "1AF status")
+
+
+```
+
+**Interpretation** If anything this suggests that 1AF plots are getting more N rich compost. Unless I'm misunderstanding the consequence here, this should be contributing to N rates in the soil, not diminishing soil N.
+
+
 
 # Regressions
 
