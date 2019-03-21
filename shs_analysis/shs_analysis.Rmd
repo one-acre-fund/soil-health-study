@@ -544,14 +544,44 @@ intercrop_check %>%
   ggplot(., aes(x = intercrop, y = n, fill = as.factor(d_client))) +
   geom_bar(stat = 'identity', position = 'dodge') +
   labs(title = "Legume intercrop type by 1AF status",
-       subtitle = "It's mostly beans, folks",
+       subtitle = "It's mostly beans, folks and control plots are intercropped a lot more regularly",
        x = "Intercrop type",
        y = "Number of plots", 
        fill = "1AF status") + 
   theme_oaf()
 ```
 
-**Interpretation**: And there really aren't other crops being used as intercrops in Kenya.
+**Interpretation**: About 400 more control plots were planted with a bean intercrop over the course of the study. However, we don't see additional seasons of legume intercrop explaining soil N levels in the data. 
+
+> Does increased intercropping explain the difference between 1AF and control plots? Do the other pieces of evidence line up to support this?
+
+```{r}
+intercrop_check %>%
+  filter(legume_intercrop == 1) %>%
+  group_by(intercrop, d_client) %>%
+  tally() %>%
+  mutate(d_client = ifelse(d_client == 0, "control", "one-acre")) %>%
+  spread(d_client, n) %>%
+  kable(., caption = "Total plots by intercrop type") %>%
+  kable_styling()
+```
+
+Control plots were intercropped with beans about ~400 times more than 1AF plots which is not nothing. 
+
+```{r}
+intercrop_check %>%
+  filter(legume_intercrop == 1) %>%
+  group_by(intercrop, d_client) %>%
+  tally() %>%
+  ungroup() %>%
+  mutate(percent = paste(round(n / sum(n), 2) * 100, "%")) %>%
+  select(-n) %>%
+  mutate(d_client = ifelse(d_client == 0, "control", "one-acre")) %>%
+  spread(d_client, percent) %>%
+  kable(., caption = "Percent of plots by intercrop") %>%
+  kable_styling()
+```
+
 
 
 ## Spatial trend in N levels
