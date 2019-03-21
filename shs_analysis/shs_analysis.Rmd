@@ -268,7 +268,7 @@ Step Aston of ART wants follow up on the possibility that 1AF is driving down N 
 * Are our farmers rotating or intercropping with legumes less than non-farmers, or with legumes that are less prolific N-fixers? (i.e. is quality of organic inputs changing to a wider C:N ratio)
 
 
-### Nitrogen alone
+## Nitrogen alone
 
 The big takeaway for me from this plot is that there are regular spikes at certain values. That seems odd for a system that should be pretty continuous. Let's see if that plays out evenly across seasons.
 
@@ -292,7 +292,8 @@ keDat %>%
 #   geom_histogram(data = filter(keDat, keDat$season == 2017), aes(x = total.nitrogen, fill = 'green'), alpha = 0.5) +
 #   theme(legend.position = 'none')
 ```
-### Nitrogen by season
+
+## Soil N by season
 
 This is what we're observing. There's a clear downward trend across seasons with perhaps a slight shift downward for 
 
@@ -317,7 +318,7 @@ keDat %>%
 
 1AF clients are slightly below comparison farmers in terms of total nitrogren but the difference is ever so slight. Perhaps in the context of soil chemistry these are big differencs though!
 
-### Nitrogen and carbon
+## Nitrogen and carbon
 
 This code also addresses identified erroneous variables.
 
@@ -334,7 +335,7 @@ keDat %>%
        subtitle = "And no clear client, non-client trend", color = "1AF client")
 ```
 
-### Soil C vs. soil N by season
+## Soil C vs. soil N by season
 
 ```{r}
 keDat %>%
@@ -357,7 +358,7 @@ keDat %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
 ```
 
-### Applied carbon vs. soil nitrogen
+## Applied carbon vs. soil nitrogen
 
 **if you applied compost since there are so many 0s and removing super large values**
 
@@ -372,7 +373,7 @@ keDat %>%
   labs(title = "N vs. compost", subtitle = "Relationship less clear", x = "Compost kg / acre", y = "")
 ```
 
-### Applied N vs. soil nitrogen
+## Applied N vs. soil nitrogen
 
 ```{r}
 # dap 18% n, can 26%
@@ -419,7 +420,7 @@ lapply(nitrogen_v_compost, function(x){
 
 **Interpretation** I don't see a strong difference across seasons between total N applied and total compost applied. The trend lines seem generally the same or at least visually not so strong to suggest that 1AF plots and control plots are having different experiences. The 2017 plot indicates a slightly flatter relationship between applied N and applied C on 1AF plots but this is not super dramatic. 
 
-### Applied C vs. soil N by season
+## Applied C vs. soil N by season
 
 ```{r}
 applied_c_vs_soil_n <- lapply(unique_seasons, function(year){
@@ -442,7 +443,7 @@ lapply(applied_c_vs_soil_n, function(x){
 **Interpretation** As with the applied N vs. applied C, I don't see a clear difference in outcome between 1AF and control plots when we look at **applied C and soil N**. 
 
 
-### Nitrogen by legume rotation and 1AF status
+## Nitrogen by legume rotation and 1AF status
 ```{r}
 intercrop_check <- keDat %>%
   mutate(legume_intercrop = ifelse(intercrop %in% c("beans", "groundnuts", "soya"), 1, 0))
@@ -485,9 +486,9 @@ intercrop_check %>%
 
 We're looking for an indication that 1AF plots have fewer legume intercrops and it does appear that plots that have not been cultivated with 1AF have more years of legume intercropping (the blue bar on the left) that for plots that are 1AF plots for more seasons. This relationship is not necessarily statistically different as we also see years of numerous legume intercrops for 1AF plots as well. The main distinguishing feature however is the big bar indicating that **plots that have not been 1AF plots ever have had 3 legume intercrops**.
 
-### Spatial trend in N levels
+## Spatial trend in N levels
 
-#### Boxplots by geography
+### Boxplots by geography
 
 Clean up `region` variable
 
@@ -583,16 +584,7 @@ keDat %>%
 ```
 
 
-#### Maps - tbd
-
-### Duration of cultivation by treatment
-
-### N application rates by treatment
-
-* Are there differences between control and treatment in how long fields have been farmed for?
-* Are control farmers applying a higher ratio of N compared to C than control farmers? 
-* Is N application vs N uptake ratio different for treatment vs control? 
-* Are our farmers rotating or intercropping with legumes less than non-farmers, or with legumes that are less prolific N-fixers? (i.e. is quality of organic inputs changing to a wider C:N ratio) 
+### Maps - tbd
 
 # Regressions
 
