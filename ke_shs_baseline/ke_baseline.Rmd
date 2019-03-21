@@ -30,14 +30,16 @@ library(htmltools)
 suppressMessages(library(Matching))
 ```
 
+# Data preparation
+
 ```{r import}
 # wd <- "/Users/mlowes/Google Drive /optimized_agronomy/soil/soil_health_study/data/ke baseline"
 # dd <- paste(wd, "data", sep = "/")
 # od <- paste(wd, 'output', sep = "/")
-dd <- normalizePath(file.path("data"))
-soilDir <- normalizePath(file.path("..", "..", "..", "data", "soil", "predictions"))
+dd <- normalizePath(file.path("ke_shs_baseline", "data"))
+soilDir <- normalizePath(file.path("..", "..", "data", "soil", "predictions"))
 
-od <- normalizePath(file.path("output"))
+od <- normalizePath(file.path("ke_shs_baseline", "output"))
 
 load(paste("/Users/mlowes/Google Drive/r_help/3_analyze/regressions - general, R", "regression_functions.Rdata", sep = "/"))
 
@@ -104,7 +106,7 @@ These are the ids that appear in the Identifiers data but not in the CommCare su
 Identifiers$sample_id[!Identifiers$sample_id %in%  d$id.Soil_Sample_Id]
 ```
 
-### Merge the data and drop non-merged obs
+## Merge the data and drop non-merged obs
 
 **Come back to this**. I don't want to simply drop observations but we want to be working with full data for summaries and regressions.
 
@@ -114,7 +116,7 @@ d <- merge(d, Identifiers[,c("SSN", "sample_id")], by.x="id.Soil_Sample_Id", by.
 
 ```
 
-### Merge in the soil data
+## Merge in the soil data
 
 ```{r}
 table(d$SSN %in% soil$SSN)
@@ -132,7 +134,7 @@ d <- merge(d, cnP, by="SSN", all.x=TRUE)
 names(d)[names(d)=="OC_PLS1" | names(d)== "TN_PLS1"] <- c("Total.C", "Total.N")
 ```
 
-### Export `d` for R1 follow up
+## Export `d` for R1 follow up
 ```{r}
 export <- d[,c("oaf", "id.RegionName", "id.DistrictName", "id.SiteName", "id.Last_Name", "id.First_Name","id.OAFID", "id.ClientPhone", "field_location", "SSN")]
 
@@ -219,7 +221,7 @@ d$SiteName <- gsub("\\'", "", d$SiteName)
 
 
 
-### Graphs of Kenya baseline soil variables
+## Graphs of Kenya baseline soil variables
 
 ```{r}
 for(i in 1:length(soilVars)){
@@ -241,7 +243,7 @@ dev.off()
 
 ```
 
-### Soil chemical relationships
+## Soil chemical relationships
 There are biologically predictable relationships between soil chemical characteristics. For instance, we expect Ca and Mg to move in the same direction and be positively correlated with pH. If we had Aluminum as an outcome, we'd expect pH to be negatively correlated with soluable aluminum. Let's look quickly to confirm if those relationships are present:
 
 ```{r}
@@ -310,7 +312,7 @@ table(baselineCheck$sample_id %in% samoraSheet$unique.id)
 
 ## Summary statistics
 
-### Table of final baseline breakdown
+## Table of final baseline breakdown
 ```{r}
 count <- d %>% group_by(DistrictName) %>% 
   dplyr::summarize(
@@ -336,7 +338,7 @@ sort(prop.table(table(d$plot_information.maincrop, useNA = 'ifany')))
 d$crop.maize <- ifelse(d$plot_information.maincrop=="maize", 1,0)
 ```
 
-# Kgs of inputs per acre and hectare
+## Kgs of inputs per acre and hectare
 
 **Notes from Kalie**: We should be dividing input quantity by land size. 100 kgs of inputs is the soft ceiling for OAF fields as we didn't offer more than 100 kgs of fertilizer per acre. It's also impossible for an OAF field to be smaller than 0.25 acres.
 
@@ -412,7 +414,7 @@ print(
 }
 ```
 
-### Cleaning input variables
+## Cleaning input variables
 ```{r}
 d$field_size.adj <- ifelse(d$oaf==1 & d$field_size<0.25, 0.25, d$field_size)
 
@@ -457,7 +459,7 @@ print(
 
 **[Kim](kim.siegal@oneacrefund.org) says**: While the values vary far more than we see in typical M&E data, we don't have a good reference point for fertilizer application rates during the short rains, the period about which we asked. It's conceivable that the fertilizer/acre quantity varies this much, even among OAF farmers. I'm going to go with that for now.
 
-### Cleaning management practices in past 5 years
+## Cleaning management practices in past 5 years
 
 ```{r}
 pastYears <- names(d)[grep("_5",  names(d))]
@@ -470,7 +472,7 @@ d[,pastYears] <- sapply(d[,pastYears], function(x){
 ```
 
 
-### Tenure Scatter plots
+## Tenure Scatter plots
 Generate tenure vs. pH and tenure vs. fertilizer seasons scatter plots:
 ```{r}
 d$seasons_oaf <- ifelse(d$seasons_oaf>8, NA, d$seasons_oaf)
@@ -515,7 +517,7 @@ print(tenure.fertilizer)
 dev.off()
 ```
 
-## Baseline balance
+## Baseline balance variables
 
 ```{r}
 d$own.cows <- ifelse(d$cows>0 & !is.na(d$cows), 1,0)
@@ -575,13 +577,42 @@ rownames(output) <- out.list
 output <- output[order(output$pvalue),]
 output$pvalue <- ifelse(output[, 3] < 0.001, "< 0.001", round(output[, 3], 3)) 
 colnames(output) <- c("1AF Client","Control", "p-value")	
+
+output %>%
+  kable(., format = 'markdown')
 ```
 
-```{r, results='asis'}
-print(kable(output))
+# Data checks
+
+These data checks are happening in March, 2019 trying to make sense of results we've seen after a couple years of soil health study work. Specifically, I want to know N levels baesd on the years of previous fertilizer cultivation
+
+```{r}
+d %>%
+  filter(!is.na(chemical_fertilizer_5)) %>%
+  ggplot(., aes(x = as.factor(chemical_fertilizer_5), y = Total.N, fill = as.factor(oaf))) +
+  geom_boxplot() +
+  labs(title = "Nitrogen levels by previous years of chemical fertilizer",
+       subtitle = "We don't see a big drop off due to increasing fertilizer use",
+       fill = "Current 1AF status", x = "Chemical fertilizer use in previous 5 seasons", y = "Total N (%)")
 ```
 
-Table 7 
+Looking at baseline N rates by chemical fertilizer use for the past 5 years suggests that repeated cultivation isn't driving down N rates dispropportionally among 1AF field. Instead we see that if anything fields that have had 5 years of chemical fertilizer use in the past 5 seasons and are currently 1AF plots have slightly higher N averages than controls.
+
+```{r}
+d %>%
+  filter(!is.na(chemical_fertilizer_5)) %>%
+  group_by(chemical_fertilizer_5, oaf) %>%
+  summarize(count = n()) %>%
+  spread(oaf, count) %>%
+  kable(., format = 'markdown')
+```
+
+
+# Analysis
+
+These were the days before Matt understood how to use a function...
+
+## Table 7 
 
 ```{r}
 table7vars <- c("pH", "Total.C", "Total.N", "m3.Ca", "m3.Mg")
@@ -592,7 +623,6 @@ write.csv(table7, file=paste(od, "ke table7.csv", sep = "/"), row.names=T)
 
 
 ```
-
 
 ```{r}
 t10order <- c("age", "female")
@@ -626,7 +656,8 @@ write.csv(output, file=paste(od, "ke baseline balance.csv", sep="/"), row.names=
 ```
 
 
-### Baseline balance by district
+
+## Baseline balance by district
 I remove intercrop elements from out.list so that the code runs properly. I have to remove all fertilizer comparisons. CAN fails in Suneka. The others fail across districts due to insuffient observations.
 
 ```{r}
@@ -674,7 +705,7 @@ print(kable(dist.output))
 write.csv(dist.output, file=paste(od, "ke district balance.csv", sep="/"), row.names=T)
 ```
 
-### Agronomic Behaviors
+## Agronomic Behaviors
 
 ```{r, results='asis', fig.align='center'}
 suppressMessages(library(stargazer))
@@ -708,7 +739,7 @@ logVars <- paste(names(d[grep("log", names(d))]), collapse=" + ")
 cor(d[,grep("log", names(d))], use = "complete.obs")
 ```
 
-### Baseline balance by OAF tenure
+## Baseline balance by OAF tenure
 Look at farmers by duration of tenure farming with 1AF We want to understand, at least with an initial naive baseline sense, what is the cumulative effect of Tubura practices on soil health outcomes?
 
 We will look only at current 1AF farmers and compare first year farmers to farmers with more experience with Tubura.
@@ -724,7 +755,7 @@ print(
 }
 ```
 
-### Tenure summaries
+## Tenure summaries
 ```{r}
 tenureSum <- aggregate(oafOnly[,out.list], by=list(oafOnly$seasons_oaf), function(x){
   round(mean(x, na.rm=T),2)
@@ -737,7 +768,7 @@ colnames(tenureSum) <- c(paste(seq(1,8,1), " seas.", sep=""))
 print(kable(tenureSum))
 ```
 
-### OAF tenure balance table
+## OAF tenure balance table
 ```{r}
 oafOnly$tenured <- ifelse(oafOnly$seasons_oaf>=3,0,1)
 
@@ -791,7 +822,7 @@ list1 <- lapply(soilVars, function(x){
 })
 ```
 
-### Table 17 - years of input use
+## Table 17 - years of input use
 
 [Guide to interpreting Linear-Log Models](http://www-stat.wharton.upenn.edu/~stine/stat621/handouts/LogsInRegression.pdf)
 
@@ -838,7 +869,7 @@ stargazer(list1, type="html",
           omit=c("SiteName"), out=paste(od, "ke_baseline_agprac.htm",sep="/"))
 ```
 
-### Naive tenure models
+## Naive tenure models
 
 ```{r results='asis', eval=F}
 stargazer(list2, type="html", 
@@ -871,7 +902,7 @@ stargazer(list3, type="html",
           omit=c("SiteName"), out=paste(od, "ke_baseline_ag_tenure.htm", sep="/"))
 ```
 
-### Table 18 - client product use and soil outcomes
+## Table 18 - client product use and soil outcomes
 
 First, convert all quantites to kg/acre and kg/ha. Then check for collinearity, set up and execute models
 ```{r}
@@ -988,7 +1019,7 @@ write.csv(table18c, file=paste(od, "table18_can.csv", sep = "/"),
           row.names = T)
 ```
 
-### District and site level summaries of soil and managment practices
+## District and site level summaries of soil and managment practices
 ```{r}
 dist.sum <- aggregate(d[,out.list], by=list(d$DistrictName), function(x){
   return(c(
@@ -1020,7 +1051,7 @@ write.csv(site.sum, file=paste(od, "site covariate summary.csv", sep = "/"))
 ```
 
 
-### Truncated site level summary (site count > 10 = 25 sites)
+## Truncated site level summary (site count > 10 = 25 sites)
 ```{r}
 largerSite <- table(d$SiteName)>10
 largerSite <- rownames(as.matrix(largerSite[largerSite==T]))
@@ -1039,7 +1070,7 @@ site.sum.tr <- aggregate(d[d$SiteName %in% largerSite,out.list], by=list(d[d$Sit
 write.csv(site.sum.tr, file=paste(od, "site truncated covariate summary.csv", sep = "/"))
 ```
 
-### Female farmers farming poorer soils?
+## Female farmers farming poorer soils?
 ```{r}
 toRemove <- "female"
 genderBalance <- out.list[!out.list %in% toRemove]
@@ -1073,7 +1104,7 @@ write.csv(equal, file=paste(od, "ke female farmer status.csv", sep = "/"), row.n
 ```
 
 
-### Export the data for Eric
+## Export the data for Eric
 ```{r}
 write.csv(d, file=paste(od, "kenya_shs_merged_clean.csv",sep = "/"), row.names=F)
 ```
@@ -1554,7 +1585,7 @@ write.csv(thresh.t, file=paste(od, "table1_ke_thresholds_tenure.csv", sep = "/")
 ```
 
 
-### OAF tenure model - table 14 with PSM
+## OAF tenure model - table 14 with PSM
 
 ```{r}
 tenureTab.add <- lapply(1:length(m), function(model){
@@ -1606,7 +1637,7 @@ write.csv(tenure.reg, file=paste(od, "table14.csv", sep = "/"), row.names=T)
 
 # Mapping
 
-### Map of baseline observations
+## Map of baseline observations
 Produce a simple map of where our observations are
 
 ```{r get_map}
@@ -1641,7 +1672,7 @@ map
 
 **Notes**: We have a lot of GPS points piled on the Bungoma office. We need to address the GPS collection practices that lead to incorrectly logged GPS.
 
-### Static map of sampling density
+## Static map of sampling density
 ```{r}
 crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
 e <- d[!is.na(d$lon),]
@@ -1716,7 +1747,7 @@ length(office)
 
 At least 159 samples should be redistributed to other sites. 
 
-### Re-assigning GPS centered at the office
+## Re-assigning GPS centered at the office
 
 **Note**: I don't have a good way to find these points again in the object ke, reassign the values and generate new values. Instead, I can subtract values from Kanduyi and try to assign them elsewhere manually. See if this is possible.
 
