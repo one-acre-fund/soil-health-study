@@ -1125,145 +1125,140 @@ naOut
 We have missing values that are preventing the prediction function that preceeds PSM from running properly. Let's for now just remove yield as a conributing variable.
 
 ```{r}
-h <- d[complete.cases(d[,psmCheck]),]
-psmVars <- paste(psmCheck, collapse=" + ")
-
-reg <- glm(as.formula(paste("oaf ~", psmVars, sep="")),  family= binomial(link="logit"), data=h)
-
-# summarize predicted probabilities
-pr <- data.frame(pr_score = predict(reg, type='response'), treat = h$oaf)
-
-# graph
-psmGraph <- ggplot() + geom_histogram(data=subset(pr, pr$treat==1), aes(x = pr_score, y=..count.., fill=as.factor(treat)), bins=80, position = "identity") + geom_histogram(data=subset(pr, pr$treat==0), aes(x=pr_score, y=-..count.., fill=as.factor(treat)), bins=80, position = "identity") +
-    scale_y_continuous(limits=c(-150,150)) + 
-  labs(title ="PSM score overlap", x = "PSM score", y="Farmer count",
-       fill="1AF/Control")
-
-print(psmGraph)
-
-pdf(file=paste(od, "ke_baseline_psm_overlap.pdf", sep="/"), height=8.5, width=11)
-print(psmGraph)
-dev.off()
-```
-
-```{r}
-d$age2 <- d$age^2
-
-coreVars = c("female", "age", "SiteName", "cows", "goats", "chickens", "pigs", "sheep",
-             "sandy_soil", "loam_soil")
-
-psmList <- list(
-  list(tr = "oaf",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="Ca"),
-  list(tr = "oaf",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="Mg"),
-  list(tr = "oaf",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="pH"),
-  list(tr = "oaf",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="Total.C"),
-  list(tr = "oaf",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="Total.N"),
-  list(tr = "oaf",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="chemical_fertilizer_5"),
+forceUpdate <- FALSE
+if(forceUpdate){
+  h <- d[complete.cases(d[,psmCheck]),]
+  psmVars <- paste(psmCheck, collapse=" + ")
+  
+  reg <- glm(as.formula(paste("oaf ~", psmVars, sep="")),  family= binomial(link="logit"), data=h)
+  
+  # summarize predicted probabilities
+  pr <- data.frame(pr_score = predict(reg, type='response'), treat = h$oaf)
+  
+  # graph
+  psmGraph <- ggplot() + geom_histogram(data=subset(pr, pr$treat==1), aes(x = pr_score, y=..count.., fill=as.factor(treat)), bins=80, position = "identity") + geom_histogram(data=subset(pr, pr$treat==0), aes(x=pr_score, y=-..count.., fill=as.factor(treat)), bins=80, position = "identity") +
+      scale_y_continuous(limits=c(-150,150)) + 
+    labs(title ="PSM score overlap", x = "PSM score", y="Farmer count",
+         fill="1AF/Control")
+  
+  print(psmGraph)
+  
+  pdf(file=paste(od, "ke_baseline_psm_overlap.pdf", sep="/"), height=8.5, width=11)
+  print(psmGraph)
+  dev.off()
+  
+  d$age2 <- d$age^2
+  
+  coreVars = c("female", "age", "SiteName", "cows", "goats", "chickens", "pigs", "sheep",
+               "sandy_soil", "loam_soil")
+  
+  psmList <- list(
     list(tr = "oaf",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="Exch.Al"),
-  list(tr = "oaf",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="compost_fertilizer_5"),
-  list(tr = "oaf",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="legum_maincrop_5"),
-  list(tr = "oaf",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="legum_intercrop_5"),
-  list(tr = "oaf",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="logFert"),
-  list(tr = "oaf",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="dap.acre"),
-  list(tr = "oaf",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="can.acre"),
-  list(tr = "oaf",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="compost.acre")
-)
-
-#lime_fertilizer_5 >> so few farmers use it that we get a bad match.
-
-
-# PSM
-set.seed(20161102)
-m <- lapply(psmList, function(listInput){
-
-  naCheck <- unlist(strsplit(gsub("\\+", "", as.vector(listInput$psmVars))," ", fixed=TRUE))
-  naCheck <- naCheck[-which(naCheck=="")]
-  
-  
-  # keep complete cases of outcome variable
-  k <- d[complete.cases(d[,naCheck]),]
-  k <- k[complete.cases(k[,listInput$y]),]
-  
-  # run glm regression:
-  reg <- glm(as.formula(paste(listInput$tr, "~", listInput$psmVars, sep="")),  family= binomial(link="logit"), data=k)
-  
-  suppressWarnings(
-  mod <- Match(Y = k[,listInput$y], Tr = k[,listInput$tr], X = reg$fitted.values, ties=FALSE, replace=FALSE, caliper=0.25, estimand = "ATE")	
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="Ca"),
+    list(tr = "oaf",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="Mg"),
+    list(tr = "oaf",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="pH"),
+    list(tr = "oaf",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="Total.C"),
+    list(tr = "oaf",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="Total.N"),
+    list(tr = "oaf",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="chemical_fertilizer_5"),
+      list(tr = "oaf",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="Exch.Al"),
+    list(tr = "oaf",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="compost_fertilizer_5"),
+    list(tr = "oaf",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="legum_maincrop_5"),
+    list(tr = "oaf",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="legum_intercrop_5"),
+    list(tr = "oaf",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="logFert"),
+    list(tr = "oaf",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="dap.acre"),
+    list(tr = "oaf",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="can.acre"),
+    list(tr = "oaf",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="compost.acre")
   )
-  matchRes <- MatchBalance(k[,listInput$tr] ~ k[,listInput$y], match.out=mod, nboots=500, data=k, print.level = 0)
-  #print(listInput$y)
-  return(list(mod, matchRes))
   
-})
+  #lime_fertilizer_5 >> so few farmers use it that we get a bad match.
+  
+  
+  # PSM
+  set.seed(20161102)
+  m <- lapply(psmList, function(listInput){
+  
+    naCheck <- unlist(strsplit(gsub("\\+", "", as.vector(listInput$psmVars))," ", fixed=TRUE))
+    naCheck <- naCheck[-which(naCheck=="")]
+    
+    
+    # keep complete cases of outcome variable
+    k <- d[complete.cases(d[,naCheck]),]
+    k <- k[complete.cases(k[,listInput$y]),]
+    
+    # run glm regression:
+    reg <- glm(as.formula(paste(listInput$tr, "~", listInput$psmVars, sep="")),  family= binomial(link="logit"), data=k)
+    
+    suppressWarnings(
+    mod <- Match(Y = k[,listInput$y], Tr = k[,listInput$tr], X = reg$fitted.values, ties=FALSE, replace=FALSE, caliper=0.25, estimand = "ATE")	
+    )
+    matchRes <- MatchBalance(k[,listInput$tr] ~ k[,listInput$y], match.out=mod, nboots=500, data=k, print.level = 0)
+    #print(listInput$y)
+    return(list(mod, matchRes))
+    
+  })
+  
+  matchRes <- do.call(rbind, lapply(1:length(m), function(model){
+    val <- as.data.frame(cbind(
+      standard.diff=m[[model]][[2]]$AfterMatching[[1]]$sdiff, 
+      var.ratio = m[[model]][[2]]$AfterMatching[[1]]$var.ratio,
+      sdiff.adj = m[[model]][[2]]$AfterMatching[[1]]$sdiff/100))
+    return(val)
+  }))
+  
+  namesInput <- NULL
+  for(i in 1:length(psmList)){
+    namesInput[i] <- psmList[[i]]$y
+  }
+  rownames(matchRes) <- namesInput
+  
+  kable(matchRes)
+  
+  write.csv(matchRes, file=paste(od, "ke psm performance.csv", sep = "/"), row.names=T)
+}
 ```
 
 The models can now vary by outcome. Let's see if we can improve our results.
-
-```{r}
-matchRes <- do.call(rbind, lapply(1:length(m), function(model){
-  val <- as.data.frame(cbind(
-    standard.diff=m[[model]][[2]]$AfterMatching[[1]]$sdiff, 
-    var.ratio = m[[model]][[2]]$AfterMatching[[1]]$var.ratio,
-    sdiff.adj = m[[model]][[2]]$AfterMatching[[1]]$sdiff/100))
-  return(val)
-}))
-
-namesInput <- NULL
-for(i in 1:length(psmList)){
-  namesInput[i] <- psmList[[i]]$y
-}
-rownames(matchRes) <- namesInput
-```
-
-```{r results='asis'}
-print(kable(matchRes))
-```
-
-```{r}
-write.csv(matchRes, file=paste(od, "ke psm performance.csv", sep = "/"), row.names=T)
-```
 
 So few farmers use lime fertilizer that we don't get a good match. I could make it binary but it's so overwhelmingly the case that none of the farmers use lime that I'm just going to drop it.
 
@@ -1271,53 +1266,50 @@ We also don't get super great matches on DAP and CAN. I'm going to push forward 
 
 
 ```{r}
-coefTable <- do.call(rbind, lapply(1:length(m), function(model){
-  beta = round(m[[model]][[1]]$est.noadj,3)
-  mean.Tr = round(m[[model]][[2]]$AfterMatching[[1]][[3]], 2)
-  mean.Co = round(m[[model]][[2]]$AfterMatching[[1]][[4]], 2)
-  pval = m[[model]][[2]]$AfterMatching[[1]][[10]][[3]] # p.value
-  #pval = (1 - pnorm(abs(m[[model]][[1]]$est/m[[model]][[1]]$se.standard))) * 2
-  pval = ifelse(pval < 0.001, "0.001", round(pval, 3))
+if(forceUpdate){
+  coefTable <- do.call(rbind, lapply(1:length(m), function(model){
+    beta = round(m[[model]][[1]]$est.noadj,3)
+    mean.Tr = round(m[[model]][[2]]$AfterMatching[[1]][[3]], 2)
+    mean.Co = round(m[[model]][[2]]$AfterMatching[[1]][[4]], 2)
+    pval = m[[model]][[2]]$AfterMatching[[1]][[10]][[3]] # p.value
+    #pval = (1 - pnorm(abs(m[[model]][[1]]$est/m[[model]][[1]]$se.standard))) * 2
+    pval = ifelse(pval < 0.001, "0.001", round(pval, 3))
+    
+    res = data.frame(beta, mean.Tr, mean.Co, pval, stringsAsFactors = F)
+    return(res)
+  }))
+  row.names(coefTable) <- namesInput
+  coefTable$pval.adj <- round(p.adjust(coefTable$pval, method="fdr"),3)
   
-  res = data.frame(beta, mean.Tr, mean.Co, pval, stringsAsFactors = F)
-  return(res)
-}))
-row.names(coefTable) <- namesInput
-coefTable$pval.adj <- round(p.adjust(coefTable$pval, method="fdr"),3)
-```
-
-```{r results='asis'}
-print(kable(coefTable))
-```
-
-
-```{r}
-write.csv(coefTable, file=paste(od, "ke psm coefficients.csv", sep = "/"),
-          row.names = T)
-
-# sort by the order Eric wants
-t7order <- c("pH", "Total.C", "Total.N", "Ca", "Mg", "Exch.Al")
-table7vars <- paste(t7order, collapse = "|")
-table7 <- coefTable[grep(table7vars, rownames(coefTable)), ]
-table7 <- table7[order(match(rownames(table7), t7order)),]
-
-write.csv(table7, file=paste(od, "table7.csv", sep = "/"), row.names = T)
-
-# 11/17 added lime
-t8order <- c("chemical_fertilizer_5", "compost_fertilizer_5", "legum_maincrop_5",
-             "legum_intercrop_5")
-table8vars <- paste(t8order, collapse = "|")
-table8 <- coefTable[grep(table8vars, rownames(coefTable)), ]
-table8 <- table8[order(match(rownames(table8), t8order)),]
-
-write.csv(table8, file=paste(od, "table8.csv", sep = "/"), row.names = T)
-
-#table 3
-t9order <- c("dap.acre", "can.acre", "compost.acre")
-table9vars <- paste(t9order, collapse = "|")
-table9 <- coefTable[grep(table9vars, rownames(coefTable)), ]
-table9 <- table9[order(match(rownames(table9), t9order)),]
-write.csv(table9, file=paste(od, "table9.csv", sep = "/"))
+  kable(coefTable)
+  
+  write.csv(coefTable, file=paste(od, "ke psm coefficients.csv", sep = "/"),
+            row.names = T)
+  
+  # sort by the order Eric wants
+  t7order <- c("pH", "Total.C", "Total.N", "Ca", "Mg", "Exch.Al")
+  table7vars <- paste(t7order, collapse = "|")
+  table7 <- coefTable[grep(table7vars, rownames(coefTable)), ]
+  table7 <- table7[order(match(rownames(table7), t7order)),]
+  
+  write.csv(table7, file=paste(od, "table7.csv", sep = "/"), row.names = T)
+  
+  # 11/17 added lime
+  t8order <- c("chemical_fertilizer_5", "compost_fertilizer_5", "legum_maincrop_5",
+               "legum_intercrop_5")
+  table8vars <- paste(t8order, collapse = "|")
+  table8 <- coefTable[grep(table8vars, rownames(coefTable)), ]
+  table8 <- table8[order(match(rownames(table8), t8order)),]
+  
+  write.csv(table8, file=paste(od, "table8.csv", sep = "/"), row.names = T)
+  
+  #table 3
+  t9order <- c("dap.acre", "can.acre", "compost.acre")
+  table9vars <- paste(t9order, collapse = "|")
+  table9 <- coefTable[grep(table9vars, rownames(coefTable)), ]
+  table9 <- table9[order(match(rownames(table9), t9order)),]
+  write.csv(table9, file=paste(od, "table9.csv", sep = "/"))
+}
 ```
 
 ## Break out first season clients from more tenured - for appendix?
@@ -1328,156 +1320,149 @@ I'm comparing season 1 clients to clients with more tenure in the PSM matching.
 
 
 ```{r}
-d$tenure.tiers <- ifelse(d$oaf==1 & d$seasons_oaf==1, 0,
-                         ifelse(d$oaf==1 & d$seasons_oaf>1, 1, NA))
-
-
-coreVars = c("female", "age", "SiteName", "cows", "goats", "chickens", "pigs", "sheep")
-
-psmList <- list(
-  list(tr = "tenure.tiers",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="Ca"),
-  list(tr = "tenure.tiers",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="Mg"),
-  list(tr = "tenure.tiers",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="pH"),
-  list(tr = "tenure.tiers",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="Total.C"),
-  list(tr = "tenure.tiers",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="Total.N"),
-  list(tr = "tenure.tiers",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="chemical_fertilizer_5"),
+if(forceUpdate){
+  d$tenure.tiers <- ifelse(d$oaf==1 & d$seasons_oaf==1, 0,
+                           ifelse(d$oaf==1 & d$seasons_oaf>1, 1, NA))
+  
+  
+  coreVars = c("female", "age", "SiteName", "cows", "goats", "chickens", "pigs", "sheep")
+  
+  psmList <- list(
     list(tr = "tenure.tiers",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="Exch.Al"),
-  list(tr = "tenure.tiers",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="compost_fertilizer_5"),
-  list(tr = "tenure.tiers",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="legum_maincrop_5"),
-  list(tr = "tenure.tiers",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="legum_intercrop_5"),
-  list(tr = "tenure.tiers",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="logFert"),
-  list(tr = "tenure.tiers",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="dap.acre"),
-  list(tr = "tenure.tiers",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="can.acre"),
-  list(tr = "tenure.tiers",
-       psmVars = paste(coreVars,
-                   collapse=" + "),
-       y="compost.acre")
-)
-
-#lime_fertilizer_5 >> so few farmers use it that we get a bad match.
-
-
-# PSM
-set.seed(20161102)
-mappend <- lapply(psmList, function(listInput){
-
-  naCheck <- unlist(strsplit(gsub("\\+", "", as.vector(listInput$psmVars))," ", fixed=TRUE))
-  naCheck <- naCheck[-which(naCheck=="")]
-  
-  
-  # keep complete cases of outcome variable
-  k <- d[complete.cases(d[,naCheck]),]
-  k <- k[complete.cases(k[,listInput$y]),]
-  k <- k[complete.cases(k[,listInput$tr]),]
-  
-  # run glm regression:
-  reg <- glm(as.formula(paste(listInput$tr, "~", listInput$psmVars, sep="")),  family= binomial(link="logit"), data=k)
-  
-  suppressWarnings(
-  mod <- Match(Y = k[,listInput$y], Tr = k[,listInput$tr], X = reg$fitted.values, ties=FALSE, replace=FALSE, caliper=0.25, estimand = "ATE")	
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="Ca"),
+    list(tr = "tenure.tiers",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="Mg"),
+    list(tr = "tenure.tiers",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="pH"),
+    list(tr = "tenure.tiers",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="Total.C"),
+    list(tr = "tenure.tiers",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="Total.N"),
+    list(tr = "tenure.tiers",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="chemical_fertilizer_5"),
+      list(tr = "tenure.tiers",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="Exch.Al"),
+    list(tr = "tenure.tiers",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="compost_fertilizer_5"),
+    list(tr = "tenure.tiers",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="legum_maincrop_5"),
+    list(tr = "tenure.tiers",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="legum_intercrop_5"),
+    list(tr = "tenure.tiers",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="logFert"),
+    list(tr = "tenure.tiers",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="dap.acre"),
+    list(tr = "tenure.tiers",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="can.acre"),
+    list(tr = "tenure.tiers",
+         psmVars = paste(coreVars,
+                     collapse=" + "),
+         y="compost.acre")
   )
-  matchRes <- MatchBalance(k[,listInput$tr] ~ k[,listInput$y], match.out=mod, nboots=500, data=k, print.level = 0)
-  #print(listInput$y)
-  return(list(mod, matchRes))
   
-})
-```
-
-The models can now vary by outcome. Let's see if we can improve our results. (appendix)
-
-```{r}
-matchRes <- do.call(rbind, lapply(1:length(mappend), function(model){
-  val <- as.data.frame(cbind(
-    standard.diff=mappend[[model]][[2]]$AfterMatching[[1]]$sdiff, 
-    var.ratio = mappend[[model]][[2]]$AfterMatching[[1]]$var.ratio,
-    sdiff.adj = mappend[[model]][[2]]$AfterMatching[[1]]$sdiff/100))
-  return(val)
-}))
-
-namesInput <- NULL
-for(i in 1:length(psmList)){
-  namesInput[i] <- psmList[[i]]$y
+  #lime_fertilizer_5 >> so few farmers use it that we get a bad match.
+  
+  
+  # PSM
+  set.seed(20161102)
+  mappend <- lapply(psmList, function(listInput){
+  
+    naCheck <- unlist(strsplit(gsub("\\+", "", as.vector(listInput$psmVars))," ", fixed=TRUE))
+    naCheck <- naCheck[-which(naCheck=="")]
+    
+    
+    # keep complete cases of outcome variable
+    k <- d[complete.cases(d[,naCheck]),]
+    k <- k[complete.cases(k[,listInput$y]),]
+    k <- k[complete.cases(k[,listInput$tr]),]
+    
+    # run glm regression:
+    reg <- glm(as.formula(paste(listInput$tr, "~", listInput$psmVars, sep="")),  family= binomial(link="logit"), data=k)
+    
+    suppressWarnings(
+    mod <- Match(Y = k[,listInput$y], Tr = k[,listInput$tr], X = reg$fitted.values, ties=FALSE, replace=FALSE, caliper=0.25, estimand = "ATE")	
+    )
+    matchRes <- MatchBalance(k[,listInput$tr] ~ k[,listInput$y], match.out=mod, nboots=500, data=k, print.level = 0)
+    #print(listInput$y)
+    return(list(mod, matchRes))
+    
+  })
+  
+  matchRes <- do.call(rbind, lapply(1:length(mappend), function(model){
+    val <- as.data.frame(cbind(
+      standard.diff=mappend[[model]][[2]]$AfterMatching[[1]]$sdiff, 
+      var.ratio = mappend[[model]][[2]]$AfterMatching[[1]]$var.ratio,
+      sdiff.adj = mappend[[model]][[2]]$AfterMatching[[1]]$sdiff/100))
+    return(val)
+  }))
+  
+  namesInput <- NULL
+  for(i in 1:length(psmList)){
+    namesInput[i] <- psmList[[i]]$y
+  }
+  rownames(matchRes) <- namesInput
+  
+  kable(matchRes)
+  
+  write.csv(matchRes, file=paste(od, "ke psm performance-appendix.csv", sep = "/"), row.names=T)
 }
-rownames(matchRes) <- namesInput
 ```
 
-```{r results='asis'}
-print(kable(matchRes))
-```
+
+
 
 ```{r}
-write.csv(matchRes, file=paste(od, "ke psm performance-appendix.csv", sep = "/"), row.names=T)
+if(forceUpdate){
+  coefTable.append <- do.call(rbind, lapply(1:length(mappend), function(model){
+    beta = round(mappend[[model]][[1]]$est.noadj,3)
+    mean.Tr = round(mappend[[model]][[2]]$AfterMatching[[1]][[3]], 2)
+    mean.Co = round(mappend[[model]][[2]]$AfterMatching[[1]][[4]], 2)
+    pval = mappend[[model]][[2]]$AfterMatching[[1]][[10]][[3]] # p.value
+    #pval = (1 - pnorm(abs(m[[model]][[1]]$est/m[[model]][[1]]$se.standard))) * 2
+    pval = ifelse(pval < 0.001, "0.001", round(pval, 3))
+    
+    res = data.frame(beta, mean.Tr, mean.Co, pval, stringsAsFactors = F)
+    return(res)
+  }))
+  row.names(coefTable.append) <- namesInput
+  coefTable.append$pval.adj <- round(p.adjust(coefTable.append$pval, method="fdr"),3)
+  names(coefTable.append) <- c("beta", "Old Clients", "New Clients", "pval", "pval.adj")
+  
+  kable(coefTable.append)
+  
+  write.csv(coefTable.append, file=paste(od, "ke psm coefficients - appendix.csv", sep = "/"),row.names = T)
+}
 ```
 
 So few farmers use lime fertilizer that we don't get a good match. I could make it binary but it's so overwhelmingly the case that none of the farmers use lime that I'm just going to drop it.
 
 We also don't get super great matches on DAP and CAN. I'm going to push forward with this but I'm going to push forward with the results. **We should flag this.**
-
-
-```{r}
-coefTable.append <- do.call(rbind, lapply(1:length(mappend), function(model){
-  beta = round(mappend[[model]][[1]]$est.noadj,3)
-  mean.Tr = round(mappend[[model]][[2]]$AfterMatching[[1]][[3]], 2)
-  mean.Co = round(mappend[[model]][[2]]$AfterMatching[[1]][[4]], 2)
-  pval = mappend[[model]][[2]]$AfterMatching[[1]][[10]][[3]] # p.value
-  #pval = (1 - pnorm(abs(m[[model]][[1]]$est/m[[model]][[1]]$se.standard))) * 2
-  pval = ifelse(pval < 0.001, "0.001", round(pval, 3))
-  
-  res = data.frame(beta, mean.Tr, mean.Co, pval, stringsAsFactors = F)
-  return(res)
-}))
-row.names(coefTable.append) <- namesInput
-coefTable.append$pval.adj <- round(p.adjust(coefTable.append$pval, method="fdr"),3)
-names(coefTable.append) <- c("beta", "Old Clients", "New Clients", "pval", "pval.adj")
-```
-
-```{r results='asis'}
-print(kable(coefTable.append))
-```
-
-
-```{r}
-write.csv(coefTable.append, file=paste(od, "ke psm coefficients - appendix.csv", sep = "/"),row.names = T)
-```
 
 ```{r}
 # Change colnames of MeanT and MeanC to Client and New Client

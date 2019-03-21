@@ -334,6 +334,8 @@ keDat %>%
        subtitle = "And no clear client, non-client trend", color = "1AF client")
 ```
 
+### Soil C vs. soil N by season
+
 ```{r}
 keDat %>%
   filter(!is.na(d_client)) %>%
@@ -355,7 +357,7 @@ keDat %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
 ```
 
-### Nitrogen and compost
+### Applied carbon vs. soil nitrogen
 
 **if you applied compost since there are so many 0s and removing super large values**
 
@@ -370,6 +372,8 @@ keDat %>%
   labs(title = "N vs. compost", subtitle = "Relationship less clear", x = "Compost kg / acre", y = "")
 ```
 
+### Applied N vs. soil nitrogen
+
 ```{r}
 # dap 18% n, can 26%
 keDat %>%
@@ -378,12 +382,65 @@ keDat %>%
   rowwise() %>%
   mutate(total_n_applied = sum(can_n, dap_n, na.rm = T)) %>%
   filter(total_n_applied > 0) %>%
-  ggplot(., aes(x = total_n_applied, y = total.nitrogen)) +
+  ggplot(., aes(x = total_n_applied, y = total.nitrogen, color = as.factor(d_client))) +
   geom_point() +
-  facet_grid(~ season)
+  facet_wrap(~ season + d_client)
+```
+**Interpretation**: There doesn't seem to be a strong relationship between total N applied and total nitrogen in the soil. It's not clear to me what we should have expected from this relationship but in general I don't see anything odd or a clear difference between the 1AF plots and the treatment plots.
+
+
+## Applied N vs. applied C by season
+
+```{r}
+unique_seasons <- unique(keDat$season)
+
+nitrogen_v_compost <- lapply(unique_seasons, function(year){
+  return(keDat %>%
+    filter(season == year) %>%
+    mutate(can_n = can.acre * 0.26,
+           dap_n = dap.acre * 0.18) %>%
+    rowwise() %>%
+    mutate(total_n_applied = sum(can_n, dap_n, na.rm = T)) %>%
+    filter(total_n_applied > 0)) %>%
+    filter(compost.acre < 2000 & compost.acre > 0)
+})
+
+lapply(nitrogen_v_compost, function(x){
+  ggplot(x, aes(x = total_n_applied, y = compost.acre, color = as.factor(d_client))) +
+    geom_point() +
+    #facet_wrap(~ d_client, scales = 'free') +
+    geom_smooth(method = 'lm') +
+    labs(title = paste("Total N applied / acre vs. compost / acre in", unique(x$season)),
+         subtitle = "Compost / acre less than 2000 kgs",
+         x = "Total kg N / acre",
+         y = "Total kg compost / acre")
+})
 ```
 
-**Interpretation**: There doesn't seem to be a strong relationship between total N applied and total nitrogen in the soil. It's not clear to me what we should have expected from this relationship but in general I don't see anything odd.
+**Interpretation** I don't see a strong difference across seasons between total N applied and total compost applied. The trend lines seem generally the same or at least visually not so strong to suggest that 1AF plots and control plots are having different experiences. The 2017 plot indicates a slightly flatter relationship between applied N and applied C on 1AF plots but this is not super dramatic. 
+
+### Applied C vs. soil N by season
+
+```{r}
+applied_c_vs_soil_n <- lapply(unique_seasons, function(year){
+  return(keDat %>%
+    filter(season == year) %>%
+    filter(compost.acre < 2000 & compost.acre > 0))
+})
+
+lapply(applied_c_vs_soil_n, function(x){
+  ggplot(x, aes(x = compost.acre, y = total.nitrogen, color = as.factor(d_client))) +
+      geom_point() +
+      geom_smooth(method = 'lm') +
+      labs(title = paste("Applied C vs. soil N in", unique(x$season)),
+           subtitle = "No clear difference",
+           x = "Total kg compost / acre",
+           y = "Total soil N (%))")
+})
+```
+
+**Interpretation** As with the applied N vs. applied C, I don't see a clear difference in outcome between 1AF and control plots when we look at **applied C and soil N**. 
+
 
 ### Nitrogen by legume rotation and 1AF status
 ```{r}
@@ -428,15 +485,9 @@ intercrop_check %>%
 
 We're looking for an indication that 1AF plots have fewer legume intercrops and it does appear that plots that have not been cultivated with 1AF have more years of legume intercropping (the blue bar on the left) that for plots that are 1AF plots for more seasons. This relationship is not necessarily statistically different as we also see years of numerous legume intercrops for 1AF plots as well. The main distinguishing feature however is the big bar indicating that **plots that have not been 1AF plots ever have had 3 legume intercrops**.
 
-### What moves with nitrogen?
-
-Consider using PCA to simplify the data into components that move in the same direction or opposite of nitrogen to understand the main relationships in the data.
-
-```{r}
-keySoilVars <- c("ph", "calcium", "total.nitrogen", "organic.carbon", "magnesium")
-```
-
 ### Spatial trend in N levels
+
+#### Boxplots by geography
 
 Clean up `region` variable
 
@@ -489,7 +540,9 @@ lapply(unique_districts, function(dist){
 When we look at this by district over time and 1AF plot status we definitely see a downward trend in some districts. We also see that in some cases, like Butere, the 1AF plots started well below controls. In ohters, like Suneka, we see the 1AF drop dramatically which is pretty difficult to explain. A couple other observations:
 
 * We see that the 2015 values are much higher than the next values. This is true for 1AF and control plots so that's consistent but that highlights some in consistencies in our soil model measurements because we're not actually losing that much N one season to the next.
-* KKM N is an interesting example for how we see a shift in 1AF plots to being below control plots. **We have to remember that what is considered 1AF vs. control is farmer determined**. Farmers could be shifting plots with less N into 1AF cultivation and moving other plots out of 1AF rotation. Let's check out how these trends look if we use the baseline assignment as our indicator for 1AF / control status.
+* KKM N is an interesting example for how we see a shift in 1AF plots to being below control plots. **We have to remember that what is considered 1AF vs. control is farmer determined**. 
+
+Farmers could be shifting plots with less N into 1AF cultivation and moving other plots out of 1AF rotation. Let's check out how these trends look if we use the baseline assignment as our indicator for 1AF / control status.
 
 ```{r eval=FALSE, include=FALSE}
 baseline_status <- function(dist){
@@ -511,10 +564,6 @@ lapply(baseline_status_plots, function(x){
 ```
 
 When we look at the data based on the 2015 baseline treatment status, the difference between 1AF and control plots isn't as extreme. The analytical model we're using below should be taking into acocunt the effect of clients potentially switching their plot back and forth. 
-
-
-
-#### Boxplots by geograph
 
 ```{r}
 keDat %>%
@@ -540,13 +589,17 @@ keDat %>%
 
 ### N application rates by treatment
 
-## 
 * Are there differences between control and treatment in how long fields have been farmed for?
 * Are control farmers applying a higher ratio of N compared to C than control farmers? 
 * Is N application vs N uptake ratio different for treatment vs control? 
 * Are our farmers rotating or intercropping with legumes less than non-farmers, or with legumes that are less prolific N-fixers? (i.e. is quality of organic inputs changing to a wider C:N ratio) 
 
 # Regressions
+
+```{r}
+keySoilVars <- c("ph", "calcium", "total.nitrogen", "organic.carbon", "magnesium")
+```
+
 
 ## Kenya models
 
