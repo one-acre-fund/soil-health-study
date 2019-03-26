@@ -39,7 +39,7 @@ suppressMessages(library(Matching))
 # dd <- paste(wd, "data", sep = "/")
 # od <- paste(wd, 'output', sep = "/")
 dd <- normalizePath(file.path("ke_shs_baseline", "data"))
-soilDir <- normalizePath(file.path("..", "..", "misc_soil_data", "soil", "predictions"))
+soilDir <- normalizePath(file.path("..", "..", "general_data_folder", "soil", "predictions"))
 
 od <- normalizePath(file.path("ke_shs_baseline", "output"))
 
