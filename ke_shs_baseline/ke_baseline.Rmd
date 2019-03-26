@@ -32,12 +32,14 @@ suppressMessages(library(Matching))
 
 # Data preparation
 
+**03/26/2019 I'VE CHANGED THE SOURCE OF THE SOILDIR FROM 'DATA' TO MISC_SOIL_DATA ON GOOGLE DRIVE. THIS MIGHT HAVE BROKEN SOME LINKS IN OTHER SCRIPTS AS WELL. I'VE UPDATED IT HERE BUT YOU MIGHT NEED TO UPDATE OTHER FOLDERS!**
+
 ```{r import}
 # wd <- "/Users/mlowes/Google Drive /optimized_agronomy/soil/soil_health_study/data/ke baseline"
 # dd <- paste(wd, "data", sep = "/")
 # od <- paste(wd, 'output', sep = "/")
 dd <- normalizePath(file.path("ke_shs_baseline", "data"))
-soilDir <- normalizePath(file.path("..", "..", "data", "soil", "predictions"))
+soilDir <- normalizePath(file.path("..", "..", "misc_soil_data", "soil", "predictions"))
 
 od <- normalizePath(file.path("ke_shs_baseline", "output"))
 
