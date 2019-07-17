@@ -1,0 +1,2169 @@
+---
+title: "Kenya Soil Health Study Analysis"
+author: 
+- '[Matt Lowes](mailto:matt.lowes@oneacrefund.org)'
+- '[Johnna Sundberg](mailto:johnna.sundberg@oneacrefund.org)'
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '6'
+    code_folding: show
+    number_sections: yes
+    theme: flatly
+    toc_float: yes
+    css: static/styles.css
+---
+
+```{r, setup, include = FALSE}
+
+rm(list = ls())
+cat("\014")
+
+## set up some global options
+# always set stringsAsFactors = F when loading data
+options(stringsAsFactors=FALSE)
+
+# show the code
+knitr::opts_chunk$set(echo = TRUE)
+
+# define all knitr tables to be html format
+options(knitr.table.format = 'html')
+
+# change code chunk default to not show warnings or messages
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+libs <- c("tidyverse", "knitr", "readxl", "dismo", "leaflet",
+          "kableExtra", "farmr", "raster", "htmlwidgets",
+          "rspatial", "spdep", "spgwr")
+
+#"NbClust", "clValid", "ggfortify", "clustree", "dendextend", "FactoMineR", "corrplot", "GGally"
+lapply(libs, require, character.only = T, quietly = T, warn.conflicts = F)
+
+#### define helpful functions
+# define function to adjust table widths
+html_table_width <- function(kable_output, width) {
+  width_html <- paste0(paste0('<col width="', width, '">'), collapse = "\n")
+  sub("<table>", paste0("<table>\n", width_html), kable_output)
+}
+
+#source(normalizePath(file.path("../oaflib/commcareExport.R")))
+#source("../oaflib/misc.R")
+#source("../oaflib/plm.R")
+
+plm <- function(x, toSuppress) { # x is a model
+  require(gridExtra)
+  # generate raw tables of useful information
+  cp <- data.frame(coef(summary(x))) # coefficient and p-values
+  ci <- data.frame(confint(x)) # 95% confidence intervals
+  
+  # strip out and format just what we need from cp into another table
+  names(cp) <- c("Coefficient", "Std.Error", "T", "P")
+  tab <- cp[, c("Coefficient", "P")]
+  
+  tab$Coefficient <- signif(tab$Coefficient, digits = 2)
+  tab$P <- ifelse(tab$P < 0.001, paste("<0.001", "***"),
+                  ifelse(tab$P < 0.01 & tab$P >= 0.001, 
+                         paste(signif(tab$P, digits = 2), "**"), 
+                         ifelse(tab$P < 0.05 & tab$P >= 0.01, 
+                                paste(signif(tab$P, digits = 2), "*"),
+                                ifelse(tab$P < 0.1 & tab$P >= 0.05, 
+                                       paste(signif(tab$P, digits = 2), "."), 
+                                       round(tab$P, digits = 2)))))
+  
+  # add prettified confidence intervals to tab
+  ci$X2.5.. <- signif(ci$X2.5.., digits = 2)
+  ci$X97.5.. <- signif(ci$X97.5.., digits = 2)
+  tab$CI <- paste(ci$X2.5.., ci$X97.5.., sep = " to ")
+  
+  # rearrange and rename tab
+  tab <- tab[, c("Coefficient", "CI", "P")]
+  names(tab) <- c("Coefficient", "95% Confidence Interval", "P-Value")
+  
+  # remove the district controls, which are always the last 
+  toSuppress <- paste(toSuppress, collapse="|")
+  tab = tab[!grepl(toSuppress, row.names(tab)), ]
+  
+  print("success")
+  
+  return(cp)
+
+}
+
+
+select <- dplyr::select
+
+forceUpdateAll <- FALSE
+
+```
+
+# Background
+
+This file will pick up on from the Kenya round 1 file and finish the analysis. The cleaning of the data up through the round 1 data (baseline and round 1) happens in the `kenya_round_1` folder. Going forward, the cleaning of new data will happen in the `shs_cleaning.R` file, which I'll source here, and then the analysis will happen here.
+
+# Objective
+
+Analyze the soil health study data. This is the intention to treat (ITT) model - we are counting 1AF plots as treatment even if a farmer did not plant 1AF inputs on the plot.        
+
+# Data
+```{r, data}
+# load the latest kenya data from the cleaning file >> or maybe do the combining there.
+#source("shs_cleaning.R")
+
+keDat <- readRDS("ke_cleaned_combined_fieldDat.rds")
+rwDat <- readRDS("rw_cleaned_combined_fieldDat.rds")
+
+
+```
+
+# Analysis
+
+## Check identifiers
+
+**It's hard to know where to draw the line between cleaning and analysis. I'm going to keep this code here even though it's technically additional data cleaning**
+
+
+Check that we're actually dealing with clients for which we have multiple records
+```{r}
+table(table(rwDat$sample_id)==5) 
+```
+
+So we have some clients for which we don't have 3 records, one for each survey. Find out what the deal is.
+
+```{r}
+table(table(rwDat$sample_id))
+```
+
+Hm. So the numbers less than 5 could be that we're just not finding people every year. But the 1s and 2s are particularly strange. Let's check those out. Here's a [helpful link](https://stackoverflow.com/questions/41875078/how-to-identify-indexes-of-elements-appearing-only-once-in-a-vector-in-r)
+
+```{r}
+singleSurvey <- names(which(table(rwDat$sample_id) == 1))
+
+rwDat %>%
+  filter(sample_id == singleSurvey)
+                     
+                     
+```
+
+Looks like this person was only surveyed in the first season. Okay. Check out the other seasons
+
+```{r}
+twoSurveys <- names(which(table(rwDat$sample_id) == 2))
+rwDat %>%
+  filter(sample_id %in% twoSurveys)
+```
+
+Okay, these are from the recent round but they don't have any previous surveys which is odd. We shouldn't be adding new farmers into the survey.  These can be dropped for simplicity. I can follow up with Eric and Cyprien to find out the issue but I'm just going to drop them for now.
+
+```{r}
+rwDat <- rwDat %>%
+  filter(!sample_id %in% twoSurveys)
+```
+
+```{r}
+fourSurveys <- names(which(table(rwDat$sample_id)==4))
+rwDat %>%
+  filter(sample_id %in% fourSurveys)
+```
+
+Okay. There are enough surveys in the 3 and 4 category that they're at least plausible from a data quality and survey strategy perspective. I'll leave them as they are.
+
+## Surveys for which we don't have soil
+
+Check that there isn't something systematic in these surveys. If so, describe what it is.
+
+### Attrition analysis for appendix
+
+Create a record of how many farmers are joining and leaving Tubura between the baseline through the current survey round. These numbers only reflect the changes from the last round.
+
+**This also should account for clients that we miss in each season so we can say what the attrition has been season to season. Also, why don't we have 16A results for Rwanda. Find out what's happening there.**
+
+```{r}
+clientCount <- function(dat){
+  # this assumes season, d_client, and sample_id remain the names of 
+  # the key variables. They should for the data to match.
+  
+  # this funciton tablulates the number of clients in each season
+  iniTab <- dat %>%
+    filter(!is.na(d_client)) %>%
+    group_by(season, d_client) %>%
+    tally() %>%
+    gather(key, value, -c(season, d_client)) %>%
+    spread(d_client, value) %>%
+    rename(control = `0`,
+         client = `1`) %>%
+    mutate(control = as.numeric(control),
+         client = as.numeric(client)) %>%
+    rowwise() %>%
+    mutate(total = sum(control, client)) %>%
+    ungroup()
+    
+  percentDiff <- iniTab %>%
+    mutate(pct_change = (((total - lead(total))/total) * 100))
+  return(percentDiff)    
+  
+}
+
+rw.attrition.tab <- clientCount(rwDat)
+
+ke.attrition.tab <- clientCount(keDat)
+
+```
+
+```{r}
+attritionRate <- function(org, new){
+  return((org - new)/org * 100)
+}
+
+
+attritionRate(2028, 1935)  # kenya
+attritionRate(2439, 2409) # rwanda
+attritionRate(4467, 4344) # total
+```
+
+
+## Soil graphs
+
+```{r}
+ggplot(rwDat, aes(x = season, y = ph, group = d_client)) + geom_boxplot()
+```
+
+### Variable check
+
+```{r}
+ggplot(keDat, aes(x = can.acre)) + 
+  geom_histogram() +
+  scale_x_continuous(limits = c(0,200)) +
+  labs(title = "Set limits to 0 and 100 for CAN")
+
+ggplot(keDat, aes(x = dap.acre)) + 
+  geom_histogram() +
+  scale_x_continuous(limits = c(0,200)) +
+  labs(title = "Set limits to 0 and 100 for DAP")
+
+
+```
+
+```{r}
+#export data for Diego >> this is the easiest way to have the location and soil information together. The soil data is also available through the warehouse but it isn't easily connected to the survey information.
+
+rwDat %>%
+  select(sample_id, season, district, cell_field, village, ph, calcium, magnesium, organic.carbon, total.nitrogen) %>%
+  write_csv(., "shs_analysis/output/rwanda_soil_values_travertine_impact.csv")
+
+```
+
+# Digging into data
+
+Check values for upcoming final round of Kenya SHS data collection
+
+This is ideally a grouped boxplot. Fix this when I have internet. This would show the values by season and client type.
+
+See [sketch of SHS report](https://docs.google.com/document/d/1koNsKzx97_3rpkGeJI6PnPdYNMdV9q4e-cPQxAWDeDk/edit).  Remember that `sameStatus` are the farmers that kept their status between baseline and endline. The two models of interest are:
+
+* Individual fixed effects account for things specific to farmer that don't change over time
+* can control for unobserved sources of heterogeneity over time, very sensitive to model 
+* add in other data points that do change over time
+* so add in things that change over time that plausibly affect our outcome
+* fertilizer and seed use are synonymous with being a client or not, highly endogenous
+* run two regs
+ + one with oaf 
+ + one with oaf and fertilizer
+* things like slope are collinear
+* individual fixed effects makes more sense than using PSM now that we have multiple years.
+* means by directional changes
+* papers using fixed effects by Miguel on whether changes to rural to urban areas and income
+
+[Helpful link](https://www.r-bloggers.com/how-to-go-parallel-in-r-basics-tips/) for executing code in parallel
+
+## Nitrogen effect overview
+
+Work before 3/18/19
+
+Before running the full models, I'm going to take a closer look at the nitrogen data to make sure we can explain the negative effects we're seeing in Kenya in the models below. There isn't a clear agronomic explanation for the negative effect and as a consequence we're put in a bind in our reporting to explain either the outcome or the modeling.
+
+Let's start with looking at the relationship between nitrogen and other features to make sure we're seeing what expect. Here are the notes from Step:
+
+* We might expect that increased application of fertilizer N by our clients could build up organic N because some of the fertilizer N applied would be retained by microbial immobilisation. 
+* Carbon hasn’t decreased, so I don’t think we can attribute loss of TSN to loss of SOM.
+* A possible explanation is that we have increased mineralization of N by virtue of farmers in our program increasing input of N relative to input of C (compared to control farmers), ultimately resulting in a reduction in organic N through crop uptake, leaching, or denitrification.
+    + So takeaway here would be that we need to increase C inputs, rather than N inputs >> we should be able to check this (at least roughly), by looking at farmer reported OM inputs to the fields?
+    
+> Click here for [compost / acre vs. nitrogen rate effects](#nitrogen-and-compost). The short is that there isn't a clear trend.
+    
+* I think increased crop uptake is more likely than leaching or denitrification - If there was more N leaching, we’d expect to see lower pH (and lime adoption amongst clients was <1% at the time we did sampling, and application rates are in any case very low - 500 kg/ha)
+* Our farmers mostly follow our trainings on deep placement micro-dosing, so hopefully denitrification risk is mitigated pretty well.
+* Relatedly, it’s possible that that crop uptake is exceeding fertilizer application anyway i.e. we have a nutrient mining problem.
+* For yields of 3.9 t/ha (mean for our clients in seasons 2014-17), N removal would be ~70 kg/ha, but our current recommendation (aligned with govt) is ~55 kg/ha (50kg/acre DAP + 50kg/acre CAN).
+
+> Nitrogen application by yield output. The yield values are not making sense between survey rounds. I'll come back to this.
+
+* Conclusion here would be that we need to increase N inputs (though get just trying to plug the N ‘gap’ in the form of mineral fertilizer doesn’t necessarily result in a balanced nutrient budget e.g. N deposition might supply ~5-10 kg N/ha anyway). 
+I suspect this is the case anyway, because our N rates do seem too low, especially in ratio to our P rates. However, this would only be driving a reduction relative to non-clients if our n application relative to yields achieved is lower.
+Finally, maybe our farmers are rotating less with legumes than non-farmers, or rotating with legumes that are less prolific in fixing N. 
+
+> Look at [rotations relative to N rate by 1AF status](#nitrogen-by-legume-rotation-and-1AF-status). It does appear that plots that non-1AF plots receive more legume intercrops. This makes sense given that the 1AF core package emphasizes maize monocrops.
+
+Would love to hear your thoughts - entirely possible I’m missing something here. The most critical question here is whether (i) we’re not applying enough C relative to N, (ii) we’re just not applying enough N. I suspect maybe the answer is both, but I’m wary of assuming it’s the latter and making things worse if the key driver is unbalanced C:N ratios.
+
+**3/18/19 forward**
+
+Step Aston of ART wants follow up on the possibility that 1AF is driving down N rates through repeated 1AF culti ation. This [document](https://docs.google.com/document/d/1akjl1BmilbxHBuH07LPHJq9xMVqI7ctYZ6bhq0txKK8/edit?usp=sharing) lists the key questions we want to answer to understand what might be happening in the data. Those questions are (see document for more specifics):
+
+* Are there spatial patterns to the N reduction effect - is this a genuine effect across all program areas, or specific only to certain areas? 
+* Are there differences between control and treatment in how long fields have been farmed for?
+* Are control farmers applying a higher ratio of N compared to C than control farmers? 
+* Is N application vs N uptake ratio different for treatment vs control? 
+* Are our farmers rotating or intercropping with legumes less than non-farmers, or with legumes that are less prolific N-fixers? (i.e. is quality of organic inputs changing to a wider C:N ratio)
+
+## Summary Tables
+
+First, let's check some summary tables of the change in N between 2015 and 2017 between treatment and control farmers.
+
+```{r}
+
+keDat %>%
+  group_by(sample_id,season) %>%
+  mutate(count = n()) %>%
+  arrange(season) %>%
+  mutate(d_client = last(d_client)) %>%
+  ungroup() %>%
+  filter(count < 2) %>%
+  dplyr::select(sample_id, d_client, season, total.nitrogen) %>%
+  spread(key = season, value = total.nitrogen) %>%
+  mutate(total.n.difference = `2017`  - `2015`) %>%
+  filter(!is.na(total.n.difference)) %>%
+  filter(!is.na(`2016`)) %>%
+  group_by(d_client) %>%
+  summarize(
+    "Average N Difference" = mean(total.n.difference),
+    "Median N Difference" = median(total.n.difference)
+  ) %>%
+  kable(.,align=rep('c', 5), digits=3, caption="N Difference (2017N - 2015N) Between 2017 Clients and Non-Clients")
+
+
+```
+
+Overall, it appears that both control and treatment clients on average experied a decrease in N over time. Farmers enrolled in 1AF in 2017 had a slightly steeper increase in N than control farmers. 
+
+However, this includes farmers who potentially swtiched their status to 1AF/non-1AF.
+
+Let's examine only farmers who maintained their control/treatment status across the 3 seasons:
+
+
+```{r}
+
+
+keDat %>%
+  group_by(sample_id,season) %>%
+  mutate(count = n()) %>%
+  ungroup() %>%
+  filter(count < 2) %>%
+  group_by(sample_id,d_client) %>%
+  mutate(sample_count = n()) %>%
+  ungroup() %>%
+  filter(sample_count == 3) %>%
+  dplyr::select(sample_id, d_client, season, total.nitrogen) %>%
+  spread(key = season, value = total.nitrogen) %>%
+  mutate(total.n.difference = `2017`  - `2015`) %>%
+  filter(!is.na(total.n.difference)) %>%
+  group_by(d_client) %>%
+  summarize(
+    "Average N Difference" = mean(total.n.difference),
+    "Median N Difference" = median(total.n.difference)
+  ) %>%
+  kable(.,align=rep('c', 5), digits=3, caption="N Difference (2017N - 2015N) Between 2017 Clients and Non-Clients")
+
+
+```
+
+There does not seem to be much of a difference between clients who maintained and clients who changed their N status.
+
+Let's also group this by the relative field fertility data we collected in 2017.
+
+```{r}
+
+
+keDat %>%
+  group_by(sample_id,season) %>%
+  mutate(count = n()) %>%
+  ungroup() %>%
+  filter(count < 2) %>%
+  group_by(sample_id,d_client) %>%
+  mutate(sample_count = n()) %>%
+  arrange(season) %>%
+  mutate(fertile.comparison = last(fertile.comparison)) %>%
+  ungroup() %>%
+  filter(sample_count == 3) %>%
+  dplyr::select(sample_id, d_client, fertile.comparison, 
+                season, total.nitrogen) %>%
+  spread(key = season, value = total.nitrogen) %>%
+  mutate(total.n.difference = `2017`  - `2015`) %>%
+  filter(!is.na(total.n.difference)) %>%
+  group_by(d_client, fertile.comparison) %>%
+  summarize(
+    "Average N Difference" = mean(total.n.difference),
+  ) %>%
+  spread(key = fertile.comparison, value = `Average N Difference`) %>%
+  kable(.,align=rep('c', 5), digits=3, caption="N Difference (2017N - 2015N) Between 2017 Clients and Non-Clients by Field Fertility")
+
+
+```
+
+It appears that OAF clients experienced slightly more N loss in their average/less fertile fields, and slightly less in their more fertile fields. Let's also look at the count of these values:
+
+```{r}
+
+
+keDat %>%
+  group_by(sample_id,season) %>%
+  mutate(count = n()) %>%
+  ungroup() %>%
+  filter(count < 2) %>%
+  group_by(sample_id,d_client) %>%
+  mutate(sample_count = n()) %>%
+  arrange(season) %>%
+  mutate(fertile.comparison = last(fertile.comparison)) %>%
+  ungroup() %>%
+  filter(sample_count == 3) %>%
+  dplyr::select(sample_id, d_client, fertile.comparison, 
+                season, total.nitrogen) %>%
+  spread(key = season, value = total.nitrogen) %>%
+  mutate(total.n.difference = `2017`  - `2015`) %>%
+  filter(!is.na(total.n.difference)) %>%
+  group_by(d_client, fertile.comparison) %>%
+  summarize(
+    Total = n()
+  ) %>%
+  spread(key = fertile.comparison, value = Total) %>%
+  kable(.,align=rep('c', 5), digits=3, caption="Total 2017 Clients and Non-Clients by Field Fertility")
+
+
+```
+
+One Acre Fund clientys mostly planted in fertile/average fields, compared to control clients.
+
+This suggests that field fertility might be an important control variable.
+
+## Nitrogen alone
+
+The big takeaway for me from this plot is that there are regular spikes at certain values. That seems odd for a system that should be pretty continuous. Let's see if that plays out evenly across seasons.
+
+```{r}
+keDat %>%
+  ggplot(., aes(x = total.nitrogen)) + 
+  geom_histogram(bins = 100) +
+  geom_density()
+```
+
+```{r}
+keDat %>%
+  ggplot(., aes(x = total.nitrogen)) + 
+  geom_histogram() +
+  geom_vline(xintercept = mean(keDat$total.nitrogen, na.rm = T)) +
+  facet_grid(~ season)
+
+# ggplot() +
+#   geom_histogram(data = filter(keDat, keDat$season == 2015), aes(x = total.nitrogen, fill = 'red'), alpha = 0.5) +
+#   geom_histogram(data = filter(keDat, keDat$season == 2016), aes(x = total.nitrogen, fill = 'blue'), alpha = 0.5) +
+#   geom_histogram(data = filter(keDat, keDat$season == 2017), aes(x = total.nitrogen, fill = 'green'), alpha = 0.5) +
+#   theme(legend.position = 'none')
+```
+
+## Soil N by season
+
+This is what we're observing. There's a clear downward trend across seasons with perhaps a slight shift downward for 
+
+```{r}
+keDat %>%
+  #select(season, total.nitrogen, d_client) %>%
+  ggplot(., aes(x = season, y = total.nitrogen, fill = as.factor(d_client))) + 
+  geom_boxplot() + 
+  theme(legend.position = 'bottom') +
+  labs(title = "Total N by season and client status", subtitle ="Strong seasonal trend with perhaps a slight client trend downward",
+       x = "Season", y = "Total N", fill = "Client Status")
+```
+
+```{r}
+keDat %>%
+  filter(!is.na(d_client)) %>%
+  group_by(season, d_client) %>% 
+  summarize(mean = round(mean(total.nitrogen, na.rm = T),4)) %>%
+  kable(caption = "Downward average N by season") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+1AF clients are slightly below comparison farmers in terms of total nitrogren but the difference is ever so slight. Perhaps in the context of soil chemistry these are big differencs though!
+
+## Nitrogen and carbon
+
+This code also addresses identified erroneous variables.
+
+```{r}
+keDat <- keDat %>%
+  mutate(organic.carbon = ifelse(organic.carbon == 0 & total.nitrogen > 0, NA, organic.carbon))
+```
+
+```{r}
+keDat %>%
+  ggplot(., aes(x = organic.carbon, y = total.nitrogen, color = as.factor(d_client))) + 
+  geom_point(alpha = .3) + geom_smooth(method = "lm") + 
+  labs(title = "N vs. C - what we'd expect", x = "Total Carbon", y = "Total Nitrogen",
+       subtitle = "And no clear client, non-client trend", color = "1AF client")
+```
+<br><br>
+The lines are practically overlapping for the N/C plots between clients / non-clients.
+
+## Soil C vs. Soil N by season
+
+```{r}
+
+keDat %>%
+  filter(!is.na(d_client)) %>%
+  ggplot(., aes(x = organic.carbon, y = total.nitrogen, color = as.factor(d_client))) + 
+  geom_point(alpha = .3) + geom_smooth(method = "lm") + 
+  labs(title = "N vs. C by season - again what we'd expect", x = "Organic C", y = "Total N", color = "1AF client",
+       subtitle = "and no clear client, non-client trend") +
+  facet_grid(~ season, scales = "fixed")
+
+```
+
+This is the same table as above but shows carbon level by season and client status. We don't see the same gap widening between client and non-client plots that we see with nitrogen.
+
+```{r}
+keDat %>%
+  filter(!is.na(d_client)) %>%
+  group_by(season, d_client) %>% 
+  summarize(mean = round(mean(organic.carbon, na.rm = T),4)) %>%
+  kable(caption = "Carbon levels trend together by client status over seasons") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+Interestingly, like nitrogen, the largest decrease in carbon took place between 2015 and 2016.
+
+## Applied carbon vs. soil nitrogen
+
+**if you applied compost since there are so many 0s and removing super large values**
+
+There's no clear visual trend between compost application and nitrogen rates. 
+
+```{r}
+
+keDat %>%
+  filter(compost.acre > 0 & compost.acre < 1000) %>%
+  ggplot(., aes(x = compost.acre, y = total.nitrogen, 
+                color = as.factor(d_client))) +
+  geom_jitter(alpha = .2) + geom_smooth(method = "lm") + 
+  facet_grid(~ season, scales = "fixed") +
+  labs(title = "N vs. compost",
+       subtitle = "Relationship less clear", 
+       x = "Compost kg / acre", y = "")
+
+```
+<br><br>
+Trend here seems similar for both clients/non-clients.
+
+## Applied N vs. soil nitrogen
+
+```{r}
+
+# dap 18% n, can 26%
+keDat %>%
+  mutate(can_n = can.acre * 0.26,
+         dap_n = dap.acre * 0.18) %>%
+  rowwise() %>%
+  mutate(total_n_applied = sum(can_n, dap_n, na.rm = T)) %>%
+  filter(total_n_applied > 0) %>%
+  ggplot(., aes(x = total_n_applied, y = total.nitrogen, 
+                color = as.factor(d_client))) +
+  geom_point(alpha = .2) + geom_smooth(method = "lm") + 
+  facet_wrap(~ season, scales ="fixed") + 
+  labs(title = "Applied N versus TSN",
+       subtitle = "No strong relationship",
+       x = "Total Applied N (kgs)",
+       y = "Total Soil Nitrogen",
+       color = "Client")
+
+```
+**Interpretation**: There doesn't seem to be a strong relationship between total N applied and total nitrogen in the soil. It's not clear to me what we should have expected from this relationship but in general I don't see anything odd or a clear difference between the 1AF plots and the treatment plots.
+
+There are also some strange outliers in the 2015 data.
+
+## Applied N vs. applied C by season
+
+```{r}
+unique_seasons <- unique(keDat$season)
+
+nitrogen_v_compost <- lapply(unique_seasons, function(year){
+  return(keDat %>%
+    filter(season == year) %>%
+    mutate(can_n = can.acre * 0.26,
+           dap_n = dap.acre * 0.18) %>%
+    rowwise() %>%
+    mutate(total_n_applied = sum(can_n, dap_n, na.rm = T)) %>%
+    filter(total_n_applied > 0)) %>%
+    filter(compost.acre < 2000 & compost.acre > 0)
+})
+
+lapply(nitrogen_v_compost, function(x){
+  ggplot(x, aes(x = total_n_applied, y = compost.acre, color = as.factor(d_client))) +
+    geom_point() +
+    #facet_wrap(~ d_client, scales = 'free') +
+    geom_smooth(method = 'lm') +
+    labs(title = paste("Total N applied / acre vs. compost / acre in",
+                       unique(x$season)),
+         subtitle = "Compost / acre less than 2000 kgs",
+         x = "Total kg N / acre",
+         y = "Total kg compost / acre", 
+         color = "Clinet") + 
+    xlim(0, 150) + 
+    ylim(0,1000)
+})
+```
+
+**Interpretation** I don't see a strong difference across seasons between total N applied and total compost applied. The trend lines seem generally the same or at least visually not so strong to suggest that 1AF plots and control plots are having different experiences. The 2017 plot indicates a slightly flatter relationship between applied N and applied C on 1AF plots but this is not super dramatic. 
+
+
+## Applied C vs. soil N by season
+
+```{r}
+
+applied_c_vs_soil_n <- lapply(unique_seasons, function(year){
+  return(keDat %>%
+    filter(season == year) %>%
+    filter(compost.acre < 2000 & compost.acre > 0))
+})
+
+lapply(applied_c_vs_soil_n, function(x){
+  ggplot(x, aes(x = compost.acre, y = total.nitrogen, 
+                color = as.factor(d_client))) +
+      geom_point() +
+      xlim(0,2000) + 
+      ylim(.08,.26) + 
+      geom_smooth(method = 'lm') +
+      labs(title = paste("Applied C vs. soil N in", unique(x$season)),
+           subtitle = "No clear difference",
+           x = "Total kg compost / acre",
+           y = "Total soil N (%))",
+           color = "Client")
+})
+
+```
+
+**Interpretation** As with the applied N vs. applied C, I don't see a clear difference in outcome between 1AF and control plots when we look at **applied C and soil N**. 
+
+## Applied C:N Ratio by Soil N by Season
+
+Next, I will look at the ratio of applied C/N by season to confirm that 1AF farmers are not applying disproportionate N.
+
+```{r}
+
+n_c_ratio_v_soil <- lapply(unique_seasons, function(year) {
+  return(keDat %>%
+    filter(season == year) %>%
+    mutate(can_n = can.acre * 0.26,
+           dap_n = dap.acre * 0.18) %>%
+    rowwise() %>%
+    mutate(total_n_applied = sum(can_n, dap_n, na.rm = T)) %>%
+    filter(total_n_applied > 0) %>%
+    filter(compost.acre < 2000 & compost.acre > 0) %>%
+    mutate(n_c_ratio  =  total_n_applied/compost.acre) %>%
+    filter(n_c_ratio < 2)
+    )
+})
+
+lapply(n_c_ratio_v_soil, function(x){
+  ggplot(x, aes(x = n_c_ratio, y = total.nitrogen, 
+                color = as.factor(d_client))) +
+    geom_point() +
+    xlim(0,2) + 
+    ylim(.08, .27)+ 
+    geom_smooth(method = 'lm') +
+    labs(title = paste("Applied N:C to TSN in", unique(x$season)),
+         subtitle = "N:C Ratio < 2",
+         x = "Applied C / Applied N ",
+         y = "Total soil N (%))",
+         color = "Client")
+})
+
+```
+
+**Interpretation:** There do not seem to be clear differences here either - the confidence intervals for the lines of best fit clearly overlap across all seasons.
+
+## Applied C as a Dummy vs TSN by season
+
+Let's also do a quick check to make sure that the noise in applied compost are not driving these lack of differences.
+
+```{r}
+
+applied_c_dummy <- lapply(unique_seasons, function(year) {
+  return(keDat %>%
+    filter(season == year) %>%
+    filter(compost.acre < 2000) %>%
+    mutate(applied.compost = ifelse(compost.acre > 0, "Yes", "No")))
+})
+
+lapply(applied_c_dummy, function(x){
+  ggplot(x, aes(x = applied.compost, y = total.nitrogen, 
+                fill = as.factor(d_client))) +
+    geom_boxplot() +
+    coord_cartesian(ylim = c(0.05, .3)) + 
+    labs(title = paste("Applied Compost in ", unique(x$season)),
+         subtitle = "Compost / acre less than 2000 kgs",
+         x = "Applied Compost",
+         y = "Total soil N (%))",
+         fill = "Client")
+})
+
+```
+
+**Interpretation**: It looks like for some reason 1AF farmers applying compost are getting lower N relative to control farmers -- especially in 2017.
+
+## Applied C Quality vs Soil N by Season
+
+```{r}
+
+applied_c_q_dummy <- lapply(unique_seasons, function(year) {
+  return(keDat %>%
+    filter(season == year))
+})
+
+
+lapply(applied_c_q_dummy, function(x){
+  ggplot(x, aes(x = compost.quality, y = total.nitrogen, 
+                fill = as.factor(d_client))) +
+    geom_boxplot() +
+    coord_cartesian(ylim = c(0.05, .3)) + 
+    labs(title = paste("Applied Compost Quality in ", unique(x$season)),
+         x = "Applied Compost",
+         y = "Total soil N (%))",
+         fill = "Client")
+})
+
+```
+
+**Interpretation**: It looks like for some reason 1AF farmers applying compost are getting lower N relative to control farmers -- especially in 2017.
+
+
+## Fertilizer Application Rates by Season
+
+```{r}
+
+fert_application_rates <- lapply(unique_seasons, function(year) {
+  return(keDat %>%
+    filter(season == year) %>%
+    mutate_at(vars(can.main, dap.main, npk.main, urea.main),
+              list(~ifelse(is.na(.), 0, .))) %>%
+    mutate(CAN = ifelse(can.main > 0, 1, 0)) %>%
+    mutate(DAP = ifelse(dap.main > 0, 1, 0)) %>%
+    mutate(NPK = ifelse(npk.main > 0, 1, 0)) %>%
+    mutate(Urea = ifelse(urea.main > 0 , 1, 0)) %>%
+    group_by(d_client, season) %>%
+      summarize(
+        `% Applying CAN` = sum(CAN) / n() * 100,
+        `% Applying DAP` = sum(DAP) / n() * 100,
+        `% Applying NPK` = sum(NPK) / n() * 100,
+        `% Applying Urea` = sum(Urea) / n() * 100
+      ) %>%
+      ungroup() %>%
+      filter(!is.na(d_client)) %>%
+    gather(-d_client, -season, key = "Fertilizer", value = "% Applied"))
+})
+
+
+lapply(fert_application_rates, function(x){
+  ggplot(x, aes(x = Fertilizer, y = `% Applied`, 
+                fill = as.factor(d_client))) +
+    geom_col(position = "dodge") +
+    labs(title = paste("% Applied Fertilizer in ",
+                       unique(x$season)),
+         x = "Fertilizer Type",
+         y = "% Applied",
+         fill = "Client") + 
+    ylim(0,100)
+})
+
+```
+<br><br>
+One Acre Fund farmers are applying much more fertilizer compared to control farmers. In 2016/17, almost 100% of 1AF farmers apply basal fertilizer, and just over 75% apply top dress, compared to only 75% and 50% of control farmers respectively.
+
+
+## Applied P vs. Yield 
+
+**Not likely to be interpretable until yield data is cleaned up**.
+
+```{r}
+
+p_v_yields <- lapply(unique_seasons, function(year) {
+  return(keDat %>%
+    filter(season == year) %>%
+    filter(yield.t.ha < 1000) %>%
+    mutate(npk_n = npk.acre * .05,
+           urea_n = urea.acre * 0.44,
+           dap_n = dap.acre * 0.46) %>%
+    rowwise() %>%
+    mutate(total_p_applied = sum(npk_n, dap_n, urea_n, na.rm = T)) %>%
+    filter(total_p_applied > 0))
+})
+
+lapply(p_v_yields, function(x){
+  ggplot(x, aes(x = total_p_applied, y = yield.t.ha, 
+                color = as.factor(d_client))) +
+    geom_point() +
+    geom_smooth(method = 'lm') +
+    labs(title = paste("Applied P versus Yield in", unique(x$season)),
+         subtitle = "Yield < 1000 Kg/Ha",
+         x = "Applied Ph",
+         y = "Yield",
+         color = "Client") + 
+    ylim(0,500) + 
+    xlim(0,100)
+})
+
+```
+
+**Interpretation:** What the heck is happening in 2016?? But in 2015 and 2017 there is a steeper downward trend for clients than non-clients.
+
+## Legume rotation and nitrogen levels
+
+```{r}
+intercrop_check <- keDat %>%
+  mutate(legume_intercrop = ifelse(intercrop %in% c("beans", "groundnuts", "soya"), 1, 0)) %>%
+  filter(!is.na(sample_id))
+
+intercrop_check %>%
+  group_by(sample_id, d_client) %>%
+  summarize(legume_count = sum(legume_intercrop, na.rm = T),
+            total.nitrogen.average = mean(total.nitrogen, na.rm = T)) %>%
+  filter(legume_count <= 3) %>%
+  ggplot(., aes(x = as.factor(legume_count), y = total.nitrogen.average, fill = as.factor(d_client))) +
+  geom_boxplot() +
+  labs(title = "Legume intercropping (beans, groundnuts, soya) and nitrogen",
+       subtitle = "Control plots have slightly higher N across years of legume intercrops",
+       x = "Number of seasons of legume intercrops", 
+       y = "Total soil N (%)", fill = "1AF status") + 
+  theme_oaf()
+```
+
+The above plot shows N rates by the number of legume intercrops. It's not a perfect view of what happens following a season in which a farmer rotates to beans but does show the cumulative benefit of additional seasons of a legume intercrop on the plot. Do 1AF farmers have fewer intercrops? This is hard to precisely pin down since the plots can shift from 1AF cultivation to not-1AF cultivation season to season. Therefore I'll look at the average years of 1AF cultivation vs. legume intercrops
+
+## How often are control and 1AF plots being intercropped
+
+## Legume intercrops by 1AF tenure
+
+```{r}
+
+intercrop_check %>%
+  group_by(sample_id) %>%
+  summarize(years_oaf = sum(d_client, na.rm = T),
+            number_intercrops = sum(legume_intercrop, na.rm = T)) %>%
+  group_by(years_oaf, number_intercrops) %>%
+  tally() %>%
+  filter(years_oaf <= 3) %>%
+  filter(number_intercrops < 4) %>%
+  ggplot(., aes(x = as.factor(years_oaf), y = n, fill = as.factor(number_intercrops))) +
+  geom_bar(stat = 'identity', position = 'dodge') +
+  labs(title = "Legume intercrops by 1AF tenure", x = "How many years a plot as been a 1AF plot", y = "Count of plots",
+       subtitle = "If no years of 1AF cultivation (control), many more years of intercropping\nThe 3 years category has fewer years of intercropping") +
+  theme(legend.position = 'bottom') +
+  theme_oaf()
+
+```
+
+We're looking for an indication that 1AF plots have fewer legume intercrops and it does appear that plots that have not been cultivated with 1AF have more years of legume intercropping (the blue bar on the left) that for plots that are 1AF plots for more seasons. This relationship is not necessarily statistically different as we also see years of numerous legume intercrops for 1AF plots as well. The main distinguishing feature however is the big bar indicating that **plots that have never been 1AF plots have had 3 legume intercrops more than 1AF plots**.
+
+In any one season, what is the likelihood that a 1AF plot is intercropped?
+
+What percent of 1AF plots are intercropped in a given season?
+
+```{r}
+intercrop_check %>%
+  group_by(season, d_client) %>%
+  summarize(intercropped = mean(legume_intercrop, na.rm = T)) %>%
+  spread(d_client, intercropped) %>%
+  rename(control = `0`,
+         oneacre = `1`) %>%
+  kable(.) %>%
+  kable_styling()
+```
+
+
+## Models of legume intercropping and soil N
+
+```{r}
+library(broom)
+
+legume_model_data <- intercrop_check %>%
+  group_by(sample_id) %>%
+  summarize(years_oaf = sum(d_client, na.rm = T),
+            number_intercrops = sum(legume_intercrop, na.rm = T),
+            average_soil_nitrogen = mean(total.nitrogen, na.rm = T))
+
+
+# plot these data to understand relationship.
+legume_model_data %>%
+  filter(number_intercrops < 4) %>%
+  ggplot(., aes(x = as.factor(years_oaf), y = average_soil_nitrogen, fill = as.factor(number_intercrops))) +
+  geom_boxplot() +
+  theme_oaf() +
+  scale_y_continuous(breaks = seq(0.0, 2.5, 0.01)) +
+  labs(title = "Soil N by 1AF seasons and legume cultivations",
+       subtitle = "Fill is the number of times plot had a legume intercrop",
+       x = "Number of seasons plot was a 1AF plot",
+       y = "Average soil N",
+       fill = "Number of times plot had legume intercrop")
+
+
+cat("R squard for simple model:", summary(lm(average_soil_nitrogen ~ as.factor(number_intercrops), data = legume_model_data))$r.squared)
+
+cat("R squard for model including years_oaf:", summary(lm(average_soil_nitrogen ~ as.factor(number_intercrops) + years_oaf, data = legume_model_data))$r.squared)
+
+```
+
+The r2 of models looking at the simple relationship of years of legume cultivation and soil nitrogen is very low. That doesn't seem to be capturing the movement of soil nitrogen.
+
+```{r eval=FALSE, include=FALSE}
+
+legume_model_data %>%
+   do(simple_legume_model = lm(average_soil_nitrogen ~ as.factor(number_intercrops), data = .)) %>%
+   tidy(., simple_legume_model) %>%
+   kable() %>%
+   kable_styling()
+
+ legume_model_data %>%
+   do(legume_model = lm(average_soil_nitrogen ~ as.factor(number_intercrops) + years_oaf, data = .)) %>%
+   tidy(., legume_model) %>%
+   kable() %>%
+   kable_styling()
+
+```
+
+## Legume selection by 1AF status
+
+```{r}
+intercrop_check %>%
+  filter(legume_intercrop == 1) %>%
+  group_by(intercrop, d_client) %>%
+  tally() %>%
+  ggplot(., aes(x = intercrop, y = n, fill = as.factor(d_client))) +
+  geom_bar(stat = 'identity', position = 'dodge') +
+  labs(title = "Legume intercrop type by 1AF status",
+       subtitle = "It's mostly beans, folks and control plots are intercropped a lot more regularly",
+       x = "Intercrop type",
+       y = "Number of plots", 
+       fill = "1AF status") + 
+  theme_oaf()
+```
+
+**Interpretation**: About 400 more control plots were planted with a bean intercrop over the course of the study. However, we don't see additional seasons of legume intercrop explaining soil N levels in the data. 
+
+> Does increased intercropping explain the difference between 1AF and control plots? Do the other pieces of evidence line up to support this?
+
+```{r}
+intercrop_check %>%
+  filter(legume_intercrop == 1) %>%
+  group_by(intercrop, d_client) %>%
+  tally() %>%
+  mutate(d_client = ifelse(d_client == 0, "control", "one-acre")) %>%
+  spread(d_client, n) %>%
+  kable(., caption = "Total plots by intercrop type") %>%
+  kable_styling()
+```
+
+Control plots were intercropped with beans about ~400 times more than 1AF plots which is not nothing. 
+
+```{r}
+
+intercrop_check %>%
+  filter(legume_intercrop == 1) %>%
+  group_by(intercrop, d_client) %>%
+  tally() %>%
+  ungroup() %>%
+  mutate(percent = paste(round(n / sum(n), 2) * 100, "%")) %>%
+  select(-n) %>%
+  mutate(d_client = ifelse(d_client == 0, "control", "one-acre")) %>%
+  spread(d_client, percent) %>%
+  kable(., caption = "Percent of plots by intercrop") %>%
+  kable_styling()
+
+```
+
+Let's also check the monocrop data - first for frequency, second between legume cultivation and nitrogen.
+
+```{r}
+
+keDat %>% 
+  group_by(main.crop, d_client) %>%
+  tally() %>%
+  ggplot(., aes(x = main.crop, y = n, fill = as.factor(d_client))) +
+  geom_col(stat = 'identity', position = 'dodge') + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  labs(
+    title = "Main Crop Planted",
+    subtitle = "Almost no other crops planted but maize",
+    fill = "Client"
+  )
+
+
+```
+
+Basically, everyone was planting maize. Let's filter out maize.
+
+```{r}
+
+keDat %>% 
+  filter(main.crop != "maize") %>%
+  group_by(main.crop, d_client) %>%
+  tally() %>%
+  ggplot(., aes(x = main.crop, y = n, fill = as.factor(d_client))) +
+  geom_col(stat = 'identity', position = 'dodge') + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  labs(
+    title = "Main Crop Planted (other than maize)",
+    subtitle = "Fallowing second most popular",
+    fill = "Client"
+  )
+
+```
+
+**Interpretation:** The farmers above represent just under 5% of the total sample. Control farmers do not seem disproportionately represented here, so it is unlikely this is driving the change.
+
+## Crop Rotation by 1AF Status
+
+```{r}
+
+keDat %>%
+  filter(!is.na(sample_id)) %>%
+  dplyr::select(d_client, sample_id, main.crop, season) %>%
+  mutate(main.crop = ifelse(!main.crop %in%
+                              c("maize", "beans", "groundnuts", "fallow"), 
+                            "other",
+                                ifelse(main.crop %in% c("beans", "groundnuts"),
+                                       "legume", main.crop))) %>%
+  spread(season, main.crop) %>%
+  mutate("15 - 16 Rotated?" = ifelse(`2015` != `2016`, 
+                                     "Rotated", "Did Not Rotate")) %>%
+  mutate("16 - 17 Roated?" = ifelse(`2016` != `2017`, 
+                                    "Rotated", "Did Not Rotate")) %>%
+  filter(!is.na(`15 - 16 Rotated?`)) %>%
+  group_by(`15 - 16 Rotated?`, d_client) %>%
+  tally() %>%
+  ggplot(., aes(x = `15 - 16 Rotated?`, y = n, fill = as.factor(d_client))) + 
+  geom_col(position = 'dodge') + 
+  labs(title = "2015 - 2016 Crop Rotation by 1AF Status",
+       subtitle =
+         "Control and 1AF farmers rotated plotsi n about the same frequency",
+       fill = "Client") 
+
+```
+
+```{r}
+
+keDat %>%
+  filter(!is.na(sample_id)) %>%
+  dplyr::select(d_client, sample_id, main.crop, season) %>%
+  mutate(main.crop = ifelse(!main.crop %in%
+                              c("maize", "beans", "groundnuts", "fallow"), 
+                            "other",
+                                ifelse(main.crop %in% c("beans", "groundnuts"),
+                                       "legume", main.crop))) %>%
+  spread(season, main.crop) %>%
+  mutate("15 - 16 Rotated?" = ifelse(`2015` != `2016`, 
+                                     "Rotated", "Did Not Rotate")) %>%
+  mutate("16 - 17 Rotated?" = ifelse(`2016` != `2017`, 
+                                    "Rotated", "Did Not Rotate")) %>%
+  filter(!is.na(`16 - 17 Rotated?`)) %>% 
+  group_by(`16 - 17 Rotated?`, d_client) %>%
+  tally() %>%
+  ggplot(., aes(x = `16 - 17 Rotated?`, y = n, fill = as.factor(d_client))) + 
+  geom_col(position = 'dodge') + 
+  labs(title = "2016 - 2017 Crop Rotation by 1AF Status",
+       subtitle =
+         "Control and 1AF farmers rotated plotsi n about the same frequency",
+       fill = "Client")
+
+```
+
+**Interpretation:** Not a lot of crop rotation happening.
+
+## Spatial trend in N levels
+
+### Boxplots by geography
+
+Clean up `region` variable
+
+```{r}
+
+keDat$region <- ifelse(grepl("west", tolower(keDat$region)), "Western", "Nyanza")
+
+```
+
+I want to create a metric of how different treatment values are from control values by district. I'm going to subtract the control average at the district level from each treatment value for each season. I'll then plot them individually so it's easier to see.
+
+```{r}
+
+control_nitrogen_level <- function(year){
+  return(keDat %>%
+  filter(!is.na(district)) %>%
+  filter(season == year) %>%
+  group_by(district) %>%
+  mutate(control_nitrogen_average = mean(total.nitrogen[d_client == 0], na.rm = T)) %>%
+  ungroup() %>%
+  mutate(difference_nitrogen = total.nitrogen - control_nitrogen_average) %>%
+  filter(d_client == 1))
+}
+
+nitrogen_plots <- lapply(c(2015, 2016, 2017), function(year){
+  control_nitrogen_level(year)
+})
+ 
+
+lapply(nitrogen_plots, function(x){
+  ggplot(x, aes(x = district, y = difference_nitrogen, fill = region)) + 
+  geom_boxplot() +
+  labs(title = paste("Difference in nitrogen ", unique(x$season)),
+       subtitle = "I don't see a clear spatial trend across locations or time") +
+    theme_oaf() + 
+    theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, 
+                                                                 hjust = 1))
+})
+```
+
+Quickly, let's output graphs for each district:
+```{r}
+unique_districts <- unique(keDat$district)[!unique(keDat$district) %in% NA]
+
+lapply(unique_districts, function(dist){
+  keDat %>%
+  filter(!is.na(district)) %>%
+  filter(district == dist) %>%
+  ggplot(., aes(x = season, y = total.nitrogen, fill = as.factor(d_client))) +
+    geom_boxplot() +
+    coord_cartesian(ylim = c(0.05, .3)) + 
+    labs(title = paste("Seasonal trend for", dist),
+         x = "Season",
+         y = "Total soil N (%)") +
+    theme_oaf() 
+})
+```
+
+When we look at this by district over time and 1AF plot status we definitely see a downward trend in some districts. We also see that in some cases, like Butere, the 1AF plots started well below controls. In ohters, like Suneka, we see the 1AF drop dramatically which is pretty difficult to explain. A couple other observations:
+
+* We see that the 2015 values are much higher than the next values. This is true for 1AF and control plots so that's consistent but that highlights some in consistencies in our soil model measurements because we're not actually losing that much N one season to the next.
+* KKM N is an interesting example for how we see a shift in 1AF plots to being below control plots. **We have to remember that what is considered 1AF vs. control is farmer determined**. 
+
+Farmers could be shifting plots with less N into 1AF cultivation and moving other plots out of 1AF rotation. Let's check out how these trends look if we use the baseline assignment as our indicator for 1AF / control status.
+
+```{r eval=FALSE, include=FALSE}
+
+baseline_status <- function(dist){
+  return(keDat %>%
+    filter(district == dist) %>%
+    group_by(sample_id) %>%
+    mutate(baseline_status = if_else(season == 2015 && d_client == 1, 1, 0)))
+}
+
+baseline_status_plots <- lapply(unique_districts, function(x) baseline_status(x))
+
+lapply(baseline_status_plots, function(x){
+  ggplot(x, aes(x = season, y = total.nitrogen, fill = as.factor(baseline_status))) +
+    geom_boxplot() +
+    coord_cartesian(ylim = c(.05, .3)) + 
+    labs(title = paste("Seasonal trend for", unique(x$district), "using baseline treatment status"),
+         subtitle = "The differences between T and C aren't as extreme so maybe plots \n are just being shifted around...") + 
+    theme_oaf()
+  
+})
+```
+
+When we look at the data based on the 2015 baseline treatment status, the difference between 1AF and control plots isn't as extreme. The analytical model we're using below should be taking into acocunt the effect of clients potentially switching their plot back and forth. 
+
+```{r}
+
+keDat %>%
+  ggplot(., aes(x = region, y = total.nitrogen)) +
+  geom_boxplot() + 
+  facet_grid(~ season, scales = "fixed")
+
+```
+
+
+```{r}
+keDat %>%
+  filter(!is.na(district)) %>%
+  ggplot(., aes(x = district, y = total.nitrogen)) + 
+  geom_boxplot() +
+  facet_grid(season ~ ., scales = "fixed") +
+  theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+### Clustered Maps
+
+This section will plot the changes in N on 1AF/control farmer plots spatially to determine if there are spatial trends to the decrease. Above we used boxplots for district; however, district lines are somewhat arbitrary so may obscure cross-district trends.
+
+The trick here is to use what nitrogen to plot compared to control? If we are not aggregating this by district and looking at it spatially, then it doesn't make sense to use the control average either.
+
+First I will plot 2017 data Nitrogen levels.
+
+#### 2017 Nitrogren Levels
+<div align = "center">
+```{r}
+
+# commcare GPS split
+keDat <- cbind(keDat, commcare_gps_split(keDat$gps))
+
+keDat17 <- keDat %>% filter(season == "2017")
+
+# creating color palettes
+totalNPals <- colorNumeric(palette = "Blues", 
+                                domain = unique(keDat17$total.nitrogen))
+
+
+# getting the Kenya map
+mapN17 <- leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>%
+    addControl('All N Values - T/C 2017', position = "bottomleft") %>%
+  setView(lat=keDat17$lat[1], lng=keDat17$lon[1],zoom=7) %>%
+  addScaleBar() %>%
+  addCircles(data = keDat17, lng = keDat17$lon, lat = keDat17$lat,
+             radius = 1000, stroke = 0, 
+             color = ~totalNPals(keDat17$total.nitrogen), fillOpacity = .8)%>%
+  addLegend(pal = totalNPals, values = keDat17$total.nitrogen,
+                title = "Total N") 
+
+mapN17
+
+```
+</div>
+
+Now, let's calculate the difference for all control plots within 5km. This is still somewhat arbitrary, but should give us more precision than using the district.
+
+
+#### 2017 Overall Difference From Neighbors Within 5km
+
+```{r}
+
+# lookup table [here](https://gis.stackexchange.com/questions/213971/units-for-radius-in-nn2-in-rann-package)
+# 2 degress ~ 1.11 km, so 20 X 1.11 ~ 20kms
+
+keDat17 <- keDat %>% filter(season == "2017")
+
+
+# testing another way
+keDat17mC <- keDat17 %>% 
+  filter(d_client == 0) %>%
+  dplyr::select(lon, lat, total.nitrogen) %>%
+  filter(!is.na(lon) & !is.na(lat))
+
+crdref <- CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
+
+keDat17mC <-SpatialPointsDataFrame(coords = keDat17mC[,c("lon", "lat")],
+                                   data = keDat17mC, proj4string = crdref)
+
+keDat17mT <- keDat17 %>% 
+  filter(d_client == 1) %>%
+  dplyr::select(lon, lat, total.nitrogen) %>%
+  filter(!is.na(lon) & !is.na(lat)) 
+
+keDat17mT <-SpatialPointsDataFrame(coords = keDat17mT[,c("lon", "lat")],
+                                   data = keDat17mT, proj4string = crdref)
+
+
+res <- pointDistance(keDat17mT, keDat17mC, lonlat = TRUE,
+                     allpairs = TRUE)
+
+# turning into Km from m
+res <- res / 1000
+
+# calculating minimum average for all values 
+keDat17mC@data$CountingBool <- 1
+
+keDat17mT@data$total.nitrogenNeightbor <- apply(res, 1, function(x)  
+                                            
+  mean(keDat17mC@data$total.nitrogen[x < 5], na.rm = TRUE)
+                                       
+)
+
+keDat17mT@data$totalNeighbors5km <- apply(res, 1, function(x)  
+                                            
+  sum(keDat17mC@data$CountingBool[x < 5], na.rm = TRUE)
+                                       
+)
+
+
+keDat17mT@data$totalNeighbors10km <- apply(res, 1, function(x)  
+                                            
+  sum(keDat17mC@data$CountingBool[x < 10], na.rm = TRUE)
+
+  )
+
+keDat17mT@data$totalNeighbors20km <- apply(res, 1, function(x)  
+                                            
+  sum(keDat17mC@data$CountingBool[x < 20], na.rm = TRUE)
+                                       
+                                                        )
+
+
+keDat17mT@data$n.difference = keDat17mT@data$total.nitrogen -
+  keDat17mT@data$total.nitrogenNeightbor
+
+
+# creating color palettes
+totalNDifference <- colorNumeric(palette = "Spectral", 
+                                domain = unique(keDat17mT$n.difference))
+
+keDat17mTF10 <- keDat17mT[keDat17mT@data$totalNeighbors5km > 5,]
+
+# getting the Kenya map
+mapNDif2 <- leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>%
+    addControl('T/C Plot N Difference', position = "bottomleft") %>%
+  setView(lat=keDat17mTF10$lat[1], lng=keDat17mTF10$lon[1],zoom=7) %>%
+  addScaleBar() %>%
+  addCircles(data = keDat17mTF10@data, lng = keDat17mTF10$lon, 
+             lat = keDat17mTF10$lat,
+             radius = 2000, stroke = 0, 
+             color = ~totalNDifference(keDat17mTF10$n.difference), 
+             fillOpacity = .8)%>%
+  addLegend(pal = totalNDifference, values = keDat17mTF10$n.difference,
+                title = "T - C N") 
+
+
+mapNDif2
+
+#saveWidget(mapNDif2, file="5kmRadius2017ControlTreatmentNDifference.html")
+
+```
+
+
+**Interpretation**: It looks like the overall difference between neighbors is not as substantial as the overall results show.
+
+We can also check if this pattern is statistically significant by computing the spatial autocorrelation. I will weight values according values within 2kms 5kms, and 10kms of eachother. These will be used for the weights in spatial correlation using  <a href="https://en.wikipedia.org/wiki/Moran%27s_I">Moran's I</a>. 
+
+```{r}
+
+#http://www.bias-project.org.uk/ASDARcourse/unit6_slides.pdf
+
+keDat17mTNoNas = subset(keDat17mT, !is.na(n.difference))
+
+res2 <- pointDistance(keDat17mTNoNas, lonlat = TRUE,
+                     allpairs = TRUE)
+res2 <- res2 / 1000
+
+res2_2 <- (res2 > 0 & res2 <= 2)
+res2_5 <- (res2 > 0 & res2 <= 5)
+res2_10 <- (res2 > 0 & res2 <= 10)
+
+res2_2 <- as.matrix(Matrix::forceSymmetric(res2_2,uplo="L"))
+res2_5 <- as.matrix(Matrix::forceSymmetric(res2_5,uplo="L"))
+res2_10 <- as.matrix(Matrix::forceSymmetric(res2_10,uplo="L"))
+
+
+distlw2 <- mat2listw(res2_2, style = "B")
+distlw5 <- mat2listw(res2_5, style="B")
+distlw10 <- mat2listw(res2_10, style="B")
+
+moran.test(keDat17mTNoNas$n.difference, distlw2, zero.policy = TRUE)
+moran.test(keDat17mTNoNas$n.difference, distlw5, zero.policy = TRUE)
+moran.test(keDat17mTNoNas$n.difference, distlw10, zero.policy = TRUE)
+
+```
+
+The first test results shows the autocorrelation betwen N decrease relative to control plots in 1AF plots within 2km of each, the second 5km, and the third 10km. The null hypothesis is that there is spatial randomness.
+
+At 2kms and below, there is evidence for some spatial autocorrelation between differences in N. However, about 18% of our data had no neighbors within 2kms and another 20% only had one neighbor. There is not evidence that this extends to larger geographic areas, like AEZs.
+
+```{r, eval = FALSE}
+
+moran.plot(keDat17mTNoNas$n.difference, 
+    distlw2, pch=19)
+
+```
+<br><br>
+The plot above shows the line of best fit for the Moran autocorrelation at 2km and difference in N. In the upper-right hand quadrant, are values that have a positive correlation (neighbors and point are above average); in the lower-left quadrant are values with negative correlation. The other two quadrants are for values not correlated with neighbor values.
+
+Let's take a look at an example with no correlation.
+
+
+```{r, eval = FALSE}
+
+moran.plot(keDat17mTNoNas$n.difference, 
+    distlw10, pch=19)
+
+```
+<br><br>
+The above plot shows the results of the 10km regression - the line of best fit is practically at 0.
+
+We can also take a look at the local Moran values to try to see which points (in other words, which areas) are significantly correlated.
+
+```{r}
+
+LM <- localmoran(keDat17mTNoNas$n.difference, distlw2, 
+           zero.policy=TRUE, na.action=na.fail, p.adjust.method="none")
+
+
+keDat17mTNoNas$LocalM_PValue <- LM[, 5]
+
+# creating color palettes
+pValPal <- colorNumeric(palette = "Spectral", 
+                                domain = unique(keDat17mTNoNas$LocalM_PValue))
+
+# getting the Kenya map
+mapLocalMPValues <- leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>%
+    addControl('P-Value for Spatial Correlation', position = "bottomleft") %>%
+  setView(lat=keDat17mTNoNas$lat[1], lng=keDat17mTNoNas$lon[1],zoom=7) %>%
+  addScaleBar() %>%
+  addCircles(data = keDat17mTNoNas@data, lng = keDat17mTNoNas$lon, 
+             lat = keDat17mTNoNas$lat,
+             radius = 2000, stroke = 0, 
+             color = ~pValPal(keDat17mTNoNas$LocalM_PValue), 
+             fillOpacity = .8)%>%
+  addLegend(pal = pValPal, values = keDat17mTNoNas$LocalM_PValue,
+                title = "P Values") 
+
+
+mapLocalMPValues
+
+
+```
+<br><br>
+Again, the map does not tell us much about the p-values - other than some areas in Western Kenya experienced N losses/gains that were similar to each other. 
+
+There does not seem to be as much correlation in Nyanza.
+
+Now, let's take a look at the same map, but trying to subset for field fertility.
+
+#### 2017 Overall Difference From Neighbors Within 5km by Fertility
+
+We only have enough sample to look at "average fertility" plots, so these are the only plots I will consider.
+
+```{r}
+
+keDat17mC_FC_Avg <- keDat17 %>% 
+  filter(d_client == 0) %>%
+  filter(fertile.comparison == "average") %>%
+  dplyr::select(lon, lat, total.nitrogen) %>%
+  filter(!is.na(lon) & !is.na(lat))  %>%
+  SpatialPointsDataFrame(coords = .[,c("lon", "lat")],
+                                   data = ., proj4string = crdref)
+
+keDat17mT_FC_Avg <- keDat17 %>% 
+  filter(d_client == 1) %>%
+  filter(fertile.comparison == "average") %>%
+  dplyr::select(lon, lat, total.nitrogen) %>%
+  filter(!is.na(lon) & !is.na(lat)) %>%
+  SpatialPointsDataFrame(coords = .[,c("lon", "lat")],
+                                   data = ., proj4string = crdref)
+
+
+## Split datasets by field fertility
+
+
+res_Avg <- (pointDistance(keDat17mT_FC_Avg, keDat17mC_FC_Avg, lonlat = TRUE,
+                     allpairs = TRUE)) / 1000
+
+
+
+### Averaging Total Nitrogen/Getting Neighbor Counts
+
+
+
+keDat17mC_FC_Avg@data$CountingBool <- 1
+
+keDat17mT_FC_Avg@data$total.nitrogenNeightbor <- apply(res_Avg, 1, function(x)  
+                                            
+  mean(keDat17mC_FC_Avg@data$total.nitrogen[x < 5], na.rm = TRUE)
+                                       
+)
+
+keDat17mT_FC_Avg@data$totalNeighbors5km <- apply(res_Avg, 1, function(x)  
+                                            
+  sum(keDat17mC_FC_Avg@data$CountingBool[x < 5], na.rm = TRUE)
+                                       
+)
+
+
+
+```
+
+**Difference Between 5+ Average Plots within 5km Radius**
+
+```{r}
+
+keDat17mT_FC_Avg <- keDat17mT_FC_Avg[keDat17mT_FC_Avg@data$totalNeighbors5km > 5,]
+keDat17mT_FC_Avg@data$n.difference = keDat17mT_FC_Avg@data$total.nitrogen -
+  keDat17mT_FC_Avg@data$total.nitrogenNeightbor
+
+# getting the Kenya map
+mapNDif_AvgPlots <- leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>%
+    addControl('T/C Plot N Difference - Average Plots', position = "bottomleft") %>%
+  setView(lat=keDat17mT_FC_Avg$lat[1], lng=keDat17mT_FC_Avg$lon[1],zoom=7) %>%
+  addScaleBar() %>%
+  addCircles(data = keDat17mT_FC_Avg@data, lng = keDat17mT_FC_Avg$lon, 
+             lat = keDat17mT_FC_Avg$lat,
+             radius = 2000, stroke = 0, 
+             color = ~totalNDifference(keDat17mT_FC_Avg$n.difference), 
+             fillOpacity = .8)%>%
+  addLegend(pal = totalNDifference, values = keDat17mT_FC_Avg$n.difference,
+                title = "T - C N") 
+
+
+mapNDif_AvgPlots
+
+```
+
+
+#### 2017 - 2015 Baseline Differences Among Clients
+
+```{r}
+
+keDatBE <- keDat %>%
+  filter(d_client == 1) %>%
+  group_by(oafid,season) %>%
+  mutate(count = n()) %>%
+  ungroup() %>%
+  filter(count < 2) %>%
+  dplyr::select(oafid, season, total.nitrogen) %>%
+  spread(key = season, value = total.nitrogen) %>%
+  mutate(total.n.difference = `2017`  - `2015`) %>%
+  filter(!is.na(total.n.difference)) %>%
+  filter(!is.na(`2016`))
+
+keDatcoords <- keDat %>%
+  filter(d_client == 1) %>%
+  group_by(oafid,season) %>%
+  mutate(count = n()) %>%
+  ungroup() %>%
+  filter(count < 2) %>% 
+  group_by(oafid) %>%
+  summarize(
+    lon = first(lon),
+    lat  = first(lat)
+  )
+  
+keDatBE <- merge(keDatBE, keDatcoords, by = "oafid")
+
+
+# getting the Kenya map
+mapNDif3 <- leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>%
+    addControl("Baseline Plot N Difference", position = "bottomleft") %>%
+  setView(lat=keDatBE$lat[1], lng=keDatBE$lon[1],zoom=7) %>%
+  addScaleBar() %>%
+  addCircles(data = keDatBE, lng = keDatBE$lon, 
+             lat = keDatBE$lat,
+             radius = 2000, stroke = 0, 
+             color = ~totalNDifference(keDatBE$total.n.difference), 
+             fillOpacity = .8)%>%
+  addLegend(pal = totalNDifference, values = keDatBE$total.n.difference,
+                title = "15 - 17 N") 
+
+
+mapNDif3
+
+#saveWidget(mapNDif3, file="Baseline2017NDifference.html")
+
+```
+
+### Soil Texture
+
+These spatial correlations might be driven partially by soil texture. Let's check TSN by soil type, and then see if there are any spatial patterns with soil texture.
+
+
+```{r}
+
+soilTypevTSN <- lapply(unique_seasons, function(year){
+  return(
+    keDat %>%
+      group_by(sample_id) %>%
+      mutate(soil.Texture15 = first(soil.texture[season == "2015"])) %>%
+      ungroup() %>%
+      filter(season == year) 
+  )
+})
+
+lapply(soilTypevTSN, function(x){
+  ggplot(x, aes(x = soil.Texture15, y = total.nitrogen, 
+                fill = as.factor(d_client))) +
+    geom_boxplot() +
+    coord_cartesian(ylim = c(0.05, .3)) + 
+    geom_smooth(method = 'lm') +
+    labs(title = paste("Soil Texture versus TSN in", unique(x$season)),
+         subtitle = "",
+         x = "Soil Texture",
+         y = "Soil N",
+         fill = "Client")
+})
+
+
+```
+
+There are not huge differences here. In 2016/2017, sandy 1AF plots fared worse than sandy control plots.
+
+It doesn't look like we collected soil texture in 2017?? I am using 2015 data instead, which only used 3 types (clay / loam / sandy). The 2017 data had about 20 types, but with those numbers we have small sample sizes. 
+
+```{r}
+
+unique(keDat$soil.texture)
+
+```
+
+
+## Nitrogen uptake
+
+Assess whether ratio of N application rates vs N uptake rates is different between treatment and control. We’d have to make some assumptions about
+
+1. Yield (drawing from M&E harvest surveys? - or do we get some farmer recall on yield in the SHS survey itself?)
+2. N uptake per unit yield (drawn from IPNI nutrient removal calculator)
+3. N applied as compost/manure (I’m not clear on how much detail we have for Kenya on whether it’s manure vs compost, source etc?)
+
+### Yield and N application
+
+Quick histogram of farmer estimated yields.
+
+```{r}
+
+ggplot(keDat, aes(x = yield.t.ha)) +
+  geom_histogram(binwidth = 0.25) + 
+  scale_x_continuous(limit = c(0, 20)) +
+  labs(title = "Histogram of farmer est. yields (less than 20 t/ha)",
+       subtitle = "Esitmates are very noisy. 75th percentile is 15 t/ha")
+
+#kable(quantile(keDat$yield.t.ha, na.rm = T), caption = "Most observations are less than 15 t/ha which is still really high")
+```
+
+These all seem very low?
+
+```{r}
+
+ggplot(filter(keDat, yield < 2000), 
+       aes(x = yield)) + facet_grid(~season, scales = "free") + 
+  geom_density()
+
+```
+
+GGplot naturally selects the best scales. As we can see, the yield was between 0 - 100 (units not reported) in 2015 and 2016 - although 2016 is skewed way towards the lower side. 2016 seems bounded by 100.
+
+It's super clear that these are not are not the same units. Matt divided these by 100 to get tons per hecatre. I need to follow-up with M&E for the original 2015/2016/2017 datasets, because they aren't in the folders I have.
+
+
+```{r}
+
+applied_n_vs_yield <- lapply(unique_seasons, function(year){
+  return(
+    keDat %>%
+      filter(season == year) %>%
+      mutate(can_n = can.acre * 0.26,
+             dap_n = dap.acre * 0.18) %>%
+      rowwise() %>%
+      mutate(total_n_applied = sum(can_n, dap_n, na.rm = T)) %>%
+      mutate(total_n_applied_ha = total_n_applied * 2.47) %>%
+      filter(total_n_applied > 0) %>%
+      filter(yield.t.ha < 10)) %>%
+    as.data.frame()
+})
+
+lapply(applied_n_vs_yield, function(x){
+  ggplot(x, aes(x = total_n_applied_ha, y = yield.t.ha, color = as.factor(d_client))) +
+    geom_point() +
+    facet_wrap(~ season, scales = 'fixed') + 
+    geom_smooth(method = 'lm') +
+    labs(title = paste("Applied N vs. farmer estimated yield", unique(x$season)),
+         subtitle = "Limiting farmer est. yield to < 10 t/ha - Trend lines are messy but suggest no difference",
+         x = "Total kg N / ha ",
+         y = "Yield t/ha",
+         fill = "Client")
+})
+  
+```
+
+### Applied N:Yield vs Soil N
+
+```{r}
+
+n_yields_ratio_v_soil <- lapply(unique_seasons, function(year) {
+  return(keDat %>%
+    filter(season == year) %>%
+    mutate(can_n = can.acre * 0.26,
+           dap_n = dap.acre * 0.18) %>%
+    rowwise() %>%
+    mutate(total_n_applied = sum(can_n, dap_n, na.rm = T)) %>%
+    filter(total_n_applied > 0) %>%
+    mutate(n_yield_ratio  = yield.t.ha / total_n_applied)) %>%
+    filter(n_yield_ratio < 500)
+})
+
+lapply(n_yields_ratio_v_soil, function(x) {
+  ggplot(x, aes(x = n_yield_ratio, y = total.nitrogen, 
+                color = as.factor(d_client))) +
+    geom_point() +
+    ylim(0.05, .3) + 
+    xlim(0, 500) + 
+    geom_smooth(method = 'lm') +
+    labs(title = paste("Applied N > 0, Yield T/Ha:N < 500", unique(x$season)),
+         #subtitle = "Compost / acre less than 2000 kgs & > 0",
+         x = "Yield / Applied N",
+         y = "Total soil N (%))",
+         color = "Client")
+})
+
+```
+
+Above plots show more outliers. Below I will only look at data where this relationship is less than 25, since most of our data falls in that range.
+
+```{r}
+
+n_yields_ratio_v_soil2 <- lapply(unique_seasons, function(year) {
+  return(keDat %>%
+    filter(season == year) %>%
+    mutate(can_n = can.acre * 0.26,
+           dap_n = dap.acre * 0.18) %>%
+    rowwise() %>%
+    mutate(total_n_applied = sum(can_n, dap_n, na.rm = T)) %>%
+    filter(total_n_applied > 0) %>%
+    mutate(n_yield_ratio  = yield.t.ha / total_n_applied)) %>%
+    filter(n_yield_ratio < 25)
+})
+
+lapply(n_yields_ratio_v_soil2, function(x){
+  ggplot(x, aes(x = n_yield_ratio, y = total.nitrogen, 
+                color = as.factor(d_client))) +
+    geom_point() +
+    ylim(0.05, .3) + 
+    xlim(0, 25) + 
+    geom_smooth(method = 'lm') +
+    labs(title = paste("Applied N > 0, Yield:N < 25 in", unique(x$season)),
+         #subtitle = "Compost / acre less than 2000 kgs & > 0",
+         x = "Yield / Applied N",
+         y = "Total soil N (%))",
+         color = "Client")
+})
+
+```
+
+**Interpretation:** What the heck is happening in 2016?? But in 2015 and 2017 there is a steeper downward trend for clients than non-clients. 
+
+
+### Yield by compost type
+
+N applied as manure instead of plant material. Let's look at compost by type by client status by season 
+
+```{r}
+
+keDat <- keDat %>%
+  mutate(compost_category = ifelse(grepl("pig|goat|cow|chicken", compost.type), "animal", "plant"),
+         compost.acre = ifelse(is.na(compost.acre), 0, compost.acre))
+
+keDat %>%
+  group_by(compost_category) %>%
+  filter(compost.acre == 0) %>%
+  tally()
+
+
+keDat %>%
+  filter(compost.acre < 2000) %>%
+  ggplot(., aes(x = as.factor(compost_category), y = compost.acre, fill = as.factor(d_client))) + 
+  geom_boxplot() +
+  facet_wrap(~ season) +
+  labs(title = "Compost application by type including those that don't apply",
+       subtitle = "1AF plots are getting more animal manure when compost is applied",
+       x = "Compost type - animal or plant (plant residue / kitchen)",
+       y = "Total kg compost / acre",
+       fill = "Client")
+
+
+```
+
+**Interpretation** If anything this suggests that 1AF plots are getting more N rich compost. Unless I'm misunderstanding the consequence here, this should be contributing to N rates in the soil, not diminishing soil N.
+
+
+## Field Conversion
+
+This section will explore if any differences in N can be attributed to when the fields were converted from bush. This question was included in the 2019 survey.
+
+Unfortunately, that means that we are missing some of this data for some farmers due to survey attrition.
+
+```{r}
+
+fieldConversionDat <- read_csv("keFieldConversionDat.csv") %>% 
+  dplyr::select(FieldConversion, sample_id)
+
+keDat <- merge(keDat, fieldConversionDat, by = "sample_id", 
+               all.x = TRUE)
+
+fieldConversionvYields <- lapply(unique_seasons, function(year){
+  return(
+    keDat %>%
+      filter(season == year) %>%
+      mutate(FieldConversion = ifelse(
+        FieldConversion == "0_5_years", 
+        "1. 0 - 5", FieldConversion
+      )) %>%
+      mutate(FieldConversion = ifelse(
+        FieldConversion == "11-15_years", 
+        "3. 11 - 15", FieldConversion
+      )) %>%
+      mutate(FieldConversion = ifelse(
+        FieldConversion == "16_plus_years", 
+        "4. 16 + ", FieldConversion
+      )) %>%
+      mutate(FieldConversion = ifelse(
+        FieldConversion == "6-10_years", 
+        "2. 6 - 10", FieldConversion
+      )) %>%
+      as.data.frame()
+  )
+})
+
+lapply(fieldConversionvYields, function(x){
+  ggplot(x, aes(x = FieldConversion, y = total.nitrogen, 
+                fill = as.factor(d_client))) +
+    geom_boxplot() +
+    facet_wrap(~ season, scales = 'fixed') + 
+    geom_smooth(method = 'lm') +
+    labs(title = paste("N versus Field Conversion", unique(x$season)),
+         subtitle = "Grouped this way 1AF plots start out higher in 2015 and are lower in 2017",
+         x = "Field Conversion (as of 2019)",
+         y = "Soil N",
+         fill = "Client")
+})
+
+
+```
+
+In 2015, across all field conversion categories 1AF plots seemed to be doing as well or slightly better than their control counterparts; this trend is reversed by 2017 - espeically among plots converted in the last 6 - 10 years (as of 2019). 
+
+
+## Hybrid Seed Use
+
+Lastly, this section will explore the relationship between hybrid seed use and n leaching. 1AF farmers are more likely than their control counterparts to use hybrid seed. In theory, we should have been able to see some of this effect while looking at yields, but our yield data is likely a bit noisy.
+
+```{r}
+
+hybridSeedUsevN <- lapply(unique_seasons, function(year){
+  return(
+    keDat %>%
+      filter(season == year) 
+  )
+})
+
+lapply(hybridSeedUsevN, function(x){
+  ggplot(x, aes(x = seed.type, y = total.nitrogen, 
+                fill = as.factor(d_client))) +
+    geom_boxplot() +
+    facet_wrap(~ season, scales = 'fixed') + 
+    geom_smooth(method = 'lm') +
+    labs(title = paste("N versus Field Conversion", unique(x$season)),
+         subtitle = "",
+         x = "Seed Type",
+         y = "Soil N",
+         fill = "Client")
+})
+
+
+```
+
+Interestingly, missing data on seed use and using local seeds had lower N than fields using hybrid seed.
+
+Potentially 1AF farmers using local seeds are selecting their lowest fertility fields, or overcompensating with fertilizer?
+
+
+# Regressions
+
+```{r}
+
+keySoilVars <- c("ph", "calcium", "total.nitrogen", 
+                 "organic.carbon", "magnesium")
+
+```
+
+
+## Kenya models
+
+```{r}
+
+keDat <- keDat %>% 
+  # cleaning age variable
+  mutate(age = ifelse(age > 90, 90, age)) %>%
+  mutate(age = ifelse(age < 18, 18, age)) %>%
+  mutate(age2 = age^2) %>%
+  group_by(sample_id) %>%
+  # TODO: remove this once I get the original 15/16 data
+  mutate(fertile.comparison.imputed = 
+           first(fertile.comparison[season == "2017"])) %>%
+  ungroup() 
+
+
+indFeList <- list("as.factor(d_client)", 
+                  c("as.factor(d_client)", "as.factor(sample_id)"),
+                  c("as.factor(d_client)", "as.factor(sample_id)",
+                    "as.factor(season)"),
+                  c("as.factor(d_client)",
+                    #"as.factor(sample_id)",
+                    "as.factor(season)",
+              "as.factor(fertile.comparison.imputed)"))
+                  #c("as.factor(d_client)", "as.factor(sample_id)",
+                   # "as.factor(season)", "age", "age2"))
+
+# run this in parallel to speed up the process
+# load the data and variables and packages into the cluster
+regFileKe <- "regFile_through2017_updated.RData"
+forceUpdate <- FALSE
+
+if(!file.exists(regFileKe) || forceUpdate) {
+  
+  library(parallel)
+  no_cores <- detectCores() - 1
+  
+  cl <- makeCluster(no_cores, type="FORK")
+  clusterEvalQ(cl, "plm")
+  clusterExport(cl, "keDat")
+  clusterExport(cl, "keySoilVars")
+  clusterExport(cl, "indFeList")
+  
+  indFeLoopKe <- parLapply(cl, indFeList, function(mod){
+    
+    lapply(keySoilVars, function(outcome){
+      
+      form = lm(reformulate(termlabels = mod, response = outcome),
+                data=keDat)
+      
+      pdf(file=paste("updated_regs/", 
+                     paste0(outcome, 
+                            paste(mod, collapse = "")), 
+                     ".pdf", sep = "")) 
+      print(plot(form))
+      dev.off()
+      
+      form = plm(form, c("sample_id"))
+      
+      rownames(form) = paste(rownames(form), outcome, sep = " ")
+      
+      return(form)
+    })
+    
+  })
+  
+  stopCluster(cl)
+  save(indFeLoopKe, file=regFileKe)
+
+} else {
+  
+  load(regFileKe)
+  
+}
+
+```
+
+And combine model outputs into tables for each model.
+
+```{r}
+
+modExportKe <- lapply(indFeLoopKe, function(models){
+  do.call(rbind, models)
+})
+
+
+for(i in 1:length(modExportKe)){
+  write.csv(modExportKe[i], 
+            file=paste0("updated_regs/","regOutput_", i, ".csv"), row.names = T)
+}
+
+```
+
+In the individual fixed effect model above, the naive model would only include a client indicator and individual fixed effects. If we add season, we lose significance on almost everything. I'd guess that as we add more likely controls we additionally lose significance. I've included age and age squared along the lines of [Hicks et.al](http://www.nber.org/papers/w23253).
+
+
+```{r}
+finalModelKe <- modExportKe[4]
+
+kable(finalModelKe, format="markdown")
+write.csv(finalModelKe, file="updated_regs/indFe_ke2017.csv")
+```
+
+
+### Removing Ghost Farmers
+
+One enumerator in 2015 and 2016 was taking random samples but not actually visiting farms. This affected ~30 samples. There were 20 other farmers who were not able to be traced in the 2017 study, although no systematic fraud was confirmed. I will also remove these farmers.
+
+```{r}
+
+ghostFarmers <- read_csv("GhostFarmerwSamples.csv") 
+
+keDatNoGhostFarmers <- keDat %>% 
+  # cleaning age variable
+ filter(!(sample_id %in% ghostFarmers$soil_sample_id))
+
+regFileKeNoGhostFarmers <- "regFile_through2017_updated_noGhostFarmers.RData"
+
+if(!file.exists(regFileKeNoGhostFarmers) || forceUpdate) {
+  
+  library(parallel)
+  no_cores <- detectCores() - 1
+  
+  cl <- makeCluster(no_cores, type="FORK")
+  clusterEvalQ(cl, "plm")
+  clusterExport(cl, "keDat")
+  clusterExport(cl, "keySoilVars")
+  clusterExport(cl, "indFeList")
+  
+  indFeLoopKeNoGhost <- parLapply(cl, indFeList, function(mod){
+    
+    lapply(keySoilVars, function(outcome){
+      
+      form = lm(reformulate(termlabels = mod, response = outcome),
+                data=keDatNoGhostFarmers)
+      
+      pdf(file=paste("updated_regs/", 
+                     paste0(outcome, "_NoGhostFarmers_",  
+                            paste(mod, collapse = "")), 
+                     ".pdf", sep = "")) 
+      print(plot(form))
+      dev.off()
+      
+      form = plm(form, c("sample_id"))
+      
+      rownames(form) = paste(rownames(form), outcome, sep = " ")
+      
+      return(form)
+    })
+    
+  })
+  
+  stopCluster(cl)
+  save(indFeLoopKeNoGhost, file=regFileKeNoGhostFarmers)
+
+} else {
+  
+  load(regFileKeNoGhostFarmers)
+  
+}
+
+
+```
+
+
+
+And combine model outputs into tables for each model.
+
+```{r}
+
+modExportKeNoGhostFarmers <- lapply(indFeLoopKeNoGhost, 
+                                    function(models){
+  do.call(rbind, models)
+                                      
+})
+
+
+for(i in 1:length(modExportKeNoGhostFarmers)) {
+  
+  write.csv(modExportKeNoGhostFarmers[i], 
+            file=paste0("updated_regs/","regOutput_NoGhostFarmers", i, ".csv"), row.names = T)
+  
+}
+
+```
+
+In the individual fixed effect model above, the naive model would only include a client indicator and individual fixed effects. If we add season, we lose significance on almost everything. I'd guess that as we add more likely controls we additionally lose significance. I've included age and age squared along the lines of [Hicks et.al](http://www.nber.org/papers/w23253).
+
+
+```{r, ke.model.ouput}
+
+finalModelKeNoGhostFarmers <- modExportKeNoGhostFarmers[4]
+
+kable(finalModelKeNoGhostFarmers, format="markdown")
+write.csv(finalModelKeNoGhostFarmers, file="updated_regs/indFe_ke2017_noGhostFarmers.csv")
+```
+
+
+### New Approach
+
+Random effects for farm, calculate # of times someone has been a client. Will be added in once I get raw 2015/2015 data.
+
+
+
+## Rwanda models
+
+**JS: not executing these for now**.
+
+The parallel model wasn't running for some reason so I'm just going to run the one model I really want to look at and save those results.
+
+
+```{r rw.model.exec}
+rwDat <- rwDat %>% mutate(age2 = age^2)
+
+rwDat <- do.call(data.frame,lapply(rwDat, function(x){ 
+  replace(x, is.infinite(x),NA)
+  }))
+
+```
+
+```{r, eval=F}
+
+indFeList <- list("as.factor(d_client)", 
+                  c("as.factor(d_client)", "as.factor(sample_id)"),
+                  c("as.factor(d_client)", "as.factor(sample_id)",
+                    "as.factor(season)"),
+                  c("as.factor(d_client)", "as.factor(sample_id)",
+                    "as.factor(season)", "age", "age2"))
+
+
+# run this in parallel to speed up the process
+# load the data and variables and packages into the cluster
+regFileRw <- "regFile_through2017b.RData"
+#forceUpdate <- forceUpdateAll
+
+if(!file.exists(regFileRw) || forceUpdate) {
+library(parallel)
+no_cores <- detectCores() - 1
+
+cl <- makeCluster(no_cores, type="FORK")
+clusterEvalQ(cl, "plm")
+clusterExport(cl, "rwDat")
+clusterExport(cl, "keySoilVars")
+clusterExport(cl, "indFeList")
+
+indFeLoopRw <- parLapply(cl, indFeList, function(mod){
+  lapply(keySoilVars, function(outcome){
+    
+    form = lm(reformulate(termlabels = mod, response = outcome), data=rwDat)
+    
+    pdf(file=paste("output/rw2017b/", paste0(outcome, paste(mod, collapse = "")), ".pdf", sep = "")) 
+    print(plot(form))
+    dev.off()
+    
+    form = plm(form, c("sample_id", "age", "age2"))
+    
+    rownames(form) = paste(rownames(form), outcome, sep = " ")
+    return(form)
+  })
+  
+})
+stopCluster(cl)
+save(indFeLoopRw, file=regFileRw)
+} else {
+  load(regFileRw)
+}
+
+modExportRw <- lapply(indFeLoopRw, function(models){
+  do.call(rbind, models)
+})
+
+for(i in 1:length(modExportRw)){
+  write.csv(modExportRw[i], file=paste0("output/rw2017b/","regOutput_", i, ".csv"), row.names = T)
+}
+
+finalModelRw <- modExportRw[4]
+
+kable(finalModelRw, format="markdown")
+write.csv(finalModelRw, file="output/rw2017b/indFe_rw2017.csv")
+```
+
+
+# Appendix
+
+Nothing to see here
+
