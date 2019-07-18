@@ -1823,6 +1823,7 @@ lapply(fieldConversionvYields, function(x){
                 fill = as.factor(d_client))) +
     geom_boxplot() +
     facet_wrap(~ season, scales = 'fixed') + 
+    ylim(0, .3) + 
     geom_smooth(method = 'lm') +
     labs(title = paste("N versus Field Conversion", unique(x$season)),
          subtitle = "Grouped this way 1AF plots start out higher in 2015 and are lower in 2017",
@@ -1854,9 +1855,9 @@ lapply(hybridSeedUsevN, function(x){
   ggplot(x, aes(x = seed.type, y = total.nitrogen, 
                 fill = as.factor(d_client))) +
     geom_boxplot() +
-    facet_wrap(~ season, scales = 'fixed') + 
+    ylim(0, .3) + 
     geom_smooth(method = 'lm') +
-    labs(title = paste("N versus Field Conversion", unique(x$season)),
+    labs(title = paste("N versus Hybrid Seed Use", unique(x$season)),
          subtitle = "",
          x = "Seed Type",
          y = "Soil N",
